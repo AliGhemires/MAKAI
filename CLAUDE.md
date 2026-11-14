@@ -105,6 +105,7 @@ make check                  # lint + tests (ce que fait la CI)
 make sim                    # mission complète simulée
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
+uv run python scripts/collect.py sock                   # LA commande de collecte : contrôle, enregistre, zippe
 uv run python scripts/preflight.py                      # avant d'enregistrer (--dry-run sans robot)
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30    # relancer = ajouter
 scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                   # ou --policy.device=mps

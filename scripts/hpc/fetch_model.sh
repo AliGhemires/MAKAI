@@ -12,7 +12,9 @@ if [ "$#" -lt 1 ]; then sed -n '2,10p' "$0"; exit 1; fi
 cd "$(dirname "$0")/../.."
 RUN="$1"; STEP="${2:-last}"
 HOST="${HPC_HOST:-dtu}"
-SSH=(ssh); [ -S "$HOME/.ssh/cm-dtu" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-dtu")
+# The shared connection ~/.ssh/cm-<host> answers whatever host name ssh is given: only use it
+# for the host it was opened for.
+SSH=(ssh); [ -S "$HOME/.ssh/cm-$HOST" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-$HOST")
 STORE=$("${SSH[@]}" "$HOST" 'bash -lc "echo \$BLACKHOLE"' 2>/dev/null | tail -1)
 [ -n "$STORE" ] || { echo "Could not read \$BLACKHOLE on $HOST" >&2; exit 1; }
 REMOTE="$STORE/makai/outputs/$RUN/checkpoints"

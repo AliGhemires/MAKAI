@@ -65,6 +65,19 @@ uv run python scripts/preflight.py                                              
 
 ## 2. Enregistrer
 
+**Une seule commande par objet**, sur le laptop relié au leader :
+
+```bash
+uv run python scripts/collect.py sock --try     # d'abord : 2 épisodes d'essai, à regarder
+uv run python scripts/collect.py sock           # 30 épisodes de chaussette (relancer pour 30 de plus)
+uv run python scripts/collect.py can            # puis la canette
+```
+
+Elle contrôle le robot, les deux caméras et le leader ; si le robot ne répond pas, elle affiche
+la commande exacte à lancer sur la Pi. Puis elle enregistre, et à la fin elle dépose sur le
+Bureau un zip du dataset (`makai_pick_sock_v1.zip`) à transmettre à celui qui lance
+l'entraînement.
+
 L'enregistrement est **mains libres** : aucune touche pendant les épisodes.
 
 1. Au lancement : leader posé sur son support, mains écartées, Entrée. Cette pose devient `home`.
@@ -172,47 +185,35 @@ loué va environ 10 fois plus vite.
 Testé de bout en bout le 14 nov., y compris les six essais lancés d'un coup. Une seule personne
 a accès au cluster : c'est son laptop qui envoie les données et lance les entraînements.
 
-**1. Celui qui a enregistré : envoyer les datasets au laptop qui a l'accès**
+**1. Celui qui a enregistré : transmettre les zips**
 
-À la fin d'une session, `record.py` affiche le dossier du dataset (`local copy: ...`). Le zipper
-et le transmettre par AirDrop ou clé USB (100 à 300 Mo par objet) :
-
-```bash
-# Mac ou Linux
-cd ~/.cache/huggingface/lerobot/local && zip -r ~/Desktop/makai_pick_sock_v1.zip makai_pick_sock_v1
-```
-
-```powershell
-# Windows (PowerShell)
-Compress-Archive -Path $HOME\.cache\huggingface\lerobot\local\makai_pick_sock_v1 -DestinationPath $HOME\Desktop\makai_pick_sock_v1.zip
-```
-
-Pareil pour `makai_pick_can_v1`. Les noms comptent : `pick_sock_v1` et `pick_can_v1`.
+`scripts/collect.py` a déposé `makai_pick_sock_v1.zip` (et `makai_pick_can_v1.zip`) sur son
+Bureau : les envoyer par AirDrop ou clé USB (100 à 300 Mo par objet).
 
 **2. Sur le laptop qui a l'accès : tout lancer en une commande**
 
+Déposer les zips dans `~/Downloads` ou sur le Bureau, puis :
+
 ```bash
 ssh -o ControlMaster=yes -o ControlPath=~/.ssh/cm-dtu -o ControlPersist=8h -fN dtu    # mot de passe, une fois
-mkdir -p ~/.cache/huggingface/lerobot/local
-unzip -o ~/Downloads/makai_pick_sock_v1.zip -d ~/.cache/huggingface/lerobot/local/
-unzip -o ~/Downloads/makai_pick_can_v1.zip  -d ~/.cache/huggingface/lerobot/local/
 scripts/hpc/tonight.sh
 ```
 
-`tonight.sh` envoie les datasets au cluster, crée la copie « poignet seul », met le code à jour
-là-bas et soumet les six essais dans l'ordre de priorité. Un dataset absent est sauté avec ses
-essais : avec la chaussette seule, il lance les quatre essais de la chaussette. On peut le
-relancer plus tard quand la canette arrive (les essais déjà lancés seraient soumis une seconde
-fois : dans ce cas, lancer plutôt les essais de la canette à la main, voir ci-dessous).
-
-Suivre les jobs : `ssh dtu bstat` (PEND = attend un GPU, RUN = s'entraîne), `ssh dtu bpeek <numéro>`.
-
-Pour lancer un essai à la main, sur le cluster (`ssh dtu`, puis `cd ~/MAKAI`) :
+`tonight.sh` dézippe les datasets, les envoie au cluster, crée la copie « poignet seul », met
+le code à jour là-bas et soumet les six essais dans l'ordre de priorité. Un dataset absent est
+sauté avec ses essais : avec la chaussette seule, il lance les quatre essais de la chaussette.
+Ne pas le relancer quand la canette arrive (les essais de la chaussette seraient soumis une
+seconde fois) : lancer alors ceux de la canette à la main, sur le cluster (`ssh dtu`, puis
+`cd ~/MAKAI`) :
 
 ```bash
 scripts/hpc/submit.sh pick_can_v1 act_can_v1 STEPS=100000
 scripts/hpc/submit.sh pick_can_v1 act_can_v1_aug STEPS=40000 AUGMENT=1
 ```
+
+(après `scripts/hpc/push_dataset.sh pick_can_v1` depuis le laptop.)
+
+Suivre les jobs : `ssh dtu bstat` (PEND = attend un GPU, RUN = s'entraîne), `ssh dtu bpeek <numéro>`.
 
 **3. Dimanche matin, depuis le même laptop : rapatrier un modèle**
 
