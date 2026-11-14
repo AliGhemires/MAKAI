@@ -43,8 +43,53 @@ uv pip install "lerobot[lekiwi]==0.7.0"
 Raspberry Pi OS « Bookworm » fournit Python 3.11, trop ancien : c'est pour cela qu'on
 passe par `uv`, qui installe Python 3.12 à côté.
 
-Réseau : la Pi et les laptops sur le **même réseau dédié** (routeur de voyage ou partage
-de connexion). Noter l'IP de la Pi (`hostname -I`) dans `configs/makai.yaml` → `robot.remote_ip`.
+**État réel de notre Pi (sam. 14)** : hostname `lekiwi`, utilisateur `kiwi` (mot de passe
+dans le chat d'équipe), LeRobot 0.7.1 installé depuis les sources dans l'env conda
+`lerobot`, dépôt LeRobot dans `~/lerobot` (détails : `docs/LEKIWI_HANDOFF (2).md`). Après
+chaque connexion SSH : `conda activate lerobot && cd ~/lerobot`.
+
+### Réseau
+
+La Pi et les laptops doivent être sur le **même réseau**. L'IP de la Pi va dans
+`configs/local.yaml` → `robot.remote_ip` (propre à chaque laptop). La Pi connaît deux
+réseaux et prend le premier disponible par ordre de priorité :
+
+| Réseau | Rôle | IP de la Pi | État |
+|---|---|---|---|
+| Hotspot Windows du laptop « PC-08792 6521 », 5 GHz | principal (priorité 10, profil `makai-laptop`) | `192.168.137.50`, fixe | profil créé, **pas encore validé** |
+| Hotspot iPhone « Cyrine », 2,4 GHz | secours automatique (profil `netplan-wlan0-Cyrine`) | `172.20.10.3` en général (DHCP) | marche, mais lent |
+
+- **Hotspot iPhone, mesuré** : aller-retour médian 50 à 140 ms, pics jusqu'à 1,2 s ; le bras
+  avance par à-coups en téléop. Le trafic fait deux sauts Wi-Fi (Pi → iPhone → laptop) sur
+  une bande 2,4 GHz saturée pendant le hackathon.
+- **Hotspot du laptop** : un seul saut, en 5 GHz. Réglages Windows → Réseau → Point d'accès
+  mobile : bande 5 GHz, **économie d'énergie désactivée** (sinon Windows le coupe), et le
+  laptop ne doit pas se mettre en veille. Inconvénient : le robot dépend de ce laptop.
+- **Pas encore essayé** : la Pi comme point d'accès (tous les laptops s'y connectent, ne
+  dépend de personne : le plus robuste pour la démo) ; un câble Ethernet laptop ↔ Pi
+  (le plus rapide, mais robot attaché).
+- L'économie d'énergie Wi-Fi de la Pi est **désactivée**
+  (`/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf`) : elle provoquait des pics
+  de 1 s.
+
+Changer de réseau à la main, sur la Pi (la session SSH coupe ; si le réseau visé échoue,
+la Pi revient seule sur l'autre) :
+
+```bash
+sudo nmcli connection up makai-laptop            # hotspot du laptop
+sudo nmcli connection up netplan-wlan0-Cyrine    # hotspot iPhone
+nmcli -f NAME,AUTOCONNECT-PRIORITY connection show
+```
+
+**Mesurer un réseau**, sans faire bouger le robot (téléop arrêtée) :
+
+```bash
+uv run python scripts/net_check.py --ip 192.168.137.50   # ou 172.20.10.3
+```
+
+Il donne l'aller-retour vers la Pi et, si le host tourne, la régularité du flux
+d'observations (trous de plus de 100 et 200 ms, débit). Repères : aller-retour médian
+sous 10 ms et aucun trou de plus de 200 ms, c'est bon pour la téléop.
 
 Ports et caméras, sur la Pi :
 
@@ -64,8 +109,9 @@ la commande du host ci-dessous : les noms (`front`, `wrist`) et les résolutions
 # sur la Pi : identifiants des moteurs (bras 1 à 6, roues 7 à 9), seulement si le kit est neuf
 lerobot-setup-motors --robot.type=lekiwi --robot.port=/dev/ttyACM0
 
-# sur la Pi : calibration du bras du robot
-lerobot-calibrate --robot.type=lekiwi --robot.id=makai_kiwi
+# sur la Pi : calibration du bras du robot ; '{}' = sans caméra (sinon échec si la caméra
+# de poignet /dev/video2 n'est pas branchée)
+lerobot-calibrate --robot.type=lekiwi --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 --robot.cameras='{}'
 
 # sur le laptop : calibration du bras leader
 uv run lerobot-find-port
@@ -76,20 +122,37 @@ uv run lerobot-calibrate --teleop.type=so101_leader --teleop.port=/dev/tty.usbmo
 calibration est rangée. La calibration du leader est stockée sur le laptop : si un autre
 laptop téléopère, copier `~/.cache/huggingface/lerobot/calibration/` ou recalibrer.
 
+**Fait le sam. 14** : bras du robot calibré sur la Pi (`makai_kiwi.json`, 17:48, pas
+encore copié dans le dépôt) ; leader calibré, dans le dépôt
+(`calibration/teleoperators/so_leader/makai_leader.json`). Pour l'installer sur un autre
+laptop : `cp -R calibration/. ~/.cache/huggingface/lerobot/calibration/`. Un bras calibré
+comme `so_follower` (SO-101 seul) n'est pas utilisable par le LeKiwi : noms de moteurs
+différents et pas de roues.
+
 ## 4. Démarrer le robot (à chaque session)
 
-Sur la Pi :
+Sur la Pi, avec notre host (`scripts/lekiwi_host.py`, copié sur la Pi sous
+`~/makai_host.py` ; après une modification : `scp scripts/lekiwi_host.py kiwi@<ip>:~/makai_host.py`) :
 
 ```bash
-cd ~/makai && source .venv/bin/activate
-python -m lerobot.robots.lekiwi.lekiwi_host \
+conda activate lerobot && cd ~/lerobot
+python ~/makai_host.py --arm_acceleration=50 \
   --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 \
-  --robot.cameras='{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG}, wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 30, fourcc: MJPG}}' \
-  --host.connection_time_s=36000
+  --robot.cameras='{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}}' \
+  --host.connection_time_s=3600
 ```
 
-Sans `--host.connection_time_s`, le host s'arrête au bout de 30 secondes. Lancer cette
-commande dans `tmux` pour qu'elle survive à une coupure SSH.
+- C'est le host de LeRobot, avec une accélération réduite pour les servos du bras.
+  LeRobot les règle au maximum (254) : quand les commandes arrivent par paquets sur le
+  Wi-Fi, le bras saute. 30 = plus doux, 100 = plus vif ; les roues gardent 254.
+- `warmup_s: 3` : la webcam avant met 1,2 s à livrer sa première image, le défaut (1 s)
+  fait échouer le démarrage.
+- Pour l'instant, seule la caméra avant est branchée. Une « Generic USB HD Camera » apparaît
+  dans `lsusb` sans `/dev/video` : câble ou alimentation de la caméra de poignet à vérifier.
+- Sans `--host.connection_time_s`, le host s'arrête au bout de 30 secondes. `tmux` n'est pas
+  installé sur la Pi (`sudo apt install tmux`) : en attendant, garder la fenêtre SSH ouverte.
+- Arrêter le host coupe le couple des moteurs : **tenir le bras**, il tombe.
+- « No command available » en boucle est normal tant qu'aucun laptop n'est connecté.
 
 Sur le laptop :
 
@@ -99,6 +162,15 @@ make teleop       # leader pour le bras, clavier pour la base, flux dans Rerun
 
 Clavier : `w` `s` avancer et reculer, `a` `d` gauche et droite, `z` `x` tourner, `r` `f`
 vitesse. `p` enregistre la pose courante du bras dans `configs/poses_captured.yaml`.
+
+- **Le clavier est lu dans toutes les fenêtres**, pas seulement celle de la téléop : taper
+  dans un chat ou un navigateur fait rouler le robot. Ne rien taper ailleurs pendant la
+  téléop ; Échap coupe le clavier.
+- Avant de lancer, mettre le leader à peu près dans la pose du bras du robot : sinon le
+  bras du robot rejoint le leader d'un coup.
+- Windows : le leader est sur un port `COMx` (`teleop.leader_port` dans `configs/local.yaml`) ;
+  `make` vient de MSYS2 sous le nom `mingw32-make` (alias PowerShell possible :
+  `Set-Alias make mingw32-make` dans le profil).
 
 ## 5. Mise en place avant toute collecte (porte G2)
 
@@ -143,3 +215,8 @@ make mission      # sur le robot (host lancé sur la Pi)
 | `Incorrect status packet` | Câble moteur mal enfoncé ou alimentation faible. Vérifier la batterie |
 | Clavier sans effet en téléop | Autorisations macOS (section 1). Sous Linux Wayland, la téléop clavier ne marche pas : utiliser X11 |
 | Le bras tremble ou force | Calibration à refaire, ou un servo en butée : couper, vérifier à la main |
+| `Timed out waiting for frame from camera ... after 1000 ms` | Webcam lente à démarrer : `warmup_s: 3` dans `--robot.cameras` |
+| Le bras avance par à-coups, latence | Réseau (section 2, « Réseau ») : mesurer avec `scripts/net_check.py`. Puis `--arm_acceleration` plus bas |
+| Les roues bougent quand on tape ailleurs | Clavier lu dans toutes les fenêtres (section 4) |
+| La Pi ne répond plus après un changement de réseau | Attendre 2 à 3 min (elle essaie les réseaux connus), puis débrancher et rebrancher son alimentation USB-C |
+| `lekiwi.local` ne se résout pas | mDNS capricieux sous Windows : utiliser l'IP |

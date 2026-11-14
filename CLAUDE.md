@@ -64,8 +64,10 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
 Écrit et contrôlé contre l'API de LeRobot 0.7.0, mais jamais exécuté sur le matériel :
-`src/makai/robot/lekiwi.py`, `PolicyPick` dans `src/makai/manipulation/skills.py`,
-`scripts/teleop.py`, `scripts/record.py`, `build_real` dans `src/makai/app.py`. Le détecteur
+`LeKiwiRobot` dans `src/makai/robot/lekiwi.py` (`make_client` marche, via la téléop),
+`PolicyPick` dans `src/makai/manipulation/skills.py`, `scripts/record.py`, `build_real` dans
+`src/makai/app.py`. Validés sur le robot le sam. 14 : `scripts/teleop.py` (laptop Windows),
+`scripts/lekiwi_host.py` (sur la Pi). Le détecteur
 `OpenVocabDetector` fonctionne sur une image d'exemple, pas encore sur nos objets. Première
 exécution prudente : vitesses réduites, bras dégagé. Retirer un élément de cette liste
 une fois validé.
