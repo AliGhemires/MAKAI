@@ -2,6 +2,8 @@
 
     uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
     uv run python scripts/try_pick.py --policy <namespace>/makai_act_sock_v1 --trials 10      # from the Hub
+    uv run python scripts/try_pick.py --policy <namespace>/makai_act_sock_v1 --revision 020000 --trials 10
+    uv run python scripts/try_pick.py --policy <path> --n-action-steps 30 --trials 10        # more reactive
     uv run python scripts/try_pick.py --policy <path> --dry-run                               # no hardware
 
 Before each trial: put the object in the pre-grasp zone, arm at the home pose, hands away,
@@ -40,6 +42,11 @@ def main() -> None:
     parser.add_argument("--task", default=None, help="task string, as used when recording")
     parser.add_argument("--device", default=None, help="mps, cuda or cpu; default: as trained")
     parser.add_argument(
+        "--revision", default=None, help="checkpoint of a Hub repo, by step: 010000, 020000..."
+    )
+    parser.add_argument("--n-action-steps", type=int, default=None,
+                        help="actions played before looking again (default: as trained, 100 = 3.3 s). Try 30")  # fmt: skip
+    parser.add_argument(
         "--dry-run", action="store_true", help="fake robot: check the model loads and runs at speed"
     )
     args = parser.parse_args()
@@ -61,6 +68,8 @@ def main() -> None:
         args.duration or pick["duration_s"],
         cfg["robot"]["fps"],
         args.device,
+        n_action_steps=args.n_action_steps,
+        revision=args.revision,
     )
     print(f"Policy loaded in {time.perf_counter() - start:.1f} s on {skill.device}")
 
@@ -72,16 +81,14 @@ def main() -> None:
                 input(
                     f"\nTrial {trial}/{args.trials}: object in the zone, arm at home, hands away. Enter to start..."
                 )
-            ticks_before = getattr(robot.client, "_tick", 0)
-            start = time.perf_counter()
             skill.run(robot, Target(Category.UNKNOWN, "object", 0.0, 0.0))
-            elapsed = time.perf_counter() - start
             robot.stop()
+            rate = f"{skill.last_rate_hz:.1f} commands per second (target {cfg['robot']['fps']})"
             if args.dry_run:
-                rate = (robot.client._tick - ticks_before) / elapsed
-                print(f"Trial {trial}: ran {elapsed:.1f} s at {rate:.1f} Hz (target {cfg['robot']['fps']})")
+                print(f"Trial {trial}: {rate}")
             else:
-                successes += input("Object held at the end? [y/n] ").strip().lower().startswith("y")
+                held = input(f"{rate}. Object held at the end? [y/n] ").strip().lower().startswith("y")
+                successes += held
     finally:
         robot.disconnect()
     if not args.dry_run:

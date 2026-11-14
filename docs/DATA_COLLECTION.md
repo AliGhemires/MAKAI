@@ -13,7 +13,8 @@ Un épisode, de bout en bout :
 
 1. bras en pose `home`, objet à la pose de pré-saisie (à quelques centimètres près) ;
 2. descendre, saisir, remonter ;
-3. finir en pose `home`, pince fermée sur l'objet ; arrêter l'épisode (`→`).
+3. finir en pose `home`, pince fermée sur l'objet, **rester immobile une seconde**, puis
+   arrêter l'épisode (`→`). Cette seconde apprend au modèle qu'il a fini.
 
 Durée visée : 8 à 12 secondes. La chaîne de tâche est toujours la même, au caractère près :
 `Pick up the object from the floor` (c'est `manipulation.pick.task` dans la config).
@@ -60,8 +61,9 @@ Utiliser les **flèches et Échap** pour piloter l'enregistrement, pas les lettr
    la pince, même fin. Un opérateur principal pour tout un dataset.
 2. **Pas d'hésitation.** Mouvement continu, ni trop lent ni saccadé. Un épisode avec une
    pause, un raté rattrapé ou un choc : `←` et on le refait. On ne garde que les réussites propres.
-3. **Varier ce qui variera en démo, et rien d'autre.** Position de l'objet dans un carré de
-   ±3 cm autour de la pose de pré-saisie, orientation de l'objet, forme du tissu. Pas de
+3. **Varier ce qui variera en démo, et rien d'autre.** Position de l'objet dans la zone de
+   pré-saisie (un carré de ±3 à 4 cm), **couverte régulièrement** : centre, coins, milieux de
+   bord. Orientation de l'objet, forme du tissu. Pas de
    changement de caméra, de pose `home`, ni de fond.
 4. **Placer l'objet avec le robot, pas à la main.** Dès que l'approche autonome marche,
    c'est elle qui amène le robot devant l'objet avant chaque épisode : les erreurs de
