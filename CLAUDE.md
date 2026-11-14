@@ -81,6 +81,11 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 (`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
 `src/makai/app.py`.
 
+Validé sur le robot le 14 novembre au soir, en mode filaire sur la Pi (`WiredBase`,
+`robot.link: wired`) : la page de contrôle `scripts/drive.py` (conduite, caméras avant et
+poignet, lecture du bras avec la calibration de la Pi, mesures des 9 moteurs). Pas encore sur
+le robot : l'onglet Measure (déplacements précis, `src/makai/robot/moves.py`).
+
 Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
 `src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout
 d'une session, vidéos), `scripts/train.sh` (ACT en local), `PolicyPick` et

@@ -4,4 +4,7 @@ teleop:
 hub:
   namespace: your-hf-username
 # robot:
-#   remote_ip: 192.168.1.50
+#   remote_ip: 172.20.10.3   # Pi on the iPhone hotspot (`hostname -I` on the Pi)
+#   link: wired              # motor board plugged into this machine, base only, no host
+#   base:
+#     port: COM5             # Windows laptop. On the Pi keep the default /dev/ttyACM0

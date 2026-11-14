@@ -9,10 +9,31 @@ robot:
   cameras:                  # must match what the host on the Pi is started with (docs/SETUP.md)
     front: {index_or_path: /dev/video0, width: 640, height: 480, rotation: 0}   # Logitech C270
     wrist: {index_or_path: /dev/video2, width: 640, height: 480, rotation: 0}   # HBVCAM
+  link: host                # host = lekiwi_host on the Pi (base, arm, cameras) | wired = motor board on
+                            # this machine's USB, base only (needed while the arm is not mounted)
+  base:                     # the wheels, measured on 14 November (docs/SETUP.md). Used in wired mode;
+                            # in host mode LeRobot on the Pi uses its own built-in values (the same).
+    port: /dev/ttyACM0      # motor board seen from the Pi. Windows laptop: COM5 -> local.yaml
+    motor_ids: {left: 7, back: 8, right: 9}
+    wheel_angles_deg: {left: 240, back: 0, right: 120}   # LeRobot notation: the code subtracts 90
+    wheel_radius_m: 0.05
+    base_radius_m: 0.125
+    max_wheel_raw: 3000     # steps/s per wheel, about 0.23 m/s at the rim
+    watchdog_s: 0.5         # wheels stop when no command came for this long
 
 teleop:
   leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)
   leader_id: makai_leader
+  drive:                    # web driving page (scripts/drive.py)
+    http_port: 8000
+    max_lin_m_s: 0.25       # full stick at 100 % speed. The wheels top out near 0.26 m/s forward
+    max_ang_deg_s: 90       # ...and 105 deg/s on the spot
+    accel_m_s2: 0.5         # how quickly it speeds up (0 -> full speed in half a second)...
+    decel_m_s2: 1.2         # ...and brakes when the stick is released
+    ang_accel_deg_s2: 240
+    ang_decel_deg_s2: 480
+    deadman_s: 0.4          # brake when the page goes quiet: tab closed, WiFi lost, phone locked
+    default_speed: 0.5      # fraction of the maximum selected when the page opens
 
 hub:
   namespace: CHANGE_ME      # Hugging Face user or org that owns datasets and models

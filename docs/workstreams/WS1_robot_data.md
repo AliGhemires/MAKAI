@@ -79,3 +79,13 @@ _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui blo
   vérifier l'alimentation USB-C avant la collecte.
 - À faire : brancher la caméra de poignet (vue dans `lsusb`, pas de `/dev/video`) ;
   installer `tmux` ; horodater le log du host (`~/host.log`, sans heure pour l'instant).
+
+**Sam. 14, 21 h 45 · page de contrôle (`scripts/drive.py`)**
+- MAKAI cloné sur la Pi (`~/MAKAI`, clé de déploiement en lecture seule), `tmux` installé.
+- Page de contrôle lancée sur la Pi en mode filaire, laptop en hotspot (option B, Pi en
+  `192.168.137.50`, ping 5 à 7 ms) : conduite, **les deux caméras** (640×480, 8 à 10 images/s,
+  y compris la caméra de poignet sur `/dev/video2`), bras lu avec la calibration de la Pi,
+  9 moteurs à 27–30 °C sans erreur, batterie 11,7 V, odométrie par les encodeurs.
+- La caméra de poignet donne des images : à ajouter à la commande du host avant la collecte.
+- À faire : calibrer le rayon des roues au mètre (onglet Measure, `docs/SETUP.md`) ; compenser
+  cette calibration en mode host (le host garde ses valeurs intégrées).
