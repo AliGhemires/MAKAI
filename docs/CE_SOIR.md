@@ -177,9 +177,10 @@ priorité** ; le pourquoi de chacun est dans `docs/TRAINING.md`, section « Prot
 Sur le **HPC de DTU**, depuis le dossier `MAKAI` d'un nœud de connexion :
 
 ```bash
-export HUB_NAMESPACE=<namespace> STEPS=40000
+export HUB_NAMESPACE=<namespace> STEPS=100000
 DATASET=pick_sock_v1 RUN=act_sock_v1 bsub < scripts/hpc/train_act.lsf                    # 1
 DATASET=pick_can_v1  RUN=act_can_v1  bsub < scripts/hpc/train_act.lsf                    # 2
+export STEPS=40000                                                                       # les variantes
 AUGMENT=1 DATASET=pick_sock_v1 RUN=act_sock_v1_aug bsub < scripts/hpc/train_act.lsf      # 3
 AUGMENT=1 DATASET=pick_can_v1  RUN=act_can_v1_aug  bsub < scripts/hpc/train_act.lsf      # 4
 EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50" DATASET=pick_sock_v1 RUN=act_sock_v1_c50 bsub < scripts/hpc/train_act.lsf   # 5
@@ -187,15 +188,21 @@ DATASET=pick_sock_v1_wrist RUN=act_sock_v1_wrist bsub < scripts/hpc/train_act.ls
 bstat          # en attente ou en cours ?
 ```
 
+**Le budget est de 8 heures, pas un nombre de pas.** Les deux essais de référence visent
+100 000 pas et sont coupés à 8 heures : on prend le dernier checkpoint disponible au réveil
+(il y en a un sur le Hub tous les 5 000 pas). Les variantes s'arrêtent à 40 000 pas pour
+libérer les GPU. S'il n'y a qu'un ou deux GPU libres, mettre 40 000 partout, dans l'ordre 1 à 6.
+
 Le script de soumission n'a pas pu être testé d'ici : si un job reste en attente plus de 20
 minutes ou échoue au démarrage, basculer sans insister sur l'une des deux autres voies.
 
 Avec **Hugging Face Jobs**, depuis un laptop :
 
 ```bash
-export STEPS=40000
-scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                        # 1
-scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large                        # 2
+export STEPS=100000
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large --job.timeout=8h       # 1
+scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large --job.timeout=8h       # 2
+export STEPS=40000                                                                       # les variantes
 AUGMENT=1 scripts/train.sh pick_sock_v1 act_sock_v1_aug --job.target=a10g-large          # 3
 AUGMENT=1 scripts/train.sh pick_can_v1  act_can_v1_aug  --job.target=a10g-large          # 4
 scripts/train.sh pick_sock_v1 act_sock_v1_c50 --job.target=a10g-large --policy.chunk_size=50 --policy.n_action_steps=50   # 5
@@ -210,11 +217,13 @@ Un Mac par objet, dataset copié dessus (AirDrop du dossier
 `~/.cache/huggingface/lerobot/<namespace>/makai_pick_sock_v1`, à remettre au même endroit).
 
 ```bash
-STEPS=12000 SAVE_FREQ=2000 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps
+STEPS=15000 SAVE_FREQ=2500 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps
 ```
 
-12 000 pas prennent environ 7 heures et font 5 passages sur 60 épisodes de 10 secondes. Le
-script empêche le Mac de se mettre en veille ; **laisser le chargeur branché et l'écran ouvert.**
+15 000 pas prennent 8 heures (1,9 s par pas, mesuré) et font environ 8 passages sur 60 épisodes
+de 8 secondes. Le script empêche le Mac de se mettre en veille ; **laisser le chargeur branché
+et l'écran ouvert.** Inutile de changer la taille de batch (16 ne va pas plus vite) ni
+d'activer la précision mixte (elle plante sur Mac).
 
 ### Dans les deux cas
 
