@@ -18,9 +18,10 @@ hyperparamètres réunis.
 1. **Les données.** Un geste unique et franc, la zone de saisie couverte de façon régulière,
    60 épisodes propres par objet. Voir `docs/DATA_COLLECTION.md`.
 2. **Les mêmes conditions à l'entraînement et en démo** : caméras, pose de départ, cadence de
-   30 Hz, et surtout **la lumière**. Les démonstrations de samedi soir sont en lumière
-   artificielle, la démo de lundi est à 13 h. Parades : une lampe sur le robot, une variante
-   entraînée avec `AUGMENT=1`, et 20 à 30 épisodes de plus dimanche en lumière du jour.
+   30 Hz, et surtout **le lieu**. La démo de lundi est dans une autre salle : lumière, sol et
+   décor changent. Parades, détaillées dans `docs/CE_SOIR.md` : des épisodes enregistrés dans
+   cette salle dès qu'on y a accès, un tapis de démo qu'on emporte, des conditions variées, un
+   modèle qui ne regarde que la caméra de poignet, et `AUGMENT=1`.
 3. **Choisir le modèle sur le robot, jamais sur la perte.** Un checkpoint tous les 5 000 pas,
    et le même test pour tous (voir « Évaluer »).
 4. **Entraîner assez longtemps.** ACT continue de progresser bien après que la perte semble
@@ -39,6 +40,7 @@ Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on p
 | 3 | Chaussette, images augmentées (luminosité ×0,5 à ×1,5, contraste, couleurs ; pas de déformation) | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
 | 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
 | 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
+| 6 | Chaussette, caméra de poignet seule | `scripts/wrist_only.sh pick_sock_v1`, puis `STEPS=40000` sur `pick_sock_v1_wrist` | La démo est dans une autre salle : un modèle qui ne voit pas le décor tient-il mieux ? |
 
 Sur des Mac seulement (2 s par pas) : les essais 1 et 2, un par Mac, `STEPS=12000`.
 
