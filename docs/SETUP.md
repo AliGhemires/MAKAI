@@ -50,6 +50,9 @@ chaque connexion SSH : `conda activate lerobot && cd ~/lerobot`.
 
 ### Réseau
 
+**Guide pas à pas par OS (Windows, macOS) et par réseau : `docs/ROBOT_NETWORK.md`.**
+Ci-dessous, le détail et les mesures.
+
 La Pi et les laptops doivent être sur le **même réseau**. L'IP de la Pi va dans
 `configs/local.yaml` → `robot.remote_ip` (propre à chaque laptop). La Pi connaît trois
 réseaux (profils NetworkManager). **Choix actuel : le hotspot iPhone**, le plus simple

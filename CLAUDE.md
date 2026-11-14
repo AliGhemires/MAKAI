@@ -63,9 +63,9 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Inférence et déploiement : `lerobot-rollout` (stratégies `base`, `dagger`...).
   Entraînement cloud : `lerobot-train --job.target=<gpu>`.
 - Le host LeKiwi s'arrête après 30 s sans `--host.connection_time_s`.
-- **Se connecter au robot** (Pi `kiwi@172.20.10.3` sur le hotspot iPhone, host
-  `~/makai_host.py`, réseaux possibles, mesures, pièges Windows) : `docs/SETUP.md`,
-  sections 2 (« Réseau ») à 4, et l'état dans `docs/workstreams/WS1_robot_data.md`. Mots de
+- **Se connecter au robot** : `docs/ROBOT_NETWORK.md` (choix du réseau selon l'OS et la
+  préférence : iPhone, option A ou B, commandes pas à pas), puis `docs/SETUP.md` section 4
+  pour le host et la téléop ; état dans `docs/workstreams/WS1_robot_data.md`. Mots de
   passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
   `scripts/net_check.py` avant d'accuser le code.
 - Pas de `cv2.imshow` (OpenCV sans interface graphique) : visualiser avec Rerun.
