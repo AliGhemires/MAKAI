@@ -28,6 +28,8 @@ import argparse
 import logging
 import signal
 import socket
+import subprocess
+import sys
 from dataclasses import asdict
 
 from makai.config import REPO_ROOT, load_config
@@ -42,14 +44,23 @@ SIM_HZ = 50.0  # the simulated robot gives no encoders: read its speed at the co
 log = logging.getLogger("drive")
 
 
-def lan_address() -> str | None:
-    """This machine's address on the network (no packet is sent: it only picks the interface)."""
-    try:
+def lan_addresses() -> list[str]:
+    """This machine's IPv4 addresses. On the Pi, `hostname -I` lists them all, including the
+    access point's 10.42.0.1, which has no route out (the trick below needs one)."""
+    if sys.platform.startswith("linux"):
+        try:
+            out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=2).stdout
+            found = [a for a in out.split() if a.count(".") == 3 and not a.startswith("127.")]
+            if found:
+                return found
+        except (OSError, subprocess.SubprocessError):
+            pass
+    try:  # no packet is sent: this only picks the interface of the default route
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("10.255.255.255", 1))
-            return sock.getsockname()[0]
+            return [sock.getsockname()[0]]
     except OSError:
-        return None
+        return []
 
 
 def make_sim(scale: float):
@@ -200,14 +211,14 @@ def main() -> None:
         capture.start()
     arm = getattr(robot.client, "arm", None) if hasattr(robot, "client") else None
     if link == "wired":
+        source = getattr(robot.client, "calibration_file", None)
         log.info(
             "arm: %s",
-            "read from the bus" if arm else "not read (no calibration file on this machine, or no arm)",
+            f"read from the bus, calibration {source}" if arm else "not read (no calibration, or no arm)",
         )
     urls = [f"http://localhost:{http_port}"]
     if args.bind != "127.0.0.1":
-        address = lan_address()
-        urls += [f"http://{address}:{http_port}"] if address else []
+        urls += [f"http://{address}:{http_port}" for address in lan_addresses()]
         urls += [f"http://{socket.gethostname()}.local:{http_port}"]
     log.info("drive page ready: %s", "   ".join(urls))
     log.info("Ctrl+C stops the robot and the page")

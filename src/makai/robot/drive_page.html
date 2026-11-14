@@ -1238,7 +1238,7 @@ function renderArm(st) {
   }
   if (currentTab !== "robot") return;
   $("#rp-arm").innerHTML = joints.map(([k, label]) => {
-    const v = arm[k], f = k === "gripper" ? clamp(v / 100, 0, 1) : clamp(v / 150, -1, 1);
+    const v = arm[k], f = k === "gripper" ? clamp(v / 100, 0, 1) : clamp(v / (k === "wrist_roll" ? 180 : 120), -1, 1); // calibrated ranges: about ±105°, roll ±180°
     const left = k === "gripper" ? 0 : 50 + Math.min(0, f) * 50, width = k === "gripper" ? f * 100 : Math.abs(f) * 50;
     return `<span class="name">${label}</span><div class="bar${k === "gripper" ? " one" : ""}"><div class="fill" style="left:${left}%;width:${width}%"></div></div><b>${jointText(k, v)}</b>`;
   }).join("");

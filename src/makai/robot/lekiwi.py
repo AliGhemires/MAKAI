@@ -168,12 +168,20 @@ def make_client(cfg: dict):
 
 
 def arm_calibration_path(robot_id: str) -> Path | None:
-    """Where `lerobot-calibrate --robot.type=lekiwi` saved the arm calibration on this machine."""
+    """The arm calibration to read the arm with: the one `lerobot-calibrate --robot.type=lekiwi`
+    saved on this machine, else the copy of our robot's calibration kept in the repo
+    (calibration/robots/lekiwi/). None if neither exists."""
+    from makai.config import REPO_ROOT
+
+    candidates = []
     try:
         from lerobot.utils.constants import HF_LEROBOT_CALIBRATION, ROBOTS
+
+        candidates.append(HF_LEROBOT_CALIBRATION / ROBOTS / "lekiwi" / f"{robot_id}.json")
     except ImportError:
-        return None
-    return HF_LEROBOT_CALIBRATION / ROBOTS / "lekiwi" / f"{robot_id}.json"
+        pass
+    candidates.append(REPO_ROOT / "calibration" / "robots" / "lekiwi" / f"{robot_id}.json")
+    return next((path for path in candidates if path.is_file()), None)
 
 
 def load_arm_calibration(path: Path | None) -> dict[str, Any] | None:
@@ -215,6 +223,7 @@ class WiredBase:
     def __init__(self, bus, geometry: BaseGeometry, watchdog_s: float = 0.5, fallback_bus=None):
         self.bus = bus
         self.fallback_bus = fallback_bus  # wheels only: used if the arm servos do not answer
+        self.calibration_file: Path | None = None  # the arm calibration in use, for the logs
         self.geometry = geometry
         self.watchdog_s = watchdog_s
         self._lock = threading.Lock()  # the bus is shared with the watchdog thread
@@ -345,10 +354,12 @@ class LeKiwiRobot:
         if link == "wired":  # no host: the wheels, the arm read-only, cameras opened by the caller
             geometry = BaseGeometry.from_config(robot["base"])
             port = robot["base"]["port"]
-            arm_calibration = load_arm_calibration(arm_calibration_path(robot["id"]))
+            calibration_file = arm_calibration_path(robot["id"])
+            arm_calibration = load_arm_calibration(calibration_file)
             bus = make_wheel_bus(port, geometry, arm_calibration)
             fallback = make_wheel_bus(port, geometry) if arm_calibration else None
             base = WiredBase(bus, geometry, robot["base"].get("watchdog_s", 0.5), fallback_bus=fallback)
+            base.calibration_file = calibration_file if arm_calibration else None
             return cls(base, camera_names=())
         if link == "host":
             return cls(make_client(cfg), tuple(robot["cameras"]))

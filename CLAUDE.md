@@ -63,12 +63,18 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Inférence et déploiement : `lerobot-rollout` (stratégies `base`, `dagger`...).
   Entraînement cloud : `lerobot-train --job.target=<gpu>`.
 - Le host LeKiwi s'arrête après 30 s sans `--host.connection_time_s`.
+- **Se connecter au robot** (Pi `kiwi@172.20.10.3` sur le hotspot iPhone, host
+  `~/makai_host.py`, réseaux possibles, mesures, pièges Windows) : `docs/SETUP.md`,
+  sections 2 (« Réseau ») à 4, et l'état dans `docs/workstreams/WS1_robot_data.md`. Mots de
+  passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
+  `scripts/net_check.py` avant d'accuser le code.
 - Pas de `cv2.imshow` (OpenCV sans interface graphique) : visualiser avec Rerun.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Jamais exécuté sur le matériel : le mode host de `src/makai/robot/lekiwi.py` (`LeKiwiClient`),
-`scripts/teleop.py`, `scripts/preflight.py`, `build_real` dans `src/makai/app.py`.
+Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.py`
+(`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
+`src/makai/app.py`.
 
 Validé sur le robot le 14 novembre, bras non monté : le mode filaire (`WiredBase`,
 `robot.link: wired`) et la page de pilotage `scripts/drive.py`. Pas encore sur le robot :
@@ -79,6 +85,9 @@ Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
 `src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout
 d'une session, vidéos), `scripts/train.sh` (ACT en local), `PolicyPick` et
 `scripts/try_pick.py` (chargement d'un checkpoint, commande à 29 Hz).
+
+Validés sur le robot le sam. 14 : `scripts/teleop.py` (laptop Windows, leader en `COM8`),
+`scripts/lekiwi_host.py` (sur la Pi).
 
 Première exécution réelle prudente : vitesses réduites, bras dégagé. Retirer un élément de
 cette liste une fois validé.
