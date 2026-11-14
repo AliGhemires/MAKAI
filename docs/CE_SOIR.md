@@ -78,7 +78,29 @@ la commande exacte à lancer sur la Pi. Puis elle enregistre, et à la fin elle 
 Bureau un zip du dataset (`makai_pick_sock_v1.zip`) à transmettre à celui qui lance
 l'entraînement.
 
-L'enregistrement est **mains libres** : aucune touche pendant les épisodes.
+**Où regarder.** Il n'y a pas de fenêtre à boutons : l'interface, c'est le terminal et la
+fenêtre Rerun.
+
+- **Le terminal** : chaque ligne commence par `[sauvegardés / demandés]`, puis l'état.
+
+  ```text
+  [ 7/30] READY          place the object, then move the leader: recording starts by itself
+  [ 7/30] RECORDING      back to the rest and hold still = saved | RIGHT ARROW = save now | LEFT ARROW = drop
+  [ 8/30] SAVED          6.2 s. The dataset now holds 38 episodes
+  ```
+
+- **La fenêtre Rerun** : les deux caméras, et un panneau « prediction.status » qui affiche la
+  même chose (WAIT, READY ou RECORDING, le compte de la session, la taille du dataset).
+- **La voix** du laptop annonce aussi « Ready » et le numéro : monter le son.
+
+**Deux modes.**
+
+| Mode | Commande | Début d'un épisode | Fin d'un épisode |
+|---|---|---|---|
+| Automatique (par défaut) | `collect.py sock` | quand le leader bouge | retour au repos, une seconde immobile ; ou flèche droite |
+| Start / stop | `collect.py sock --manual` | tout seul, après le temps de remise en place | flèche droite |
+
+En mode automatique, l'enregistrement est **mains libres** : aucune touche pendant les épisodes.
 
 1. Au lancement : leader posé sur son support, mains écartées, Entrée. Cette pose devient `home`.
 2. Le laptop dit « Ready » quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
