@@ -30,6 +30,9 @@ The --manual loop follows lerobot 0.7.0 `examples/lekiwi/record.py`.
 
 import argparse
 import csv
+import os
+import shutil
+import subprocess
 import time
 from collections import deque
 from datetime import datetime
@@ -197,6 +200,11 @@ def main() -> None:
     parser.add_argument("--min-episode", type=float, default=3.0, help="seconds: shorter is a false start")
     args = parser.parse_args()
 
+    # A Mac left alone goes to sleep after a few minutes, which freezes the session (seen on
+    # 14 Nov): keep it awake for as long as this script runs.
+    if shutil.which("caffeinate"):
+        subprocess.Popen(["caffeinate", "-dims", "-w", str(os.getpid())])
+
     cfg = load_config()
     fps = cfg["robot"]["fps"]
     task = args.task or f"Pick up the {args.object} from the floor"
@@ -244,6 +252,17 @@ def main() -> None:
         print(f"New dataset {repo_id} in {root}")
 
     robot.connect()
+    # Every camera of the config must really arrive from the robot: a dataset recorded with one
+    # camera missing cannot be completed afterwards.
+    time.sleep(0.5)
+    received = robot.get_observation()
+    missing = [name for name in cfg["robot"]["cameras"] if received.get(name) is None]
+    if missing:
+        robot.disconnect()
+        raise SystemExit(
+            f"The robot does not send the camera(s) {missing}. Start the host on the Pi with every camera "
+            "listed in robot.cameras (docs/SETUP.md, section 4), and run scripts/preflight.py."
+        )
     leader.connect()
     keyboard.connect()
     listener, events = init_keyboard_listener()

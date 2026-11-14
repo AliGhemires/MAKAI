@@ -60,7 +60,7 @@ class FakeKiwi(LeKiwiClient):
 class FakeLeader(SO101Leader):
     """A leader arm that repeats a pick: rest at home, reach out, close, come back, rest."""
 
-    CYCLE_S = 8.0  # 0-2 s at home, 2-4 s out, 4-6 s back with the gripper closed, 6-8 s at home
+    CYCLE_S = 9.0  # 0-3 s at home, 3-5 s out, 5-7 s back with the gripper closed, 7-9 s at home
 
     def __init__(self, config):
         super().__init__(config)
@@ -73,17 +73,18 @@ class FakeLeader(SO101Leader):
 
     def connect(self, calibrate: bool = True) -> None:
         self._fake_connected = True
+        self._start = time.perf_counter()  # the cycle starts at rest, when the session starts
 
     def disconnect(self) -> None:
         self._fake_connected = False
 
     def get_action(self) -> dict:
         phase = (time.perf_counter() - self._start) % self.CYCLE_S
-        reach = 0.0 if phase < 2 or phase >= 6 else math.sin(math.pi * (phase - 2) / 4)
+        reach = 0.0 if phase < 3 or phase >= 7 else math.sin(math.pi * (phase - 3) / 4)
         action = {
             f"{joint}.pos": 40.0 * reach * (1 if i % 2 == 0 else -1) for i, joint in enumerate(JOINTS[:5])
         }
-        action["gripper.pos"] = 60.0 if phase < 4 else 5.0  # open on the way out, closed on the way back
+        action["gripper.pos"] = 60.0 if phase < 5 else 5.0  # open on the way out, closed on the way back
         return action
 
 

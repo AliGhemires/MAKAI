@@ -182,7 +182,7 @@ conda activate lerobot && cd ~/lerobot
 python ~/makai_host.py --arm_acceleration=50 \
   --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 \
   --robot.cameras='{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}}' \
-  --host.connection_time_s=3600
+  --host.connection_time_s=36000
 ```
 
 - C'est le host de LeRobot, avec une accélération réduite pour les servos du bras.
