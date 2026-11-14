@@ -19,8 +19,8 @@ téléopère sans à-coups, enregistre des datasets propres. Tu tiens aussi le p
 ### Samedi, avant 18:00 (porte G1)
 - [ ] Checklist H0 de `docs/PLAN.md` : leader présent ? Pi, réseau, batterie, caméras
 - [ ] Installer LeRobot sur la Pi (`docs/SETUP.md`, section 2)
-- [ ] Identifiants moteurs si besoin, calibration du bras et du leader
-- [ ] Host lancé dans `tmux`, `make teleop` fonctionne, 2 caméras dans Rerun
+- [x] Identifiants moteurs si besoin, calibration du bras et du leader
+- [ ] Host lancé dans `tmux`, `make teleop` fonctionne, 2 caméras dans Rerun (téléop OK, 1 caméra, pas de `tmux`)
 - [ ] Vérifier les couleurs (RGB) et l'orientation des images ; corriger dans `robot/lekiwi.py`
 - [ ] Enregistrer 2 minutes de vidéo de la caméra avant en roulant dans la zone, pour WS2
 
@@ -51,7 +51,31 @@ minutes en suivant `docs/SETUP.md`.
 - Les noms et résolutions des caméras doivent être identiques côté host et côté config.
 - La calibration du leader est locale à un laptop.
 - Les servos chauffent : pose `home` reposante, pauses pendant la collecte.
+- Calibrer le bras comme `lekiwi` sur la Pi, pas comme `so_follower` sur un laptop.
+- La webcam avant met 1,2 s à démarrer : `warmup_s: 3`, sinon le host échoue.
+- Le clavier de la téléop est lu dans toutes les fenêtres : ne rien taper ailleurs.
+- Hotspot iPhone : 2 sauts Wi-Fi en 2,4 GHz saturé, latence 50 à 140 ms et pics de 1 s ;
+  le bras saute. Wi-Fi de la Pi en économie d'énergie : pics de 1 s (désactivé).
+- La Pi a redémarré seule une fois (vers 18:05) et a disparu du réseau une autre fois :
+  alimentation à surveiller.
 
 ## État
 
 _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
+
+**Sam. 14, soir**
+- Marche : 9 moteurs répondent (bras 1–6, roues 7–9), batterie 12,8 V ; bras calibré
+  sur la Pi (`makai_kiwi`) ; leader calibré et dans le dépôt ; téléop bras + base depuis un
+  laptop Windows, caméra avant dans Rerun.
+- Côté laptop, la boucle de téléop tient 27,6 Hz (leader 1,2 ms, Rerun 1,8 ms) : ce n'est
+  pas elle qui limite.
+- Le bras saute encore un peu. Cause mesurée : le réseau (7 trous de plus de 200 ms en 12 s
+  sur le flux). Atténué par `scripts/lekiwi_host.py` (accélération du bras réduite à 50).
+- Réseau : on reste sur le hotspot iPhone (D11), Pi en `172.20.10.3`. Option A testée et
+  prête (Pi en point d'accès « makai-kiwi » : 6 ms, flux régulier à 29,9 images/s, aucun
+  trou de plus de 100 ms, contre 38 à 143 ms et des pics de 1,2 s sur l'iPhone).
+- Calibration du bras copiée dans le dépôt (`calibration/robots/lekiwi/makai_kiwi.json`).
+- La Pi a perdu son alimentation au moins deux fois (redémarrages, fichier réseau vide) :
+  vérifier l'alimentation USB-C avant la collecte.
+- À faire : brancher la caméra de poignet (vue dans `lsusb`, pas de `/dev/video`) ;
+  installer `tmux` ; horodater le log du host (`~/host.log`, sans heure pour l'instant).
