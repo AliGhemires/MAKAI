@@ -24,7 +24,7 @@ Toute l'intelligence (détection, policy) tourne sur le laptop.
 
 | Module | Rôle | WS |
 |---|---|---|
-| `makai/contracts.py` | Types et interfaces partagés | tous (fichier protégé) |
+| `makai/contracts.py` | Types et interfaces partagés | tous (prévenir dans le chat) |
 | `makai/robot/lekiwi.py` | Adaptateur vers LeRobot | WS1 |
 | `makai/perception/` | Image → objets et stations en mètres | WS2 |
 | `makai/navigation/` | Approche, odométrie | WS3 |

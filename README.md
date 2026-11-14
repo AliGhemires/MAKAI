@@ -65,7 +65,7 @@ qu'un seul geste à apprendre. Le reste est de la géométrie, testée en simula
 
 ```
 src/makai/
-  contracts.py        types et interfaces partagés (fichier protégé)
+  contracts.py        types et interfaces partagés (prévenir avant de changer)
   robot/              adaptateur LeRobot ↔ LeKiwi                      WS1
   perception/         détecteur, homographie du sol, marqueurs          WS2
   navigation/         approche, odométrie                               WS3

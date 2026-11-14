@@ -17,16 +17,18 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Règles de travail
 
+- **Pas de relecture, pas d'attente.** L'équipe a deux jours : les branches et `main` servent
+  à s'organiser. Quand la personne demande un changement, va jusqu'au merge sur `main` dès
+  que les tests passent, sans redemander ni attendre une approbation.
+- **`main` doit toujours passer `make check` et `make sim`** : c'est la seule règle stricte.
+  Lancer `make check` avant tout push. Du code : branche `ws<N>/<sujet>`, PR mergée en squash
+  dès que ses tests sont verts. Docs, fiches, config, petits correctifs : directement sur `main`.
 - **Reste dans le couloir de la personne.** Dossiers par workstream : tableau de
-  `docs/PLAN.md`, section 6. Pour modifier le code d'un autre couloir, proposer le
-  changement et laisser la personne en parler au responsable.
-- **Fichiers protégés** : `src/makai/contracts.py`, `configs/makai.yaml`,
-  `configs/arm_poses.yaml`, `configs/ground_plane.yaml`, `docs/PLAN.md`, ce fichier. Ne les
-  modifier que sur demande explicite, et rappeler la procédure (`docs/WORKFLOW.md`, section 1).
-- **`main` doit toujours passer `make check` et `make sim`.** Travailler sur une branche
-  `ws<N>/<sujet>`, PR en squash. Seules les fiches de workstream et `docs/REGISTRY.md` se
-  poussent directement sur `main`.
-- **Lancer `make check` avant de proposer un commit.**
+  `docs/PLAN.md`, section 6. Si la tâche oblige à toucher le code d'un autre couloir, fais-le
+  et dis-le à la personne, pour qu'elle prévienne le responsable dans le chat.
+- **Fichiers partagés** : `src/makai/contracts.py`, `configs/makai.yaml`,
+  `configs/arm_poses.yaml`, `configs/ground_plane.yaml`, `docs/PLAN.md`, ce fichier. Tu peux
+  les modifier quand la tâche le demande ; signale-le à la personne, qui l'annonce dans le chat.
 - **Jamais dans git** : données, vidéos, poids de modèles, tokens. Ils vont sur le Hub
   Hugging Face. Les valeurs propres à un laptop vont dans `configs/local.yaml` (ignoré).
 - **En fin de session**, proposer de mettre à jour la fiche du workstream : tâches

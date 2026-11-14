@@ -1,7 +1,7 @@
 """Shared data contracts between workstreams.
 
 THIS FILE IS THE INTERFACE BETWEEN ALL MODULES. Changing it affects everyone:
-open a PR, tag it `contract-change`, and announce it in the team chat first.
+say so in the team chat when you do, so nobody is surprised.
 
 Conventions (see docs/ARCHITECTURE.md):
 - Base frame: origin at the centre of the mobile base, on the floor.

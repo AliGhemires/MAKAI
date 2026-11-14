@@ -11,7 +11,7 @@ en mètres) et de stations. La navigation ne voit le monde qu'à travers toi.
 
 `CameraPerception.perceive(Observation) -> Scene` (`perception/pipeline.py`). `Scene.targets`
 en mètres dans le repère base, `Scene.stations` par catégorie. Ne pas changer ces types
-sans passer par la procédure des contrats.
+sans le dire dans le chat : les autres modules en dépendent.
 
 Déjà en place et testé : homographie du sol (`geometry.py`), calibration par feuille de
 marqueurs (`calibration.py`), stations ArUco (`stations.py`).
