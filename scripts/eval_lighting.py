@@ -73,10 +73,14 @@ def area(box: tuple) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("images", nargs="+")
     parser.add_argument("--ignore-top", type=float, default=0.22, help="phone photos show clutter at the top")
-    parser.add_argument("--width", type=int, default=640, help="resize so the longer side is this (robot camera)")
+    parser.add_argument(
+        "--width", type=int, default=640, help="resize so the longer side is this (robot camera)"
+    )
     args = parser.parse_args()
 
     p = load_config()["perception"]
