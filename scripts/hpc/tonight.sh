@@ -6,28 +6,47 @@
 #
 # It looks for pick_sock_v1 and pick_can_v1 on this laptop, in
 #   ~/.cache/huggingface/lerobot/local/makai_<name>/      (or under your Hub namespace)
-# If a teammate recorded them, put the folders he sent you there first (see docs/CE_SOIR.md).
+# If a teammate recorded them, just drop the zips he sent (makai_pick_sock_v1.zip, ...) in
+# ~/Downloads or on the Desktop: they are unpacked for you.
 # A dataset that is missing is skipped, with its runs.
 #
 # Runs submitted (docs/TRAINING.md says why): reference sock and can (100000 steps), their
 # lighting-augmented variants, sock with a short horizon, sock with the wrist camera only.
 # Follow them with:  ssh dtu bstat      Fetch a model with:  scripts/hpc/fetch_model.sh <run>
 #
-# For a rehearsal:  SOCK=<dataset> CAN=<dataset> SUFFIX=_test STEPS_REF=200 STEPS_VAR=200 \
-#                   BSUB="-W 0:15" scripts/hpc/tonight.sh
+# To see what it would do without touching the cluster:  DRY_RUN=1 scripts/hpc/tonight.sh
+# For a real rehearsal (it DOES submit jobs):  SOCK=<dataset> CAN=<dataset> SUFFIX=_test \
+#     STEPS_REF=200 STEPS_VAR=200 BSUB="-W 0:15" scripts/hpc/tonight.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 HOST="${HPC_HOST:-dtu}"
 SOCK="${SOCK:-pick_sock_v1}"; CAN="${CAN:-pick_can_v1}"; SUFFIX="${SUFFIX:-}"
 REF="${STEPS_REF:-100000}"; VAR="${STEPS_VAR:-40000}"; BSUB="${BSUB:-}"
-SSH=(ssh); [ -S "$HOME/.ssh/cm-dtu" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-dtu")
+# The shared connection ~/.ssh/cm-<host> answers whatever host name ssh is given: only use it
+# for the host it was opened for.
+SSH=(ssh); [ -S "$HOME/.ssh/cm-$HOST" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-$HOST")
 NS="${HUB_NAMESPACE:-$(uv run --no-sync python -c "from makai.config import load_config; print(load_config()['hub']['namespace'])")}"
 [ "$NS" = "CHANGE_ME" ] && NS=local
 DATA="${HF_LEROBOT_HOME:-$HOME/.cache/huggingface/lerobot}/${NS}"
 have() { [ -d "$DATA/makai_$1" ]; }
 
-"${SSH[@]}" "$HOST" true || { echo "Cannot reach $HOST: open the shared connection first (scripts/hpc/push_dataset.sh says how)." >&2; exit 1; }
+# A teammate recorded them? Unpack the zips he sent (scripts/collect.py makes them) when they
+# are newer than what is here.
+for name in "$SOCK" "$CAN"; do
+  for zip in "$HOME/Downloads/makai_$name.zip" "$HOME/Desktop/makai_$name.zip"; do
+    if [ -f "$zip" ] && { ! have "$name" || [ "$zip" -nt "$DATA/makai_$name" ]; }; then
+      mkdir -p "$DATA" && rm -rf "$DATA/makai_$name" && unzip -q -o "$zip" -d "$DATA" && echo "unpacked $zip"
+    fi
+  done
+done
+
 have "$SOCK" || have "$CAN" || { echo "No dataset found in $DATA (looked for makai_$SOCK and makai_$CAN)." >&2; exit 1; }
+if [ "${DRY_RUN:-0}" = "1" ]; then   # say what would happen, touch nothing on the cluster
+  for name in "$SOCK" "$CAN"; do have "$name" && echo "would send $name ($(du -sh "$DATA/makai_$name" | cut -f1))" || echo "would skip $name (not on this laptop)"; done
+  echo "would submit to $HOST: reference runs at $REF steps, variants at $VAR steps"
+  exit 0
+fi
+"${SSH[@]}" "$HOST" true || { echo "Cannot reach $HOST: open the shared connection first (scripts/hpc/push_dataset.sh says how)." >&2; exit 1; }
 
 echo "== 1/3 sending the datasets"
 for name in "$SOCK" "$CAN"; do

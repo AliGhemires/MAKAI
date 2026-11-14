@@ -14,7 +14,9 @@ set -euo pipefail
 if [ "$#" -lt 1 ]; then sed -n '2,13p' "$0"; exit 1; fi
 cd "$(dirname "$0")/../.."
 HOST="${HPC_HOST:-dtu}"
-SSH=(ssh); [ -S "$HOME/.ssh/cm-dtu" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-dtu")
+# The shared connection ~/.ssh/cm-<host> answers whatever host name ssh is given: only use it
+# for the host it was opened for.
+SSH=(ssh); [ -S "$HOME/.ssh/cm-$HOST" ] && SSH=(ssh -o "ControlPath=$HOME/.ssh/cm-$HOST")
 NS="${HUB_NAMESPACE:-$(uv run --no-sync python -c "from makai.config import load_config; print(load_config()['hub']['namespace'])")}"
 [ "$NS" = "CHANGE_ME" ] && NS=local
 SRC="${HF_LEROBOT_HOME:-$HOME/.cache/huggingface/lerobot}/${NS}/makai_$1"
