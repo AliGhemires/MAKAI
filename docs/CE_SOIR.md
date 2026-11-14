@@ -78,6 +78,13 @@ la commande exacte à lancer sur la Pi. Puis elle enregistre, et à la fin elle 
 Bureau un zip du dataset (`makai_pick_sock_v1.zip`) à transmettre à celui qui lance
 l'entraînement.
 
+### Le guide du pilote
+
+**Le principe.** Le bras du robot copie en permanence le leader que tu tiens. L'enregistreur
+ne garde que les moments marqués RECORDING. Un épisode, c'est une saisie complète : du repos
+au repos. Entre deux épisodes rien n'est enregistré : tu as tout ton temps pour replacer
+l'objet, souffler, ou régler la scène.
+
 **Où regarder.** Il n'y a pas de fenêtre à boutons : l'interface, c'est le terminal et la
 fenêtre Rerun.
 
@@ -85,38 +92,58 @@ fenêtre Rerun.
 
   ```text
   [ 7/30] READY          place the object, then move the leader: recording starts by itself
-  [ 7/30] RECORDING      back to the rest and hold still = saved | RIGHT ARROW = save now | LEFT ARROW = drop
+  [ 7/30] RECORDING      back on the rest and still = saved | RIGHT ARROW = save now | LEFT ARROW = drop
   [ 8/30] SAVED          6.2 s. The dataset now holds 38 episodes
   ```
 
 - **La fenêtre Rerun** : les deux caméras, et un panneau « prediction.status » qui affiche la
-  même chose (WAIT, READY ou RECORDING, le compte de la session, la taille du dataset).
+  même chose (WAIT, READY ou RECORDING avec le temps écoulé, le compte de la session, la
+  taille du dataset).
 - **La voix** du laptop annonce aussi « Ready » et le numéro : monter le son.
 
-**Deux modes.**
+**Les touches, les mêmes dans les deux modes.**
 
-| Mode | Commande | Début d'un épisode | Fin d'un épisode |
-|---|---|---|---|
-| Automatique (par défaut) | `collect.py sock` | quand le leader bouge | retour au repos, une seconde immobile ; ou flèche droite |
-| Start / stop | `collect.py sock --manual` | tout seul, après le temps de remise en place | flèche droite |
+| Touche | Effet |
+|---|---|
+| Flèche droite | démarre un épisode tout de suite ; pendant un épisode, l'arrête et le sauvegarde |
+| Flèche gauche | pendant un épisode, le jette ; juste après une sauvegarde, marque cet épisode comme mauvais (la commande pour le supprimer s'affiche en fin de session) |
+| Échap | termine la session ; un épisode en cours est jeté |
 
-En mode automatique, l'enregistrement est **mains libres** : aucune touche pendant les épisodes.
+Si les touches ne font rien, cliquer une fois dans le terminal.
 
-1. Au lancement : leader posé sur son support, mains écartées, Entrée. Cette pose devient `home`.
-2. Le laptop dit « Ready » quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
-3. Dès que tu bouges le leader, l'épisode commence. Descendre, saisir, remonter, reposer le
-   leader sur son support en tenant l'objet.
-4. Après une seconde d'immobilité, l'épisode est sauvegardé et son numéro est annoncé.
+**Mode automatique (par défaut)** : `uv run python scripts/collect.py sock`
+
+1. Au lancement : une vue en direct, pour vérifier les deux images. Leader posé sur son
+   support, mains écartées, Entrée. Cette pose devient `home`.
+2. READY s'affiche quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
+3. Dès que tu bouges le leader, l'épisode commence (RECORDING). Descendre, saisir, remonter,
+   reposer le leader sur son support en tenant l'objet.
+4. Après une seconde d'immobilité, l'épisode est sauvegardé (SAVED) et le compte augmente.
    Lâcher l'objet, le replacer ailleurs dans la zone, et recommencer.
 
 Chaque épisode part donc de la même pose, sans temps mort au début, et finit par la même
 seconde immobile, sans que personne ait à y penser.
 
-- **Flèche gauche** pendant un épisode : on le jette. Juste après une sauvegarde : il est marqué
-  mauvais, et la commande pour le supprimer s'affiche en fin de session.
-- Un épisode qui ne revient pas en `home` en 15 secondes est jeté tout seul (« Too long »).
-- Si « Ready » ne vient jamais : le bras ne se stabilise pas assez près de `home`. Relancer avec
-  `--home-tol 10`, ou revenir au mode classique avec `--manual` (flèche droite pour finir).
+**Mode manuel, le pilote décide** : `uv run python scripts/collect.py sock --manual`
+
+1. Même lancement.
+2. Poser l'objet, main sur le leader. Flèche droite : RECORDING.
+3. Saisir, revenir au repos. Flèche droite : SAVED.
+
+Rien ne démarre ni ne se sauvegarde tout seul. Appuyer juste avant de bouger et dès le
+retour au repos : les secondes immobiles du début et de la fin sont enregistrées avec le reste.
+
+**Ce que l'enregistreur refuse.** Il l'affiche et le dit, et rien n'est sauvegardé :
+
+- TOO LONG : l'épisode dépasse 15 secondes (`--episode-time 30` pour élargir).
+- FALSE START, en automatique : retour au repos en moins de 3 secondes.
+- TOO SHORT : arrêt à la touche en moins d'une seconde (un double appui).
+- Si READY ne vient jamais en automatique, le bras ne se stabilise pas assez près de `home` :
+  flèche droite pour démarrer quand même, ou relancer avec `--home-tol 10`.
+
+**Épisodes enregistrés avant le 15 nov. à 1 h** : ouvrir `outputs/recordings/<nom>.csv` et
+supprimer ceux qui durent moins d'une seconde (dernière colonne). Un défaut, corrigé depuis,
+faisait sauvegarder un épisode presque vide après chaque flèche pressée entre deux épisodes.
 
 Le reste du protocole (`docs/DATA_COLLECTION.md`) ne change pas :
 

@@ -6,20 +6,23 @@
 Run it again with the same --name to ADD episodes: nothing is overwritten, and a crash loses
 at most the episode being recorded. The dataset is pushed to the Hub when a session ends.
 
-Hands-free by default: no key to press, both hands stay on the job.
-  0. a live view opens first (Rerun: both cameras, the arm follows the leader, nothing is
-     recorded): set the scene and check the pictures;
-  1. put the leader on its rest (the home pose) and press Enter: that pose is "home";
-  2. "Ready" is spoken when the arm is back home and still: place the object;
-  3. recording starts by itself when you move the leader, and the episode is saved by itself
-     once the arm is back home and has stayed still for one second. Its number is spoken.
-Every episode therefore starts from the same pose, has no dead time at the start, and ends
-with the same second of stillness. An episode that never comes back home is dropped.
-  LEFT ARROW  while recording: drop this episode. Just after one was saved: mark it as bad.
-  RIGHT ARROW while recording: save now.        ESC: stop the session.
-If "Ready" never comes, the arm does not settle within the tolerance: raise --home-tol, or
-use --manual (RIGHT ARROW ends each episode, LEFT ARROW redoes it, fixed reset time).
-Use the arrows, not the letters: r, f and q also drive the base.
+A live view opens first (Rerun: both cameras, the arm follows the leader, nothing is recorded):
+set the scene, check the pictures, put the leader on its rest and press Enter.
+
+Two modes. In both, nothing is recorded outside RECORDING, and the keys are the same:
+  RIGHT ARROW  start an episode now, or stop it and save it now
+  LEFT ARROW   drop the episode being recorded; just after a save: mark that episode as bad
+  ESC          end the session (an episode being recorded is dropped)
+
+Automatic (default): both hands stay on the job.
+  1. READY when the arm is on its rest ("home") and still: place the object;
+  2. recording starts by itself when the leader moves;
+  3. the episode is saved by itself once the arm is back home and still for one second.
+  Every episode starts from the same pose, has no dead time at the start, and ends with the
+  same second of stillness. If READY never comes, the arm does not settle within the
+  tolerance: press the RIGHT ARROW to start anyway, or raise --home-tol.
+
+--manual: the pilot decides. RIGHT ARROW starts the episode, RIGHT ARROW saves it.
 
 Where the session stands is always on screen: every line in this terminal starts with
 [saved in this session / asked], and the Rerun window has a "status" panel next to the cameras
@@ -31,7 +34,6 @@ Where the session stands is always on screen: every line in this terminal starts
 uploaded): use it to check the laptop before the robot is free.
 
 Protocol and quality rules: docs/DATA_COLLECTION.md. Tonight's plan: docs/CE_SOIR.md.
-The --manual loop follows lerobot 0.7.0 `examples/lekiwi/record.py`.
 """
 
 import argparse
@@ -48,9 +50,6 @@ from pathlib import Path
 import numpy as np
 from lerobot.datasets import LeRobotDataset
 from lerobot.lerobot_types import TransitionKey
-from lerobot.processor import make_default_processors
-from lerobot.scripts.lerobot_record import record_loop
-from lerobot.teleoperators.keyboard import KeyboardTeleop, KeyboardTeleopConfig
 from lerobot.teleoperators.so_leader import SO101Leader, SO101LeaderConfig
 from lerobot.utils.constants import ACTION, HF_LEROBOT_HOME, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
@@ -67,27 +66,119 @@ STOP = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
 ARM = [key for key in ARM_KEYS if "gripper" not in key]
 
 
-STATUS = {
-    "live": "LIVE VIEW: nothing is recorded yet.\nPut the leader on its rest, hands off, then press Enter.",
-    "reset": "WAIT: put the leader back on its rest and let go.",
-    "armed": "READY: place the object, then move the leader. Recording starts by itself.",
-    "recording": "RECORDING: bring the leader back to its rest and hold still to save.",
+KEY_PAUSE_S = 0.7  # after a key or a save, ignore the keys this long: a key held down repeats
+MIN_KEY_EPISODE_S = 1.0  # an episode stopped by the key sooner than this is a double press
+
+HELP = {
+    False: """
+HOW THIS SESSION WORKS  (automatic mode)
+  1. READY shows when the leader is on its rest and still. Place the object.
+  2. Pick it up: recording starts by itself as soon as you move the leader.
+  3. Put the leader back on its rest and hold still one second: the episode is saved.
+  Nothing is recorded outside RECORDING, so take your time between episodes.
+     RIGHT ARROW   start now / stop and save now
+     LEFT ARROW    drop the episode being recorded (just after a save: mark that one as bad)
+     ESC           end the session
+  To decide every start and stop yourself, run with --manual.""",
+    True: """
+HOW THIS SESSION WORKS  (manual mode: you decide)
+  1. Place the object, leader on its rest.
+  2. RIGHT ARROW: recording starts. Pick the object up and come back to the rest.
+  3. RIGHT ARROW again: the episode is saved.
+  Nothing is recorded outside RECORDING, so take your time between episodes.
+     RIGHT ARROW   start / stop and save
+     LEFT ARROW    drop the episode being recorded (just after a save: mark that one as bad)
+     ESC           end the session""",
+}
+READY_HINT = {
+    False: "place the object, then move the leader: recording starts by itself",
+    True: "place the object, then RIGHT ARROW to start recording",
+}
+RECORDING_HINT = {
+    False: "back on the rest and still = saved | RIGHT ARROW = save now | LEFT ARROW = drop",
+    True: "RIGHT ARROW = stop and save | LEFT ARROW = drop",
 }
 
 
-def status_panel(state: str, recorded: int, asked: int, total: int) -> dict:
+def read_keys(events: dict) -> tuple[bool, bool]:
+    """(RIGHT, LEFT) pressed since the last call, then cleared: a key must never act twice.
+
+    LeRobot raises "exit_early" for every key, so on its own it means the RIGHT ARROW. Left
+    raised, it would save the next episode on its first frame.
+    """
+    right = events["exit_early"] and not events["rerecord_episode"] and not events["stop_recording"]
+    left = events["rerecord_episode"]
+    events["exit_early"] = events["rerecord_episode"] = False
+    return right, left
+
+
+def decide(
+    state: str,
+    *,
+    manual: bool,
+    right: bool,
+    left: bool,
+    settled: bool,
+    moved: bool,
+    back_home: bool,
+    elapsed: float,
+    min_episode: float,
+    max_episode: float,
+) -> str:
+    """What happens on this tick: "" (nothing), "ready", "start", "save", or why the episode is dropped.
+
+    The RIGHT ARROW starts an episode, or stops and saves it; the LEFT ARROW drops it. In
+    automatic mode an episode also starts when the leader leaves its rest (`moved`) and is
+    saved once the arm is back on it and still (`back_home`).
+    """
+    if state == "recording":
+        if left:
+            return "Dropped"
+        if elapsed > max_episode:
+            return "Too long"
+        if right:
+            return "save" if elapsed >= MIN_KEY_EPISODE_S else "Too short"
+        if not manual and back_home:
+            return "save" if elapsed >= min_episode else "False start"
+        return ""
+    if right:
+        return "start"
+    if state == "reset":
+        return "ready" if manual or settled else ""
+    return "start" if not manual and moved else ""
+
+
+def status_panel(
+    state: str, manual: bool, recorded: int, asked: int, total: int, elapsed: float = 0.0, limit: float = 0.0
+) -> dict:
     """Where the session stands, as a text panel in Rerun next to the cameras.
 
     LeRobot's viewer lays out a text panel for a policy's predicted text: we pass ours that way.
     """
-    text = (
-        f"{STATUS[state]}\n\nSaved in this session: {recorded} of {asked}\nEpisodes in the dataset: {total}"
-    )
+    if state == "live":
+        what = "LIVE VIEW: nothing is recorded yet.\nPut the leader on its rest, hands off, then press Enter."
+    elif state == "recording":
+        what = (
+            f"RECORDING   {elapsed:.0f} s   (dropped after {limit:.0f} s)\n"
+            + (
+                "RIGHT ARROW = stop and save"
+                if manual
+                else "back on the rest and still = saved   (RIGHT ARROW = save now)"
+            )
+            + "\nLEFT ARROW = drop this episode"
+        )
+    elif state == "armed":
+        what = "READY: place the object, then " + (
+            "press the RIGHT ARROW to start." if manual else "move the leader. Recording starts by itself."
+        )
+    else:
+        what = "WAIT: put the leader back on its rest and let go.   (RIGHT ARROW = start anyway)"
+    text = f"{what}\n\nSaved in this session: {recorded} of {asked}\nEpisodes in the dataset: {total}"
     return {TransitionKey.PREDICTION: {"language": {"status": [text]}}}
 
 
-def hands_free_session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad):
-    """Record episodes that start and end by themselves (see the module docstring)."""
+def session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad):
+    """Record episodes, started and ended by the pilot's keys or by themselves (module docstring)."""
     total = dataset.meta.total_episodes
 
     def tick():
@@ -109,6 +200,8 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
         "\nLIVE VIEW: the arm follows the leader, nothing is recorded yet."
         + (" Both cameras are in the Rerun window." if display else "")
     )
+    print(HELP[args.manual])
+    print("  If the keys do nothing, click on this terminal once.\n")
     print("Check the two pictures, put the leader on its rest in the home pose, hands off.")
     print("Then press Enter (or the RIGHT ARROW) to start.")
     go = threading.Event()
@@ -120,7 +213,7 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
         start = time.perf_counter()
         observation, action, _, _ = tick()
         if display:
-            panel = status_panel("live", 0, args.episodes, total)
+            panel = status_panel("live", args.manual, 0, args.episodes, total)
             log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
     events["exit_early"] = False
@@ -145,89 +238,88 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
         window = np.array(list(recent)[-count:])
         return float((window.max(axis=0) - window.min(axis=0)).max()) < args.still_tol
 
-    state, recorded, started, saved_at = "reset", 0, 0.0, -1e9
+    state, recorded, started, saved_at, quiet_until = "reset", 0, 0.0, -1e9, 0.0
     while recorded < args.episodes and not events["stop_recording"]:
         start = time.perf_counter()
         observation, action, arm, hand = tick()
         recent.append(arm)
-        at_home = float(np.abs(arm - home_arm).max()) < args.home_tol
         frame = {
             **build_dataset_frame(dataset.features, observation, prefix=OBS_STR),
             **build_dataset_frame(dataset.features, action, prefix=ACTION),
             "task": task,
         }
+        right, left = read_keys(events)
+        if start < quiet_until:
+            right = left = False
+        elif right or left:
+            quiet_until = start + KEY_PAUSE_S
+        at_home = float(np.abs(arm - home_arm).max()) < args.home_tol
+        elapsed = start - started if state == "recording" else 0.0
 
-        if state != "recording" and events["rerecord_episode"]:
-            events["rerecord_episode"] = False
+        if left and state != "recording":
             if recorded > 0 and start - saved_at < 20.0:
                 on_bad()
                 say("Marked as bad", "the last episode: it is listed at the end, to remove before training")
                 saved_at = -1e9
+            else:
+                say("Nothing to drop", "no episode is being recorded", speak=False)
 
-        if state == "reset":
-            if at_home and still_for(0.5):
-                state = "armed"
-                preroll.clear()
-                say("Ready", "place the object, then move the leader: recording starts by itself")
-        elif state == "armed":
+        step = decide(
+            state,
+            manual=args.manual,
+            right=right,
+            left=left,
+            settled=at_home and still_for(0.5),
+            moved=float(np.abs(hand - home_hand).max()) > args.leave_tol,
+            back_home=at_home and still_for(args.end_still),
+            elapsed=elapsed,
+            min_episode=args.min_episode,
+            max_episode=args.episode_time,
+        )
+        if state == "armed":
             preroll.append(frame)
-            if float(np.abs(hand - home_hand).max()) > args.leave_tol:
-                state, started = "recording", start
-                say("Recording", "back to the rest and hold still = saved | RIGHT ARROW = save now | LEFT ARROW = drop", speak=False)  # fmt: skip
-                for earlier in preroll:  # ends with the current frame
-                    dataset.add_frame(earlier)
-        else:
+        if step == "ready":
+            state = "armed"
+            preroll.clear()
+            say("Ready", READY_HINT[args.manual])
+        elif step == "start":
+            # Started by the leader moving: keep the quarter second before it. By the key: from now.
+            for earlier in [frame] if right else list(preroll):
+                dataset.add_frame(earlier)
+            state, started = "recording", start
+            say("Recording", RECORDING_HINT[args.manual], speak=False)
+        elif state == "recording":
             dataset.add_frame(frame)
-            elapsed = start - started
-            back_home = at_home and still_for(args.end_still)
-            dropped = events["rerecord_episode"]
-            if dropped or (back_home and elapsed < args.min_episode) or elapsed > args.episode_time:
-                reason = (
-                    "Dropped" if dropped else "Too long" if elapsed > args.episode_time else "False start"
-                )
-                say(reason, "not saved: put the leader back on its rest")
-                events["rerecord_episode"] = False
-                dataset.clear_episode_buffer()
-                state = "reset"
-            elif back_home or events["exit_early"]:
-                events["exit_early"] = False
+            if step == "save":
                 dataset.save_episode()
                 recorded += 1
                 saved_at = time.perf_counter()
                 on_saved(elapsed)
                 total = dataset.meta.total_episodes
                 say("Saved", f"{elapsed:.1f} s. The dataset now holds {total} episodes", speak=f"{recorded}")
+            elif step:
+                dataset.clear_episode_buffer()
+                why = {
+                    "Too long": f" (over {args.episode_time:.0f} s, see --episode-time)",
+                    "Too short": f" (stopped in under {MIN_KEY_EPISODE_S:.0f} s: a double press?)",
+                    "False start": f" (back on the rest in under {args.min_episode:.0f} s)",
+                }.get(step, "")
+                say(step, "not saved" + why)
+            if step:
                 recent.clear()
                 state = "reset"
+                quiet_until = time.perf_counter() + KEY_PAUSE_S
 
         if display:
-            panel = status_panel(state, recorded, args.episodes, total)
+            panel = status_panel(
+                state, args.manual, recorded, args.episodes, total, elapsed, args.episode_time
+            )
             log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
 
-
-def manual_session(loop, dataset, events, args, say, on_saved):
-    """LeRobot's own loop: the RIGHT ARROW ends each episode, then a fixed reset time."""
-    recorded = 0
-    while recorded < args.episodes and not events["stop_recording"]:
-        say(f"Episode {recorded + 1} of {args.episodes}", "recording | RIGHT ARROW = stop and save | LEFT ARROW = redo | ESC = end")  # fmt: skip
-        record_loop(**loop, dataset=dataset, control_time_s=args.episode_time)
-
-        if not events["stop_recording"] and (recorded < args.episodes - 1 or events["rerecord_episode"]):
-            say("Reset", f"{args.reset_time:.0f} s to put the scene back")
-            record_loop(**loop, control_time_s=args.reset_time)
-
-        if events["rerecord_episode"]:
-            say("Again", "not saved")
-            events["rerecord_episode"] = False
-            events["exit_early"] = False
-            dataset.clear_episode_buffer()
-            continue
-
-        dataset.save_episode()
-        recorded += 1
-        on_saved(None)
-        say("Saved", f"the dataset now holds {dataset.meta.total_episodes} episodes", speak=False)
+    if state == "recording":
+        dataset.clear_episode_buffer()
+        say("Dropped", "the session ended during an episode: it is not saved", speak=False)
 
 
 def main() -> None:
@@ -242,8 +334,7 @@ def main() -> None:
     parser.add_argument("--no-push", action="store_true", help="keep the dataset on this laptop")
     parser.add_argument("--no-display", action="store_true", help="do not open Rerun (if the loop is slow)")
     parser.add_argument("--dry-run", action="store_true", help="fake robot and leader: no hardware")
-    parser.add_argument("--manual", action="store_true", help="end each episode with the RIGHT ARROW")
-    parser.add_argument("--reset-time", type=float, default=10.0, help="--manual: seconds to reset the scene")
+    parser.add_argument("--manual", action="store_true", help="you start and stop every episode: RIGHT ARROW")
     parser.add_argument(
         "--home-tol", type=float, default=6.0, help="degrees from home that still count as home"
     )
@@ -279,17 +370,15 @@ def main() -> None:
     root = Path(HF_LEROBOT_HOME) / repo_id
 
     if args.dry_run:
-        from makai.robot.fake import FakeKeyboard, FakeKiwi, FakeLeader
+        from makai.robot.fake import FakeKiwi, FakeLeader
 
         robot = FakeKiwi(make_client(cfg).config)
         leader = FakeLeader(SO101LeaderConfig(port="none", id="fake_leader"))
-        keyboard = FakeKeyboard(KeyboardTeleopConfig())
     else:
         robot = make_client(cfg)
         leader = SO101Leader(
             SO101LeaderConfig(port=cfg["teleop"]["leader_port"], id=cfg["teleop"]["leader_id"])
         )
-        keyboard = KeyboardTeleop(KeyboardTeleopConfig())
 
     if root.exists():
         dataset = LeRobotDataset.resume(repo_id, root=root, image_writer_threads=4)
@@ -323,8 +412,15 @@ def main() -> None:
             "listed in robot.cameras (docs/SETUP.md, section 4), and run scripts/preflight.py."
         )
     leader.connect()
-    keyboard.connect()
     listener, events = init_keyboard_listener()
+    if args.dry_run and args.manual:  # nobody is there to press the keys: RIGHT ARROW every 3 s
+
+        def press() -> None:
+            while True:
+                time.sleep(3.0)
+                events["exit_early"] = True
+
+        threading.Thread(target=press, daemon=True).start()
     display = not args.no_display
     if display:
         init_visualization("rerun", session_name="makai_record")
@@ -362,29 +458,11 @@ def main() -> None:
         log_episode("BAD")
 
     try:
-        if args.manual:
-            processors = make_default_processors()
-            loop = dict(
-                robot=robot,
-                events=events,
-                fps=fps,
-                teleop_action_processor=processors[0],
-                robot_action_processor=processors[1],
-                robot_observation_processor=processors[2],
-                teleop=[leader, keyboard],
-                single_task=task,
-                display_data=display,
-            )
-            manual_session(loop, dataset, events, args, say, on_saved)
-        else:
-            hands_free_session(
-                robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad
-            )
+        session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad)
     finally:
         say("Session finished")
         robot.disconnect()
         leader.disconnect()
-        keyboard.disconnect()
         if listener is not None:
             listener.stop()
         dataset.finalize()

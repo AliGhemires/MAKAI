@@ -13,8 +13,9 @@ What it does, in order:
 
 Two ways to record, the count of saved episodes is always on screen:
   automatic (default): an episode starts when the leader moves and is saved when it is back
-      on its rest (RIGHT ARROW saves at once, LEFT ARROW drops it);
-  --manual: each episode runs until the RIGHT ARROW, then a fixed time to reset the scene.
+      on its rest;
+  --manual: the pilot decides: the RIGHT ARROW starts an episode, the RIGHT ARROW saves it.
+  In both: RIGHT ARROW = start now / save now, LEFT ARROW = drop, ESC = end the session.
 
 Anything else on the line goes to record.py, for example:  --home-tol 10   or   --manual
 `--dry-run` rehearses everything with a fake robot and leader.
