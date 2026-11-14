@@ -79,7 +79,8 @@ class FakeLeader(SO101Leader):
         self._fake_connected = False
 
     def get_action(self) -> dict:
-        phase = (time.perf_counter() - self._start) % self.CYCLE_S
+        # Rest for the first seconds (the live view and the home capture), then repeat the pick.
+        phase = max(0.0, time.perf_counter() - self._start - 5.0) % self.CYCLE_S
         reach = 0.0 if phase < 3 or phase >= 7 else math.sin(math.pi * (phase - 3) / 4)
         action = {
             f"{joint}.pos": 40.0 * reach * (1 if i % 2 == 0 else -1) for i, joint in enumerate(JOINTS[:5])

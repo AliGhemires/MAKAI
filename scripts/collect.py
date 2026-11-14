@@ -73,6 +73,7 @@ def main() -> None:
         raise SystemExit(1)
 
     print(f"\n== 2/3 recording {episodes} episodes of '{args.object}' into {name} ==")
+    print("A Rerun window opens with the two cameras: a live view first, the recording starts after Enter.")
     record = [sys.executable, str(SCRIPTS / "record.py"), "--name", name, "--object", args.object]
     code = subprocess.run([*record, "--episodes", str(episodes), *dry, *for_record]).returncode
 

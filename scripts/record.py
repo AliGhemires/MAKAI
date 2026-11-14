@@ -7,7 +7,9 @@ Run it again with the same --name to ADD episodes: nothing is overwritten, and a
 at most the episode being recorded. The dataset is pushed to the Hub when a session ends.
 
 Hands-free by default: no key to press, both hands stay on the job.
-  1. put the leader on its rest (the home pose) and press Enter once: that pose is "home";
+  0. a live view opens first (Rerun: both cameras, the arm follows the leader, nothing is
+     recorded): set the scene and check the pictures;
+  1. put the leader on its rest (the home pose) and press Enter: that pose is "home";
   2. "Ready" is spoken when the arm is back home and still: place the object;
   3. recording starts by itself when you move the leader, and the episode is saved by itself
      once the arm is back home and has stayed still for one second. Its number is spoken.
@@ -33,6 +35,7 @@ import csv
 import os
 import shutil
 import subprocess
+import threading
 import time
 from collections import deque
 from datetime import datetime
@@ -71,8 +74,31 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
         hand = np.array([float(leader_action[key.removeprefix("arm_")]) for key in ARM])
         return observation, action, arm, hand
 
+    # Live view first: the arm follows the leader and both cameras show in Rerun, so the
+    # operator can set the scene and check the pictures before anything is recorded.
     if not args.dry_run:
-        input("Put the leader on its rest, in the home pose, hands off. Then press Enter... ")
+        input(
+            "\nPut the leader in about the same pose as the robot arm (the arm will follow it), then press Enter... "
+        )
+    print(
+        "\nLIVE VIEW: the arm follows the leader, nothing is recorded yet."
+        + (" Both cameras are in the Rerun window." if display else "")
+    )
+    print("Check the two pictures, put the leader on its rest in the home pose, hands off.")
+    print("Then press Enter (or the RIGHT ARROW) to start.")
+    go = threading.Event()
+    if args.dry_run:
+        threading.Timer(1.5, go.set).start()
+    else:
+        threading.Thread(target=lambda: (input(), go.set()), daemon=True).start()
+    while not go.is_set() and not events["exit_early"] and not events["stop_recording"]:
+        start = time.perf_counter()
+        observation, action, _, _ = tick()
+        if display:
+            log_visualization_data("rerun", observation=observation, action=action)
+        precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
+    events["exit_early"] = False
+
     samples = []
     for _ in range(fps):  # one second: let the arm reach the leader, then average the second half
         start = time.perf_counter()

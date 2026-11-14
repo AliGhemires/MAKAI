@@ -111,22 +111,33 @@ def main() -> None:
 
         # What the recording loop does on every tick, minus sending commands: how long does it
         # take, and do we really get a new camera image each time?
-        ticks, work, fresh, previous = 90, [], 0, None
+        ticks, work = 90, []
+        cameras = list(cfg["robot"]["cameras"])
+        fresh, previous = dict.fromkeys(cameras, 0), dict.fromkeys(cameras)
+        began = time.perf_counter()
         for _ in range(ticks):
             tick = time.perf_counter()
-            image = robot.get_observation().get("front")
+            observation = robot.get_observation()
             if leader is not None:
                 leader.get_action()
             work.append(time.perf_counter() - tick)
-            signature = None if image is None else hash(image[::4, ::4].tobytes())
-            fresh += signature != previous
-            previous = signature
+            for name in cameras:
+                image = observation.get(name)
+                signature = None if image is None else hash(image[::4, ::4].tobytes())
+                fresh[name] += signature != previous[name]
+                previous[name] = signature
             precise_sleep(max(0.0, 1.0 / fps - work[-1]))
+        seconds = time.perf_counter() - began
         budget_ms, mean_ms, worst_ms = 1000 / fps, 1000 * float(np.mean(work)), 1000 * max(work)
         check(mean_ms < 0.7 * budget_ms, "time per tick",
               f"mean {mean_ms:.0f} ms, worst {worst_ms:.0f} ms, for a budget of {budget_ms:.0f} ms")  # fmt: skip
-        check(fresh >= 0.8 * ticks, "new camera image on every tick", f"{fresh} new images in {ticks} ticks "
-              "(fewer means the Pi or the network cannot keep up)", level="WARN")  # fmt: skip
+        # How many NEW images per second each camera really delivers. A camera in the dark often
+        # drops to 10-15 a second (long exposure): the picture is jerky and blurred.
+        for name in cameras:
+            rate = fresh[name] / seconds
+            check(rate >= 0.8 * fps, f"camera '{name}' frame rate", f"{rate:.0f} new images per second for {fps} asked"
+                  + ("" if rate >= 0.8 * fps else ": too dark for it (add light, or fix its exposure), or a weak USB cable"),
+                  level="WARN")  # fmt: skip
 
     if leader is not None:
         joints = leader.get_action()
