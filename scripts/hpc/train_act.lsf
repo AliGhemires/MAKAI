@@ -1,47 +1,43 @@
 #!/bin/bash
-# Train an ACT policy on the DTU HPC cluster (LSF). NOT TESTED by its author: written from the
-# cluster's documented conventions. Do the "once" steps below early, not at midnight.
+# Job template for the DTU HPC cluster (LSF). Do not submit it directly: use
 #
-# Once, from a login node (ssh <dtu-user>@login1.hpc.dtu.dk ; from outside DTU: VPN first):
-#   linuxsh                                              # interactive node, to install things
-#   curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.bashrc
-#   git clone https://github.com/AliGhemires/MAKAI.git   # private repo: needs a GitHub token,
-#   cd MAKAI                                             #   or rsync the folder from a laptop
-#   uv sync --extra robot                                # several GB: check your home quota
-#   uv run hf auth login                                 # token with write access
+#   scripts/hpc/submit.sh <dataset> <run> [VAR=value ...]
 #
-# Each training, from the MAKAI folder on a login node:
-#   DATASET=pick_sock_v1 RUN=act_sock_v1 HUB_NAMESPACE=<hub namespace> bsub < scripts/hpc/train_act.lsf
-#   Variants: STEPS=100000, AUGMENT=1, EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50"
-#   The job is cut after 8 hours whatever STEPS says. That is fine: ACT's learning rate is
-#   constant and a checkpoint goes to the Hub every SAVE_FREQ steps, so a run that is cut is
-#   simply a shorter run.
-#   bstat                    # is it waiting or running?
-#   bpeek <job id>           # live output
-#   bkill <job id>           # stop it
-#
-# The dataset is downloaded from the Hub by the job, and the checkpoints go back to the Hub
-# every SAVE_FREQ steps: nothing to copy by hand. Check the GPU queue names with `bqueues`.
+# which fills in the parameters (this cluster does not pass the submitting shell's
+# variables on to the job). See scripts/hpc/submit.sh for the whole procedure.
 #
 #BSUB -J makai_act
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 8
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8GB]"
+#BSUB -R "rusage[mem=4GB]"
 #BSUB -W 8:00
 #BSUB -o makai_act_%J.out
 #BSUB -e makai_act_%J.err
+#@PARAMETERS@
 
 set -euo pipefail
-: "${DATASET:?set DATASET, e.g. pick_sock_v1}"
-: "${RUN:?set RUN, e.g. act_sock_v1}"
-: "${HUB_NAMESPACE:?set HUB_NAMESPACE (the Hugging Face user or org that owns the dataset)}"
-export HUB_NAMESPACE PATH="$HOME/.local/bin:$PATH"
-
+: "${DATASET:?missing: submit with scripts/hpc/submit.sh}"
+: "${RUN:?missing: submit with scripts/hpc/submit.sh}"
+: "${HUB_NAMESPACE:?missing: submit with scripts/hpc/submit.sh}"
+: "${MAKAI_STORE:?missing: submit with scripts/hpc/submit.sh}"
+export PATH="$HOME/.local/bin:$PATH"
 cd "${LS_SUBCWD:-$PWD}"          # the folder the job was submitted from: the MAKAI repo
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
+
+# Nothing heavy goes in the home folder (30 GB quota): environment, datasets and checkpoints
+# all live in the scratch store.
+mkdir -p "$MAKAI_STORE"
+export UV_CACHE_DIR="$MAKAI_STORE/uv-cache" UV_PROJECT_ENVIRONMENT="$MAKAI_STORE/venv" UV_PYTHON_INSTALL_DIR="$MAKAI_STORE/python"
+export HF_HOME="$MAKAI_STORE/hf" HF_LEROBOT_HOME="$MAKAI_STORE/hf/lerobot" TORCH_HOME="$MAKAI_STORE/torch"
+export HF_TOKEN_PATH="$HOME/.cache/huggingface/token" OUTPUT_ROOT="$MAKAI_STORE/outputs"
+
+echo "node $(hostname) | $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader) | store: $MAKAI_STORE"
+# The environment is built once by `scripts/hpc/submit.sh --setup`. It is NOT synced here: the
+# setup replaces PyTorch with a build that still supports the V100 cards, and a sync would undo it.
+[ -x "$UV_PROJECT_ENVIRONMENT/bin/lerobot-train" ] || { echo "no environment: run scripts/hpc/submit.sh --setup" >&2; exit 1; }
 
 # pyav ships its own video libraries; the default decoder needs a system FFmpeg the nodes may lack.
 # shellcheck disable=SC2086  # EXTRA is a list of flags, split on purpose
 scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda --dataset.video_backend=pyav --num_workers=8 ${EXTRA:-}
+echo "checkpoints: $OUTPUT_ROOT/$RUN/checkpoints"

@@ -63,6 +63,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Inférence et déploiement : `lerobot-rollout` (stratégies `base`, `dagger`...).
   Entraînement cloud : `lerobot-train --job.target=<gpu>`.
 - Le host LeKiwi s'arrête après 30 s sans `--host.connection_time_s`.
+- Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
+  qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
+  installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
+  utiliser `scripts/hpc/submit.sh`. La file `gpuv100` exige un PyTorch en CUDA 12.6 (les
+  versions CUDA 13 ne gèrent plus ces cartes) : c'est ce qu'installe `submit.sh --setup`.
 - Pas de `cv2.imshow` (OpenCV sans interface graphique) : visualiser avec Rerun.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot

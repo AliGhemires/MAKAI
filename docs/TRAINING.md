@@ -77,10 +77,10 @@ Ce qu'on ne fait pas cette nuit, et pourquoi :
 
 | Option | Mise en route | Quand l'utiliser |
 |---|---|---|
-| **Hugging Face Jobs** | Un argument : `--job.target=a10g-large`. Facturé à la seconde | Par défaut. `hf jobs hardware` liste les GPU et les prix ; vérifier dès samedi que le compte y a accès |
+| Hugging Face Jobs | Un argument : `--job.target=a10g-large`. Facturé à la seconde | Repli. `hf jobs hardware` liste les GPU et les prix. Non testé |
 | GPU loué (RunPod, Lambda, Vast) | Louer une RTX 4090, installer `lerobot[training]`, lancer la même commande | Si HF Jobs n'est pas accessible |
 | Google Colab | Notebook ACT de la doc LeRobot | Dépannage |
-| DTU HPC | `DATASET=... RUN=... HUB_NAMESPACE=... bsub < scripts/hpc/train_act.lsf` (installation décrite en tête du fichier) | Gratuit. Script non testé : vérifier dès le début de soirée la connexion depuis l'extérieur (VPN) et l'attente dans la file |
+| **DTU HPC** | `scripts/hpc/push_dataset.sh <dataset>`, puis sur le cluster `scripts/hpc/submit.sh <dataset> <run> STEPS=...`, puis `scripts/hpc/fetch_model.sh <run>` | **Par défaut.** Gratuit, testé le 14 nov. : démarrage en 12 s sur la file `gpuv100`, 0,21 s par pas, sans compte Hugging Face. Procédure dans `docs/CE_SOIR.md` |
 | Mac (MPS) | `POLICY_DEVICE=mps` | Dernier recours : 6 à 14 heures |
 
 Ordres de grandeur donnés par la doc LeRobot pour 50 épisodes (~45 000 images), 5
@@ -103,8 +103,8 @@ Le script appelle `lerobot-train` avec nos conventions : policy ACT, checkpoints
 sur le Hub au fur et à mesure, suivi Trackio. Variables : `STEPS` (30 000 par défaut),
 `BATCH` (16), `SAVE_FREQ` (5 000).
 
-Mesuré le 14 nov. sur un Mac M5 : **2 secondes par pas** en batch 8 (deux caméras 640×480),
-soit environ 7 heures pour 12 000 pas. Le script lit le dataset sur le laptop s'il y est,
+Mesuré le 14 nov., en batch 8 avec deux caméras 640×480 : **0,21 seconde par pas sur une V100
+du HPC de DTU**, contre 1,9 seconde sur un Mac M5 (8 heures pour 15 000 pas). Le script lit le dataset sur le laptop s'il y est,
 enveloppe l'entraînement dans `caffeinate` (sans quoi le Mac se met en veille et tout
 s'arrête), et fonctionne sans compte Hugging Face : le modèle reste alors dans `outputs/train/`.
 `AUGMENT=1` ajoute des variations aléatoires de luminosité et de couleur aux images.

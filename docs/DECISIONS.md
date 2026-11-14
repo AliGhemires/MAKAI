@@ -19,6 +19,7 @@ On ajoute en bas, on ne réécrit pas l'historique.
 | D12 | sam. 14 | Détecteur appris sur nos images (auto-étiquetées, ré-éclairées) à la place de la couleur du sol | Images du soir : 96 % contre 15 % ; 23 sur 24 jamais vues, sans fausse alerte | Ne tient pas avec la caméra du robot malgré un réentraînement |
 | D13 | sam. 14 | Objets de la démo : une chaussette noire roulée et une canette écrasée (à confirmer en équipe). Un dataset et un modèle de saisie par objet | Deux objets fixes simplifient la détection et la saisie ; LeRobot 0.7.0 n'entraîne pas sur plusieurs datasets | La canette ne se saisit pas proprement en téléop : chaussette seule |
 | D14 | sam. 14 | La démo est dans une autre salle, sans lampe : données du lieu dès que possible, tapis de démo en carton, conditions variées, et un essai « caméra de poignet seule » | Le sol et le décor changent autant que la lumière, pour le détecteur comme pour la saisie | Accès à la salle de démo dès dimanche : on y concentre la collecte |
+| D15 | sam. 14 | Entraînement de nuit sur le HPC de DTU, file `gpuv100`, datasets copiés par rsync (sans Hugging Face) | Testé : démarrage en 12 s, 0,21 s par pas, neuf fois plus vite qu'un Mac, gratuit | File saturée ou cluster en panne : Hugging Face Jobs, puis les Mac |
 
 À décider samedi et à inscrire ici : montage et inclinaison de la caméra avant, pose
 `home`, pose de pré-saisie (`goal_x_m`, `goal_y_m`), liste des objets, bacs, namespace du Hub.
