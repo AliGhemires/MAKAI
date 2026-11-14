@@ -52,15 +52,35 @@ chaque connexion SSH : `conda activate lerobot && cd ~/lerobot`.
 
 La Pi et les laptops doivent être sur le **même réseau**. L'IP de la Pi va dans
 `configs/local.yaml` → `robot.remote_ip` (propre à chaque laptop). La Pi connaît trois
-réseaux (profils NetworkManager) :
+réseaux (profils NetworkManager). **Choix actuel : le hotspot iPhone**, le plus simple
+(décision D11 dans `docs/DECISIONS.md`) ; l'option A reste prête si le bras saute trop.
 
 | Option | Réseau | IP de la Pi | Mesuré (sam. 14, `scripts/net_check.py`) |
 |---|---|---|---|
-| **A, retenue** | la Pi est le point d'accès « makai-kiwi », 5 GHz canal 36 (profil `makai-ap`) | `10.42.0.1`, fixe | aller-retour 6 ms (p99 44), flux 29,9 images/s, **aucun trou > 100 ms** |
+| **iPhone, retenue** | hotspot iPhone « Cyrine », 2,4 GHz (profil `netplan-wlan0-Cyrine`) ; la Pi y va seule au démarrage | `172.20.10.3` en général (DHCP) | laptop en Wi-Fi : 50 à 143 ms, pics jusqu'à 1,2 s ; laptop en USB sur l'iPhone : 38 ms (p99 294) |
+| A, prête | la Pi est le point d'accès « makai-kiwi », 5 GHz canal 36 (profil `makai-ap`, jamais au démarrage) | `10.42.0.1`, fixe | aller-retour 6 ms (p99 28), flux 29,9 images/s, **aucun trou > 100 ms** |
 | B | hotspot Windows du laptop « PC-08792 6521 » (profil `makai-laptop`, priorité 10) | `192.168.137.50`, fixe | aller-retour 51 ms (p99 211) |
-| secours | hotspot iPhone « Cyrine », 2,4 GHz (profil `netplan-wlan0-Cyrine`) | `172.20.10.3` en général | aller-retour 143 ms (p99 1,2 s), le bras saute |
 
-**Option A** (mots de passe du réseau et de la Pi : chat d'équipe) :
+Mots de passe (Pi, « makai-kiwi », hotspots) : chat d'équipe, jamais dans le dépôt.
+
+**Se connecter au robot (cas normal, iPhone)** : laptop sur « Cyrine » ;
+`remote_ip: 172.20.10.3` dans `configs/local.yaml` ; `ssh kiwi@172.20.10.3` pour lancer le
+host (section 4). Si l'IP a changé : la chercher parmi `172.20.10.2` à `172.20.10.14`
+(le hotspot iPhone n'en a que 13).
+
+**Passer en option A** (si le bras saute trop pendant la collecte) :
+
+1. Sur la Pi, en SSH : `sudo nmcli connection up makai-ap` (la session SSH coupe).
+2. Sur le laptop : rejoindre le Wi-Fi « makai-kiwi ». Pour garder Internet, brancher
+   l'iPhone en USB avant (partage de connexion, voir plus bas) ; sinon le laptop n'a plus
+   Internet tant qu'il est sur « makai-kiwi ». Couper le point d'accès mobile Windows.
+3. `remote_ip: 10.42.0.1` dans `configs/local.yaml`, puis `ssh kiwi@10.42.0.1`.
+
+**Revenir à l'iPhone** : redémarrer la Pi (débrancher, rebrancher l'USB-C : `makai-ap` ne
+démarre jamais seul), ou en SSH `sudo nmcli connection up netplan-wlan0-Cyrine` ; remettre
+`remote_ip: 172.20.10.3`.
+
+**Détails de l'option A** :
 
 - La Pi distribue des adresses `10.42.0.x` mais **pas de passerelle** : un laptop connecté à
   « makai-kiwi » garde son accès Internet par une autre voie (partage USB du téléphone, ou
@@ -80,6 +100,8 @@ réseaux (profils NetworkManager) :
 disponible » si le laptop est déjà en Wi-Fi sur un autre réseau (une seule carte ne fait
 pas 2,4 et 5 GHz à la fois : le point d'accès semble allumé mais n'émet rien),
 **économie d'énergie désactivée**, pas de veille. Le robot dépend alors de ce laptop.
+L'allumer depuis les Réglages : démarré par l'API Windows (PowerShell), il s'affichait
+« activé » sans rien émettre (carte MediaTek MT7921).
 
 L'économie d'énergie Wi-Fi de la Pi est **désactivée**
 (`/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf`) : elle provoquait des pics de 1 s.
@@ -138,10 +160,12 @@ uv run lerobot-calibrate --teleop.type=so101_leader --teleop.port=/dev/tty.usbmo
 calibration est rangée. La calibration du leader est stockée sur le laptop : si un autre
 laptop téléopère, copier `~/.cache/huggingface/lerobot/calibration/` ou recalibrer.
 
-**Fait le sam. 14** : bras du robot calibré sur la Pi (`makai_kiwi.json`, 17:48, pas
-encore copié dans le dépôt) ; leader calibré, dans le dépôt
-(`calibration/teleoperators/so_leader/makai_leader.json`). Pour l'installer sur un autre
-laptop : `cp -R calibration/. ~/.cache/huggingface/lerobot/calibration/`. Un bras calibré
+**Fait le sam. 14** : bras du robot calibré sur la Pi, copie dans le dépôt
+(`calibration/robots/lekiwi/makai_kiwi.json`, 6 moteurs du bras et 3 roues) ; leader
+calibré, dans le dépôt (`calibration/teleoperators/so_leader/makai_leader.json`). Pour les
+installer sur un autre laptop : `cp -R calibration/. ~/.cache/huggingface/lerobot/calibration/`.
+Si la carte SD de la Pi est refaite, recopier `makai_kiwi.json` au même endroit sur la Pi
+au lieu de recalibrer. Un bras calibré
 comme `so_follower` (SO-101 seul) n'est pas utilisable par le LeKiwi : noms de moteurs
 différents et pas de roues.
 

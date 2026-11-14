@@ -70,10 +70,11 @@ _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui blo
   pas elle qui limite.
 - Le bras saute encore un peu. Cause mesurée : le réseau (7 trous de plus de 200 ms en 12 s
   sur le flux). Atténué par `scripts/lekiwi_host.py` (accélération du bras réduite à 50).
-- Réseau réglé : la Pi en point d'accès « makai-kiwi » (option A, `docs/SETUP.md`) donne
-  6 ms d'aller-retour et un flux régulier à 29,9 images/s sans aucun trou de plus de
-  100 ms (hotspot iPhone : 143 ms, pics de 1,2 s). Pas encore actif au démarrage de la Pi.
+- Réseau : on reste sur le hotspot iPhone (D11), Pi en `172.20.10.3`. Option A testée et
+  prête (Pi en point d'accès « makai-kiwi » : 6 ms, flux régulier à 29,9 images/s, aucun
+  trou de plus de 100 ms, contre 38 à 143 ms et des pics de 1,2 s sur l'iPhone).
+- Calibration du bras copiée dans le dépôt (`calibration/robots/lekiwi/makai_kiwi.json`).
 - La Pi a perdu son alimentation au moins deux fois (redémarrages, fichier réseau vide) :
   vérifier l'alimentation USB-C avant la collecte.
-- À faire : copier `makai_kiwi.json` de la Pi dans `calibration/robots/lekiwi/` ; brancher
-  la caméra de poignet (vue dans `lsusb`, pas de `/dev/video`) ; installer `tmux`.
+- À faire : brancher la caméra de poignet (vue dans `lsusb`, pas de `/dev/video`) ;
+  installer `tmux` ; horodater le log du host (`~/host.log`, sans heure pour l'instant).
