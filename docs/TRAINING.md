@@ -24,8 +24,10 @@ hyperparamètres réunis.
    modèle qui ne regarde que la caméra de poignet, et `AUGMENT=1`.
 3. **Choisir le modèle sur le robot, jamais sur la perte.** Un checkpoint tous les 5 000 pas,
    et le même test pour tous (voir « Évaluer »).
-4. **Entraîner assez longtemps.** ACT continue de progresser bien après que la perte semble
-   plate. 40 000 pas sur GPU ; on compare ensuite les checkpoints 10 000, 20 000, 30 000, 40 000.
+4. **Entraîner assez longtemps, et raisonner en heures.** ACT continue de progresser bien après
+   que la perte semble plate. Sur GPU, les essais de référence visent 100 000 pas et sont coupés
+   à 8 heures ; on compare ensuite les checkpoints sur le robot. Couper un entraînement ne
+   l'abîme pas : le taux d'apprentissage d'ACT est constant (vérifié dans LeRobot 0.7.0).
 5. **Les hyperparamètres.** Les valeurs par défaut d'ACT sont bonnes ; on ne teste que ce qui
    répond à une question précise (tableau ci-dessous).
 
@@ -35,14 +37,20 @@ Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on p
 
 | # | Essai | Commande (après `scripts/train.sh <dataset> <run>` ou les variables du job HPC) | Question |
 |---|---|---|---|
-| 1 | Chaussette, référence | `STEPS=40000` | Est-ce que ça marche, et à partir de combien de pas ? |
-| 2 | Canette, référence | `STEPS=40000` | Idem pour le second objet |
+| 1 | Chaussette, référence | `STEPS=100000` | Est-ce que ça marche, et à partir de combien de pas ? |
+| 2 | Canette, référence | `STEPS=100000` | Idem pour le second objet |
 | 3 | Chaussette, images augmentées (luminosité ×0,5 à ×1,5, contraste, couleurs ; pas de déformation) | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
 | 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
 | 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
 | 6 | Chaussette, caméra de poignet seule | `scripts/wrist_only.sh pick_sock_v1`, puis `STEPS=40000` sur `pick_sock_v1_wrist` | La démo est dans une autre salle : un modèle qui ne voit pas le décor tient-il mieux ? |
 
-Sur des Mac seulement (2 s par pas) : les essais 1 et 2, un par Mac, `STEPS=12000`.
+Sur des Mac seulement : les essais 1 et 2, un par Mac, `STEPS=15000 SAVE_FREQ=2500` (8 heures
+à 1,9 s par pas). Mesuré le 14 nov. : un batch de 16 ne va pas plus vite qu'un batch de 8, et
+`--policy.use_amp=true` plante sur Mac. On garde donc les réglages par défaut.
+
+Les réglages par défaut d'ACT (taux d'apprentissage 1e-5, batch 8, horizon 100, poids KL 10)
+sont ceux avec lesquels il a été validé sur ce type de bras. Avec une seule nuit, on ne les
+change pas : on change la durée et les données.
 
 Ce qu'on ne fait pas cette nuit, et pourquoi :
 - **changer d'architecture** (Diffusion Policy, SmolVLA, π0) : plus longs à entraîner, trop
@@ -88,7 +96,7 @@ sur le Hub, téléchargement, chargement). On ne veut pas découvrir un problèm
 # <dataset> et <run> sans le préfixe : le namespace Hub vient de la config
 scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large       # sur HF Jobs
 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=cuda          # sur une machine avec GPU
-STEPS=12000 SAVE_FREQ=2000 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps   # sur un Mac, la nuit
+STEPS=15000 SAVE_FREQ=2500 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps   # sur un Mac, la nuit
 ```
 
 Le script appelle `lerobot-train` avec nos conventions : policy ACT, checkpoints envoyés
