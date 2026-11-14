@@ -36,7 +36,7 @@ Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on p
 |---|---|---|---|
 | 1 | Chaussette, référence | `STEPS=40000` | Est-ce que ça marche, et à partir de combien de pas ? |
 | 2 | Canette, référence | `STEPS=40000` | Idem pour le second objet |
-| 3 | Chaussette, images augmentées | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
+| 3 | Chaussette, images augmentées (luminosité ×0,5 à ×1,5, contraste, couleurs ; pas de déformation) | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
 | 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
 | 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
 

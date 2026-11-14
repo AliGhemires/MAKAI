@@ -11,8 +11,10 @@
 # the Hub otherwise. Without a Hub namespace (configs/local.yaml) everything stays local.
 # On a Mac the run is wrapped in `caffeinate`: otherwise the laptop sleeps and training stops.
 #
-# Env: STEPS (30000), BATCH (8), SAVE_FREQ (5000), AUGMENT=1 (random brightness / contrast /
-# colour on the images: helps when the lighting changes), HUB_NAMESPACE.
+# Env: STEPS (30000), BATCH (8), SAVE_FREQ (5000), HUB_NAMESPACE, and
+# AUGMENT=1: each training image gets a random brightness (x0.5 to x1.5), contrast, saturation
+#   and hue, so the policy stops relying on the exact lighting. Colour only: LeRobot's default
+#   set also shifts and rotates the image, which would blur where the object is.
 # See docs/TRAINING.md and docs/CE_SOIR.md.
 set -euo pipefail
 
@@ -48,7 +50,8 @@ else
   ARGS+=(--policy.push_to_hub=false)
 fi
 if [ "${AUGMENT:-0}" = "1" ]; then
-  ARGS+=(--dataset.image_transforms.enable=true)
+  LIGHTING='{"brightness": {"weight": 2.0, "type": "ColorJitter", "kwargs": {"brightness": [0.5, 1.5]}}, "contrast": {"weight": 1.0, "type": "ColorJitter", "kwargs": {"contrast": [0.7, 1.3]}}, "saturation": {"weight": 1.0, "type": "ColorJitter", "kwargs": {"saturation": [0.5, 1.5]}}, "hue": {"weight": 1.0, "type": "ColorJitter", "kwargs": {"hue": [-0.05, 0.05]}}}'
+  ARGS+=(--dataset.image_transforms.enable=true "--dataset.image_transforms.tfs=${LIGHTING}")
 fi
 
 KEEP_AWAKE=()

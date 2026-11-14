@@ -38,8 +38,10 @@ doit pouvoir réussir la saisie. Si ce n'est pas possible, la policy n'y arriver
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
 ```
 
-Touches (terminal au premier plan) : `→` ou `n` termine l'épisode, `←` ou `r` le
-recommence, `Échap` ou `q` arrête et envoie le dataset sur le Hub.
+L'enregistrement est mains libres : il démarre quand le leader quitte sa pose de repos et
+sauvegarde l'épisode quand le bras y est revenu et reste immobile une seconde. Le détail et
+les touches de secours sont dans `docs/CE_SOIR.md`, section 2. `--manual` rétablit le mode
+classique : `→` termine l'épisode, `←` le recommence, `Échap` arrête la session.
 
 Faire des sessions de 30 épisodes. Relancer la même commande **ajoute** des épisodes au même
 dataset : rien n'est écrasé, et un plantage ne fait perdre que l'épisode en cours. Noter chaque
