@@ -6,9 +6,11 @@ marcher dessus. Elles sont courtes exprès : on les applique toutes.
 ## 1. Un couloir par personne
 
 Chaque workstream possède ses dossiers (tableau dans `docs/PLAN.md`, section 6). Dans ton
-couloir tu décides seul et tu merges seul. Hors de ton couloir, tu demandes au responsable.
+couloir tu décides seul. Hors de ton couloir, préviens le responsable dans le chat ; tu
+n'as pas à attendre son accord.
 
-Quatre fichiers appartiennent à tout le monde et ne se modifient **jamais sans prévenir** :
+Quelques fichiers servent à tout le monde. Tu peux les modifier, mais **dis-le dans le chat**
+au moment où tu le fais, pour que personne ne soit surpris :
 
 | Fichier | Pourquoi c'est sensible |
 |---|---|
@@ -17,22 +19,23 @@ Quatre fichiers appartiennent à tout le monde et ne se modifient **jamais sans 
 | `configs/arm_poses.yaml`, `configs/ground_plane.yaml` | Liés au montage physique du robot |
 | `CLAUDE.md`, `docs/PLAN.md` | Lus par tous les Claude |
 
-Pour ces fichiers : message dans le chat d'équipe, PR avec le label `contract-change`, et
-accord du responsable WS5 avant le merge.
+## 2. Git : simple, et `main` marche toujours
 
-## 2. Git : `main` marche toujours
+**Pas de relecture de code.** On a deux jours : les branches et `main` servent à s'organiser,
+pas à se contrôler. Personne n'a à approuver ce que tu merges.
 
-- **`main` est toujours démontrable** : `make check` et `make sim` passent. La CI le vérifie
-  à chaque push.
-- **Branches courtes**, une par sujet, nommées `ws<N>/<sujet>` : `ws2/yolo-finetune`,
-  `ws3/station-approach`. Durée de vie visée : moins de 3 heures.
-- **Une PR par sujet**, petite. Merge en *squash*.
-  - Tu ne touches que ton couloir et la CI est verte : tu merges toi-même, sans relecture.
-  - Tu touches un autre couloir ou un fichier partagé : une relecture du responsable concerné.
-- **Exception sans PR** : la fiche de ton workstream (`docs/workstreams/WS<N>_*.md`) et les
-  tableaux de `docs/REGISTRY.md` se poussent directement sur `main`.
-- **Se resynchroniser** au moins à chaque point d'équipe : `make sync`
-  (`git pull --rebase origin main`), puis rebase de ta branche.
+- **`main` est toujours démontrable** : `make check` et `make sim` passent. C'est la seule
+  règle stricte. Si tu casses `main`, le réparer passe avant tout le reste.
+- **Tu merges toi-même, tout de suite**, dès que `make check` passe.
+- **Avec ou sans branche, selon le changement** :
+  - du code : une branche courte `ws<N>/<sujet>` et une PR mergée en *squash* dès que ses
+    tests sont verts. La PR ne sert qu'à faire tourner les tests avant d'arriver sur `main` ;
+  - un document, une fiche, de la config, un petit correctif : directement sur `main`
+    (l'ajout de fichier par le site GitHub convient aussi).
+- **Lancer `make check` avant de pousser.** Sous Windows, sans `make` :
+  `uv run ruff check .` puis `uv run pytest`.
+- **Se resynchroniser** souvent, au moins à chaque point d'équipe : `make sync`
+  (`git pull --rebase origin main`).
 - **Jamais** de `git push --force` sur `main`, jamais de données, de modèles ni de secrets
   dans git (le `.gitignore` les bloque ; ils vont sur le Hub Hugging Face).
 
@@ -41,7 +44,8 @@ git switch -c ws3/station-approach     # nouvelle branche depuis main à jour
 # ... travail, commits ...
 make check                             # lint + tests, comme la CI
 git push -u origin ws3/station-approach
-gh pr create --fill                    # puis merge en squash quand la CI est verte
+gh pr create --fill
+gh pr merge --squash                   # dès que les tests de la PR sont verts
 ```
 
 ### Versions qui marchent : les tags
@@ -98,7 +102,7 @@ Entre deux points, un blocage de plus de 30 minutes se dit tout de suite dans le
 
 | Fichier | Contenu | Qui écrit |
 |---|---|---|
-| `docs/PLAN.md` | Stratégie, périmètre, calendrier | WS5, sur accord |
+| `docs/PLAN.md` | Stratégie, périmètre, calendrier | WS5 |
 | `docs/ARCHITECTURE.md` | Modules, repères, contrats | Celui qui change un contrat |
 | `docs/workstreams/WS<N>_*.md` | Tâches et état de chaque couloir | Son responsable |
 | `docs/DECISIONS.md` | Décisions et leur raison, 3 lignes chacune | Tout le monde, en ajout |
@@ -112,6 +116,8 @@ Chaque Claude lit `CLAUDE.md` au démarrage. Pour que cinq Claude ne se contredi
 
 - Commence une session par : « lis `docs/PLAN.md` et ma fiche `docs/workstreams/WS<N>_...md` ».
 - Dis-lui ton couloir. Il ne doit modifier que tes dossiers, sauf demande explicite.
+- Quand tu lui demandes un changement, il va jusqu'au merge sur `main` dès que les tests
+  passent, sans te redemander.
 - En fin de session, demande-lui de mettre à jour ta fiche (tâches cochées, état, pièges
   rencontrés) et de pousser. C'est ce qui permet aux autres Claude de savoir où tu en es.
 - Une décision qui engage les autres va dans `docs/DECISIONS.md`, pas seulement dans ta
