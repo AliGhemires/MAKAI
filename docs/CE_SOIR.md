@@ -42,20 +42,19 @@ version installée sur la Pi. Pas de conflit de version à craindre.
 
 ### Porte C · Le chemin d'entraînement existe
 
-À faire pendant que WS1 finit le robot. C'est ce qui décide si on a un modèle demain.
+**C'est fait : le HPC de DTU est installé et testé** (14 nov., 21 h 10). Un job d'essai a démarré
+12 secondes après sa soumission, s'est entraîné à 0,21 s par pas sur une V100, et son modèle
+est revenu sur le laptop en 47 secondes. Aucun compte Hugging Face n'est nécessaire.
 
-- [ ] Débit mesuré depuis le laptop qui enverra les données (viser plus de 500 ko/s) :
-      `curl -o /dev/null -m 15 -w "%{speed_download} octets/s\n" -L https://download.pytorch.org/models/resnet50-0676ba61.pth`
-- [ ] `uv run hf auth login`, puis `hub.namespace` dans `configs/local.yaml`
-- [ ] **Un GPU, à choisir parmi trois, et à tester maintenant :**
-  - **DTU HPC** : se connecter (`ssh <identifiant>@login1.hpc.dtu.dk`, VPN de DTU depuis ici),
-    puis faire l'installation décrite en tête de `scripts/hpc/train_act.lsf`. Gratuit, mais
-    l'accès depuis l'extérieur et l'attente dans la file sont à vérifier ce soir, pas à minuit ;
-  - **Hugging Face Jobs** : `uv run hf jobs hardware` dit si le compte y a accès. Payant, zéro installation ;
-  - **GPU loué** (RunPod, Lambda) : payant, 15 minutes d'installation.
-- [ ] Chaque Mac qui entraînera en local : `make setup` fait, chargeur branché, et le fichier
-      `resnet18-f37072fd.pth` (45 Mo) présent dans `~/.cache/torch/hub/checkpoints/` (le
-      télécharger maintenant, ou se le passer par AirDrop)
+Reste à faire avant d'enregistrer :
+
+- [ ] Ouvrir une connexion partagée au cluster, pour ne taper le mot de passe qu'une fois :
+      `ssh -o ControlMaster=yes -o ControlPath=~/.ssh/cm-dtu -o ControlPersist=8h -fN dtu`
+- [ ] Débit vers l'extérieur correct depuis le laptop qui enverra les données (partage de
+      connexion : 0,6 à 4 Mo/s mesurés ; le WiFi de la salle est inutilisable)
+- [ ] Solutions de repli prêtes, au cas où : chaque Mac qui entraînerait en local a fait
+      `make setup`, a son chargeur, et possède `resnet18-f37072fd.pth` (45 Mo) dans
+      `~/.cache/torch/hub/checkpoints/`
 
 ### Porte D · Répétition et contrôle
 
@@ -168,48 +167,64 @@ ou les organisateurs en ont une, la prendre, et l'allumer pour toute la collecte
 Mesures du 14 nov. : sur un Mac M5, ACT avance à **2 secondes par pas** (batch 8). Un GPU
 loué va environ 10 fois plus vite.
 
-### Plan A · Sur un GPU distant (si la porte C est passée)
+### Plan A · Sur le HPC de DTU
 
-Dans tous les cas le dataset doit d'abord être sur le Hub (`record.py` l'envoie en fin de
-session), et les checkpoints y reviennent tous les 5 000 pas. **Six essais, par ordre de
-priorité** ; le pourquoi de chacun est dans `docs/TRAINING.md`, section « Protocole ».
+Testé de bout en bout le 14 nov. Trois commandes par dataset.
 
-Sur le **HPC de DTU**, depuis le dossier `MAKAI` d'un nœud de connexion :
+**1. Depuis le laptop qui a enregistré : envoyer le dataset** (et sa copie « poignet seul »)
 
 ```bash
-export HUB_NAMESPACE=<namespace> STEPS=100000
-DATASET=pick_sock_v1 RUN=act_sock_v1 bsub < scripts/hpc/train_act.lsf                    # 1
-DATASET=pick_can_v1  RUN=act_can_v1  bsub < scripts/hpc/train_act.lsf                    # 2
-export STEPS=40000                                                                       # les variantes
-AUGMENT=1 DATASET=pick_sock_v1 RUN=act_sock_v1_aug bsub < scripts/hpc/train_act.lsf      # 3
-AUGMENT=1 DATASET=pick_can_v1  RUN=act_can_v1_aug  bsub < scripts/hpc/train_act.lsf      # 4
-EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50" DATASET=pick_sock_v1 RUN=act_sock_v1_c50 bsub < scripts/hpc/train_act.lsf   # 5
-DATASET=pick_sock_v1_wrist RUN=act_sock_v1_wrist bsub < scripts/hpc/train_act.lsf        # 6 (après scripts/wrist_only.sh pick_sock_v1)
-bstat          # en attente ou en cours ?
+scripts/hpc/push_dataset.sh pick_sock_v1
+scripts/hpc/push_dataset.sh pick_can_v1
+scripts/wrist_only.sh pick_sock_v1 && scripts/hpc/push_dataset.sh pick_sock_v1_wrist
 ```
 
-**Le budget est de 8 heures, pas un nombre de pas.** Les deux essais de référence visent
-100 000 pas et sont coupés à 8 heures : on prend le dernier checkpoint disponible au réveil
-(il y en a un sur le Hub tous les 5 000 pas). Les variantes s'arrêtent à 40 000 pas pour
-libérer les GPU. S'il n'y a qu'un ou deux GPU libres, mettre 40 000 partout, dans l'ordre 1 à 6.
-
-Le script de soumission n'a pas pu être testé d'ici : si un job reste en attente plus de 20
-minutes ou échoue au démarrage, basculer sans insister sur l'une des deux autres voies.
-
-Avec **Hugging Face Jobs**, depuis un laptop :
+**2. Sur le cluster : lancer les six essais**, dans l'ordre de priorité
 
 ```bash
-export STEPS=100000
-scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large --job.timeout=8h       # 1
-scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large --job.timeout=8h       # 2
-export STEPS=40000                                                                       # les variantes
-AUGMENT=1 scripts/train.sh pick_sock_v1 act_sock_v1_aug --job.target=a10g-large          # 3
-AUGMENT=1 scripts/train.sh pick_can_v1  act_can_v1_aug  --job.target=a10g-large          # 4
-scripts/train.sh pick_sock_v1 act_sock_v1_c50 --job.target=a10g-large --policy.chunk_size=50 --policy.n_action_steps=50   # 5
-scripts/train.sh pick_sock_v1_wrist act_sock_v1_wrist --job.target=a10g-large            # 6 (après scripts/wrist_only.sh pick_sock_v1)
+ssh dtu
+cd ~/MAKAI
+scripts/hpc/submit.sh pick_sock_v1 act_sock_v1 STEPS=100000                       # 1
+scripts/hpc/submit.sh pick_can_v1  act_can_v1  STEPS=100000                       # 2
+scripts/hpc/submit.sh pick_sock_v1 act_sock_v1_aug STEPS=40000 AUGMENT=1          # 3
+scripts/hpc/submit.sh pick_can_v1  act_can_v1_aug  STEPS=40000 AUGMENT=1          # 4
+scripts/hpc/submit.sh pick_sock_v1 act_sock_v1_c50 STEPS=40000 EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50"   # 5
+scripts/hpc/submit.sh pick_sock_v1_wrist act_sock_v1_wrist STEPS=40000            # 6
+bstat                 # en attente (PEND) ou en cours (RUN) ?
+bpeek <numéro>        # voir la sortie d'un job en direct
 ```
 
-Sur une **machine louée** : la même commande avec `--policy.device=cuda` à la place de `--job.target`.
+Si le dépôt a changé depuis l'installation, le recopier d'abord sur le cluster (commande en tête
+de `scripts/hpc/submit.sh`).
+
+**3. Dimanche matin, depuis le laptop : rapatrier un modèle**
+
+```bash
+scripts/hpc/fetch_model.sh act_sock_v1 list       # quels checkpoints existent
+scripts/hpc/fetch_model.sh act_sock_v1            # le dernier (200 Mo, moins d'une minute)
+scripts/hpc/fetch_model.sh act_sock_v1 020000     # ou un pas précis
+```
+
+La commande affiche ensuite la ligne `try_pick.py` à lancer.
+
+**Le budget est de 8 heures, pas un nombre de pas.** À 0,21 s par pas (mesuré sur des images
+de synthèse ; compter un peu plus avec de vraies images), 100 000 pas prennent 6 à 8 heures et
+40 000 pas 2 h 30 à 3 h 30. Les jobs sont coupés à 8 heures ; un checkpoint est gardé tous les
+5 000 pas, donc un entraînement coupé est simplement plus court.
+
+À savoir sur ce cluster :
+- la file `gpuv100` démarre en quelques secondes ce soir ; `gpul40s` a mis 15 minutes, et
+  `gpua100`, `gpua10`, `gpua40` n'avaient pas démarré après 20 minutes. Rester sur `gpuv100` ;
+- si un job reste en attente (`PEND`) plus de 20 minutes, le nombre de GPU par utilisateur est
+  sans doute atteint : les suivants partiront quand les premiers finiront ;
+- tout ce qui est lourd est dans l'espace de travail `$BLACKHOLE`, jamais dans le dossier
+  personnel (quota de 30 Go) ;
+- les variables d'environnement ne sont pas transmises aux jobs : toujours passer par
+  `scripts/hpc/submit.sh`.
+
+Repli si le cluster devient indisponible : **Hugging Face Jobs** (`scripts/train.sh <dataset>
+<run> --job.target=a10g-large --job.timeout=8h`, compte et paiement requis, non testé), ou le
+plan B.
 
 ### Plan B · Sur nos Mac, sans réseau
 
@@ -264,6 +279,9 @@ Vérifié le 14 nov. sans robot, avec un robot et un leader simulés :
 - `record.py` crée un dataset, y ajoute une seconde session, encode les vidéos ;
 - `train.sh` entraîne ACT sur ce dataset et sauvegarde un checkpoint ;
 - `try_pick.py` et la mission chargent ce checkpoint et commandent le bras à 29 Hz.
+
+Vérifié le 14 nov. sur le HPC de DTU, avec un vrai job : installation, soumission, entraînement
+sur GPU, puis rapatriement du modèle et exécution sur le laptop.
 
 Pas vérifié : tout ce qui touche au vrai matériel (liaison avec la Pi, caméras, leader),
 l'envoi sur le Hub, et HF Jobs. La première session réelle est donc aussi un test : faire

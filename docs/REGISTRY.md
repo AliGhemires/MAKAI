@@ -30,3 +30,8 @@ Protocole fixe : 10 essais, objet amené par l'approche autonome (`docs/TRAINING
 | | Approche : erreur finale sur 10 essais | |
 | | Détection : rappel et fausses alertes sur 30 images | |
 | | Mission complète : objets rangés, durée | |
+| sam. 14, 21:10 | Entraînement ACT, HPC de DTU (V100 32 Go), batch 8, images de synthèse | 0,21 s par pas, 37 images/s, 3,7 Go de mémoire GPU, file d'attente 12 s |
+| sam. 14, 20:10 | Entraînement ACT, Mac M5, batch 8 | 1,9 s par pas (batch 16 : 3,8 s ; précision mixte : plante) |
+| sam. 14, 21:20 | Modèle du HPC rapatrié sur le laptop (207 Mo, partage de connexion) | 47 s |
+| sam. 14, 19:20 | Exécution de la policy sur un Mac, robot simulé | 27 à 30 commandes par seconde |
+| sam. 14, 18:20 | Détecteur appris v1, images du soir jamais vues | 23 sur 24, 0 fausse alerte ; 10 ms par image |
