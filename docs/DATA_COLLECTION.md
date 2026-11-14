@@ -23,14 +23,25 @@ Durée visée : 8 à 12 secondes. La chaîne de tâche est toujours la même, au
 
 - [ ] La porte G2 est passée : caméras fixées et photographiées, pose `home` figée, pose
       de pré-saisie choisie (`docs/SETUP.md`, section 5)
-- [ ] Éclairage et sol identiques à ceux de la démo : on collecte **sur le tapis de démo**
+- [ ] La pose `home` de `configs/arm_poses.yaml` n'est plus à zéro partout (valeurs
+      provisoires), et dans cette pose la caméra de poignet voit toute la zone de pré-saisie
+- [ ] Le leader a un support fixe qui le remet toujours dans la même pose : l'enregistrement
+      démarre et s'arrête d'après elle
+- [ ] Éclairage et sol identiques à ceux de la démo : on collecte **sur le tapis de démo**.
+      C'est le point le plus risqué, la démo étant dans une autre salle
 - [ ] Les deux images sont nettes dans Rerun ; la pince et l'objet sont visibles dans la
       caméra de poignet pendant toute la descente
 - [ ] La cadence affichée reste proche de 30 Hz (sinon réduire la charge avant de continuer)
+- [ ] Test humain : en ne regardant **que** les deux images dans Rerun, l'opérateur réussit
+      la saisie. Si ce n'est pas possible, la policy n'y arrivera pas non plus
+- [ ] `uv run python scripts/preflight.py` : tout est « ok »
 - [ ] L'opérateur a fait 10 saisies d'entraînement non enregistrées
+- [ ] 2 ou 3 épisodes d'essai enregistrés puis regardés dans le visualiseur (« Vérifier un
+      dataset »), avant la première session de 30
 
-Test simple de validité : en ne regardant **que** les deux images dans Rerun, un humain
-doit pouvoir réussir la saisie. Si ce n'est pas possible, la policy n'y arrivera pas non plus.
+Ce que `scripts/record.py` garantit déjà en mode mains libres, sans y penser : pas de temps
+mort au début ni à la fin, faux départs jetés, deux caméras synchronisées, même pose de
+départ et même seconde immobile à la fin de chaque épisode.
 
 ## Enregistrer
 
