@@ -7,7 +7,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from lerobot.robots.lekiwi import lekiwi
+
+lekiwi = pytest.importorskip("lerobot.robots.lekiwi.lekiwi")  # the CI installs the core only
 
 HOST = str(Path(__file__).resolve().parents[1] / "scripts" / "lekiwi_host.py")
 
