@@ -67,12 +67,20 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Écrit et contrôlé contre l'API de LeRobot 0.7.0, mais jamais exécuté sur le matériel :
-`src/makai/robot/lekiwi.py`, `PolicyPick` dans `src/makai/manipulation/skills.py`,
-`scripts/teleop.py`, `scripts/record.py`, `build_real` dans `src/makai/app.py`. Le détecteur
-`OpenVocabDetector` fonctionne sur une image d'exemple, pas encore sur nos objets. Première
-exécution prudente : vitesses réduites, bras dégagé. Retirer un élément de cette liste
-une fois validé.
+Jamais exécuté sur le matériel : le mode host de `src/makai/robot/lekiwi.py` (`LeKiwiClient`),
+`scripts/teleop.py`, `scripts/preflight.py`, `build_real` dans `src/makai/app.py`.
+
+Validé sur le robot le 14 novembre, bras non monté : le mode filaire (`WiredBase`,
+`robot.link: wired`) et la page de pilotage `scripts/drive.py`. Pas encore sur le robot :
+l'onglet Measure (déplacements précis, `src/makai/robot/moves.py`).
+
+Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
+`src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout
+d'une session, vidéos), `scripts/train.sh` (ACT en local), `PolicyPick` et
+`scripts/try_pick.py` (chargement d'un checkpoint, commande à 29 Hz).
+
+Première exécution réelle prudente : vitesses réduites, bras dégagé. Retirer un élément de
+cette liste une fois validé.
 
 ## Commandes
 
@@ -82,6 +90,8 @@ make check                  # lint + tests (ce que fait la CI)
 make sim                    # mission complète simulée
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
-uv run python scripts/record.py --name pick_sock_v1 --episodes 25
-scripts/train.sh pick_sock_v1 act_pick_v1 --job.target=a10g-large
+uv run python scripts/preflight.py                      # avant d'enregistrer (--dry-run sans robot)
+uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30    # relancer = ajouter
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                   # ou --policy.device=mps
+uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
 ```

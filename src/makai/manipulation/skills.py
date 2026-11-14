@@ -100,29 +100,40 @@ class PolicyPick:
         device: str | None = None,
         after: ScriptedSequence | None = None,
         gripper_open_above: float | None = None,
+        n_action_steps: int | None = None,
+        revision: str | None = None,
     ):
+        """`n_action_steps`: how many predicted actions to play before looking at the cameras
+        again (the model plans `chunk_size` ahead; default: as trained). Lower is more reactive.
+        A free knob: no retraining. `revision`: a checkpoint of a Hub repo, by its step ("010000").
+        """
         import torch
         from lerobot.policies import get_policy_class, make_pre_post_processors
 
         self.task, self.duration_s, self.fps, self.after = task, duration_s, fps, after
         self.gripper_open_above = gripper_open_above
-        self.policy = get_policy_class(policy_type).from_pretrained(policy_path)
+        self.policy = get_policy_class(policy_type).from_pretrained(policy_path, revision=revision)
         if device:
             self.policy.to(device)
             self.policy.config.device = device
+        if n_action_steps is not None:
+            self.policy.config.n_action_steps = min(n_action_steps, self.policy.config.chunk_size)
         self.device = torch.device(self.policy.config.device)
         self.preprocessor, self.postprocessor = make_pre_post_processors(
             policy_cfg=self.policy.config,
             pretrained_path=policy_path,
+            pretrained_revision=revision,
             preprocessor_overrides={"device_processor": {"device": str(self.device)}},
         )
         self._features = None
+        self.last_rate_hz = 0.0
 
     def run(self, robot: Robot, target: Target) -> bool:
         from lerobot.common.control_utils import predict_action
         from lerobot.policies.utils import make_robot_action
         from lerobot.utils.constants import ACTION, OBS_STR
         from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
+        from lerobot.utils.robot_utils import precise_sleep
 
         client = robot.client  # LeKiwiRobot only
         if self._features is None:
@@ -130,13 +141,15 @@ class PolicyPick:
                 **hw_to_dataset_features(client.action_features, ACTION),
                 **hw_to_dataset_features(client.observation_features, OBS_STR),
             }
-        self.policy.reset()
         stop = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
-        start = time.perf_counter()
-        while time.perf_counter() - start < self.duration_s:
-            tick = time.perf_counter()
+
+        def next_action() -> dict:
             robot.get_observation()
-            frame = build_dataset_frame(self._features, robot.raw_observation, prefix=OBS_STR)
+            # The demonstrations were recorded with the base still. Whatever the wheels report
+            # now (they may still be settling after the approach), show the policy what it saw
+            # in training: a base at rest.
+            observation = {**robot.raw_observation, **stop}
+            frame = build_dataset_frame(self._features, observation, prefix=OBS_STR)
             action = predict_action(
                 observation=frame,
                 policy=self.policy,
@@ -148,8 +161,23 @@ class PolicyPick:
                 robot_type=client.name,
             )
             # The policy was trained with the base still: never let it drive.
-            client.send_action({**make_robot_action(action, self._features), **stop})
-            time.sleep(max(0.0, 1.0 / self.fps - (time.perf_counter() - tick)))
+            return {**make_robot_action(action, self._features), **stop}
+
+        # The first inference prepares the model for the device and can take a second: do it
+        # before the clock starts, and throw the result away.
+        next_action()
+        self.policy.reset()
+
+        start, ticks = time.perf_counter(), 0
+        while time.perf_counter() - start < self.duration_s:
+            tick = time.perf_counter()
+            client.send_action(next_action())
+            ticks += 1
+            # time.sleep overshoots by several ms: at 30 Hz that costs 10 % of the rate.
+            precise_sleep(max(0.0, 1.0 / self.fps - (time.perf_counter() - tick)))
+        # Commands per second actually achieved. Well below `fps`, the motion is slower than
+        # the demonstrations: inference is too slow for this laptop.
+        self.last_rate_hz = ticks / (time.perf_counter() - start)
 
         gripper = robot.get_observation().arm.get(GRIPPER)
         if self.after:

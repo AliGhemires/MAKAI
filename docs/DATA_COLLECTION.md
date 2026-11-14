@@ -13,7 +13,8 @@ Un épisode, de bout en bout :
 
 1. bras en pose `home`, objet à la pose de pré-saisie (à quelques centimètres près) ;
 2. descendre, saisir, remonter ;
-3. finir en pose `home`, pince fermée sur l'objet ; arrêter l'épisode (`→`).
+3. finir en pose `home`, pince fermée sur l'objet, **rester immobile une seconde**, puis
+   arrêter l'épisode (`→`). Cette seconde apprend au modèle qu'il a fini.
 
 Durée visée : 8 à 12 secondes. La chaîne de tâche est toujours la même, au caractère près :
 `Pick up the object from the floor` (c'est `manipulation.pick.task` dans la config).
@@ -34,14 +35,25 @@ doit pouvoir réussir la saisie. Si ce n'est pas possible, la policy n'y arriver
 ## Enregistrer
 
 ```bash
-uv run python scripts/record.py --name pick_sock_v1 --episodes 25
+uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
 ```
 
 Touches (terminal au premier plan) : `→` ou `n` termine l'épisode, `←` ou `r` le
 recommence, `Échap` ou `q` arrête et envoie le dataset sur le Hub.
 
-Faire des sessions de 25 épisodes : si une session est ratée, on ne perd pas tout. Noter
-chaque dataset dans `docs/REGISTRY.md` aussitôt.
+Faire des sessions de 30 épisodes. Relancer la même commande **ajoute** des épisodes au même
+dataset : rien n'est écrasé, et un plantage ne fait perdre que l'épisode en cours. Noter chaque
+dataset dans `docs/REGISTRY.md` aussitôt.
+
+Avant le robot, répéter sans matériel et contrôler le laptop :
+
+```bash
+uv run python scripts/record.py --name repetition --object sock --episodes 2 --dry-run
+uv run python scripts/preflight.py
+```
+
+Utiliser les **flèches et Échap** pour piloter l'enregistrement, pas les lettres : `r`, `f` et
+`q` commandent aussi la base du robot.
 
 ## Les règles
 
@@ -49,8 +61,9 @@ chaque dataset dans `docs/REGISTRY.md` aussitôt.
    la pince, même fin. Un opérateur principal pour tout un dataset.
 2. **Pas d'hésitation.** Mouvement continu, ni trop lent ni saccadé. Un épisode avec une
    pause, un raté rattrapé ou un choc : `←` et on le refait. On ne garde que les réussites propres.
-3. **Varier ce qui variera en démo, et rien d'autre.** Position de l'objet dans un carré de
-   ±3 cm autour de la pose de pré-saisie, orientation de l'objet, forme du tissu. Pas de
+3. **Varier ce qui variera en démo, et rien d'autre.** Position de l'objet dans la zone de
+   pré-saisie (un carré de ±3 à 4 cm), **couverte régulièrement** : centre, coins, milieux de
+   bord. Orientation de l'objet, forme du tissu. Pas de
    changement de caméra, de pose `home`, ni de fond.
 4. **Placer l'objet avec le robot, pas à la main.** Dès que l'approche autonome marche,
    c'est elle qui amène le robot devant l'objet avant chaque épisode : les erreurs de
@@ -64,8 +77,8 @@ chaque dataset dans `docs/REGISTRY.md` aussitôt.
 
 | Version | Contenu | Épisodes | Quand |
 |---|---|---|---|
-| v1 | Un objet (chaussette roulée ou petit tissu) | 60 | samedi soir |
-| v2 | 3 linges + 3 déchets, 25 chacun | 150 | dimanche matin |
+| v1 | Chaussette noire (60) et canette écrasée (60), un dataset par objet | 120 | samedi soir : `docs/CE_SOIR.md` |
+| v2 | 20 à 30 épisodes de plus par objet sur les cas ratés, en lumière du jour | 60 | dimanche matin |
 | v3 | Corrections DAgger sur les échecs de la v2 | 30 à 50 | dimanche après-midi |
 
 Ordre de grandeur : 25 épisodes prennent 15 à 20 minutes avec le reset.
