@@ -11,12 +11,14 @@
     --accent: #2f6df6; --accent-soft: rgba(47, 109, 246, .14); --meas: #0d9488;
     --ok: #16a34a; --warn: #d97706; --danger: #dc2626; --danger-press: #b91c1c;
     --radius: 14px; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0c0f13; --panel: #141920; --sunken: #0f1318; --line: #252d38; --text: #e6eaf0; --muted: #8a94a3;
       --accent: #6b93ff; --accent-soft: rgba(107, 147, 255, .16); --meas: #2dd4bf;
       --ok: #22c55e; --warn: #f59e0b; --danger: #ef4444; --danger-press: #dc2626; --shadow: none;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #0ca30c;
     }
   }
   * { box-sizing: border-box; }
@@ -136,6 +138,8 @@
   .center[data-tab="drive"] .measure, .center[data-tab="drive"] .robot-panel { display: none; }
   .center[data-tab="measure"] .camera, .center[data-tab="measure"] .telemetry, .center[data-tab="measure"] .robot-panel { display: none; }
   .center[data-tab="robot"] .camera, .center[data-tab="robot"] .row-2, .center[data-tab="robot"] .measure { display: none; }
+  .center[data-tab="data"] .camera, .center[data-tab="data"] .row-2, .center[data-tab="data"] .measure, .center[data-tab="data"] .robot-panel { display: none; }
+  .center:not([data-tab="data"]) .data-panel { display: none; }
   .center[data-tab="measure"] .row-2 { flex: 0 0 34%; height: auto; grid-template-columns: minmax(0, 1fr); }
   .center.no-camera .camera { display: none; }
   .center.no-camera[data-tab="drive"] .row-2 { flex: 1 1 0; height: auto; }
@@ -169,6 +173,35 @@
   .rp-rows b { text-align: right; }
   .rp-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .bar.one::before { display: none; } /* one-way bar: no centre line */
+
+  /* Data tab: the same signals as Rerun, as time series */
+  .data-panel { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .dp-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .dp-note { font-size: 12px; color: var(--muted); }
+  .dp-cams { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .dp-cam { position: relative; margin: 0; aspect-ratio: 4 / 3; max-height: 240px; overflow: hidden; border-radius: 10px; background: #0b0d10; }
+  .dp-cam img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .dp-cam figcaption { position: absolute; left: 8px; top: 6px; padding: 2px 8px; border-radius: 6px; background: rgba(0, 0, 0, .55); color: #fff; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .dp-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+  .dp-chart { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .dp-chart header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .dp-chart h4 { margin: 0; font: 600 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .dp-unit { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .dp-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 6px 0 4px; }
+  .dp-key { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; border: 0; background: none; font-size: 12px; }
+  .dp-key.off { opacity: .35; }
+  .dp-key i, .dp-tip i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; }
+  .dp-key i.dash, .dp-tip i.dash { border-top-style: dashed; }
+  .dp-key span { color: var(--muted); }
+  .dp-key b { min-width: 44px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+  .dp-plot { position: relative; height: 150px; }
+  .dp-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  .dp-tip { position: absolute; top: 4px; z-index: 3; min-width: 150px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); font-size: 12px; pointer-events: none; }
+  .dp-tip .head { margin-bottom: 3px; color: var(--muted); }
+  .dp-tip .row { display: flex; align-items: center; gap: 7px; line-height: 1.6; }
+  .dp-tip b { font-variant-numeric: tabular-nums; }
+  .dp-tip span { color: var(--muted); }
+  .dp-empty { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
   .rp-wide { grid-column: 1 / -1; }
   .rp-h-sub { margin-left: 6px; font-weight: 500; letter-spacing: 0; text-transform: none; }
   .rp-sim { margin: 0; padding: 8px 12px; border-radius: 10px; background: rgba(217, 119, 6, .14); font-size: 13px; }
@@ -233,8 +266,8 @@
   /* Phone, portrait: map and numbers on top, one stick under each thumb */
   @media (max-width: 760px) {
     .center[data-tab="measure"] .row-2 { flex-basis: 30%; }
-    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad { display: none; } /* Drive tab to move the robot */
-    body[data-tab="measure"] main, body[data-tab="robot"] main { grid-template-rows: minmax(0, 1fr); grid-template-areas: "center center"; }
+    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad, body[data-tab="data"] .pad { display: none; } /* Drive tab to move the robot */
+    body[data-tab="measure"] main, body[data-tab="robot"] main, body[data-tab="data"] main { grid-template-rows: minmax(0, 1fr); grid-template-areas: "center center"; }
     .center[data-tab="drive"] .camera { flex: 0 0 auto; aspect-ratio: 4 / 3; max-height: 38vh; }
     .center[data-tab="drive"] .row-2 { flex: 1 1 0; height: auto; min-height: 90px; grid-template-columns: minmax(0, 1fr); }
     .center[data-tab="drive"] .telemetry { display: none; }
@@ -255,8 +288,8 @@
     main { padding: 8px 12px; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); }
     .telemetry, .hints, .speed-info, .map-legend, .chip.mode, .pad .label, .center[data-tab="drive"] .row-2, .center[data-tab="measure"] .row-2 { display: none; }
     .stick { --size: min(230px, 46vh, 28vw); }
-    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad { display: none; }
-    body[data-tab="measure"] main, body[data-tab="robot"] main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
+    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad, body[data-tab="data"] .pad { display: none; }
+    body[data-tab="measure"] main, body[data-tab="robot"] main, body[data-tab="data"] main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
     .slider, .turn-hint { --w: min(230px, 28vw); width: var(--w); }
     footer { padding: 6px 12px; }
     .stop { height: 48px; }
@@ -291,7 +324,7 @@
 
   <section class="center" id="center" data-tab="drive">
     <div class="seg tabs" id="tabs" role="tablist">
-      <button data-tab="drive" class="on" role="tab">Drive</button><button data-tab="measure" role="tab">Measure</button><button data-tab="robot" role="tab">Robot</button>
+      <button data-tab="drive" class="on" role="tab">Drive</button><button data-tab="measure" role="tab">Measure</button><button data-tab="robot" role="tab">Robot</button><button data-tab="data" role="tab">Data</button>
     </div>
     <div class="card camera" id="camera">
       <img id="cam-main" alt="Robot camera">
@@ -412,6 +445,22 @@
         <section class="rp-card"><h3>Cameras</h3><div id="rp-cams"></div></section>
         <section class="rp-card"><h3>Connection</h3><dl class="rp-dl" id="rp-link"></dl></section>
       </div>
+    </div>
+    <div class="card data-panel" id="data-panel">
+      <div class="dp-toolbar">
+        <div class="seg" id="dp-window" role="group" aria-label="Time window">
+          <button data-w="10">10 s</button><button data-w="30" class="on">30 s</button><button data-w="60">60 s</button>
+        </div>
+        <button class="btn ghost-btn" id="dp-pause">Pause</button>
+        <button class="btn ghost-btn" id="dp-clear">Clear</button>
+        <button class="btn" id="dp-csv">Download CSV</button>
+        <span class="dp-note">Same names and units as Rerun: <b>observation.*</b> is measured, <b>action.*</b> is commanded (dashed). Hover a chart to read the values.</span>
+      </div>
+      <div class="dp-cams" id="dp-cams">
+        <figure class="dp-cam"><img id="data-cam-0" alt="Camera"><figcaption id="data-cam-0-cap"></figcaption></figure>
+        <figure class="dp-cam"><img id="data-cam-1" alt="Camera"><figcaption id="data-cam-1-cap"></figcaption></figure>
+      </div>
+      <div class="dp-charts" id="dp-charts"></div>
     </div>
   </section>
 
@@ -681,6 +730,7 @@ function render(st) {
   renderArm(st);
   renderMotors(st);
   renderLink(st);
+  recordSample(st);
 }
 
 // ---- Measure: precise moves checked with a tape --------------------------------------------
@@ -862,7 +912,7 @@ function setTab(tab) {
 
 // ---- Cameras: MJPEG streams in <img>, only while the Drive tab is on screen ----------------
 const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-const CAM = { main: null, pip: null, streaming: { main: null, pip: null } };
+const CAM = { main: null, pip: null, streaming: { main: null, pip: null, d0: null, d1: null } };
 const cameraNames = () => (info && info.cameras) || [];
 
 function pickCameras() {
@@ -879,14 +929,21 @@ function setStream(img, slot, name) {
 }
 
 function updateStreams() {
-  const live = currentTab === "drive" && !document.hidden && cameraNames().length > 0;
+  const names = cameraNames(), visible = !document.hidden && names.length > 0;
+  const live = visible && currentTab === "drive", data = visible && currentTab === "data";
   setStream($("#cam-main"), "main", live ? CAM.main : null);
   setStream($("#cam-pip-img"), "pip", live ? CAM.pip : null);
+  for (const i of [0, 1]) {
+    setStream($(`#data-cam-${i}`), `d${i}`, data ? names[i] || null : null);
+    $(`#data-cam-${i}`).closest("figure").hidden = !names[i];
+    $(`#data-cam-${i}-cap`).textContent = names[i] ? `observation.${names[i]}` : "";
+  }
+  $("#dp-cams").hidden = names.length === 0;
   $("#cam-pip").hidden = !CAM.pip;
   $("#cam-save").href = CAM.main ? `/api/camera/${encodeURIComponent(CAM.main)}.jpg?download=1` : "#";
 }
 
-for (const [id, slot] of [["#cam-main", "main"], ["#cam-pip-img", "pip"]]) {
+for (const [id, slot] of [["#cam-main", "main"], ["#cam-pip-img", "pip"], ["#data-cam-0", "d0"], ["#data-cam-1", "d1"]]) {
   $(id).addEventListener("error", () => { // the stream ended (robot restarted, Wi-Fi cut): retry
     if (CAM.streaming[slot] === null) return;
     CAM.streaming[slot] = null;
@@ -921,6 +978,247 @@ function renderCameras(st) {
     return `<div class="rp-cam"><div><i class="dot ${c.ok ? "ok" : "bad"}"></i> <b>${name}</b><div class="sub">${detail}${c.source ? ` · ${c.source}` : ""}</div></div>`
       + (c.ok ? `<a href="/api/camera/${encodeURIComponent(name)}.jpg?download=1" download>Save image</a>` : "") + `</div>`;
   }).join("") || `<p class="rp-note">No camera configured.</p>`;
+}
+
+// ---- Data: the signals Rerun shows, as scrolling time series --------------------------------
+// One chart per unit (never two y-scales). Colours: validated categorical slots, fixed order.
+const ARM5 = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"];
+const ARM_MOTORS = [...ARM5, "gripper"].map((j) => `arm_${j}`);
+const WHEEL_MOTORS = ["base_left_wheel", "base_back_wheel", "base_right_wheel"];
+const CHART_DEFS = [
+  { id: "arm", title: "observation.arm_*.pos", unit: "degrees", digits: 1, minSpan: 20,
+    empty: "No arm data: wired mode reads the arm only if it is calibrated on the Pi; through the host, it comes with the observations.",
+    series: ARM5.map((j, i) => ({ key: `observation.arm_${j}.pos`, label: j, color: i, get: (st) => st.arm && st.arm[j] })) },
+  { id: "gripper", title: "observation.arm_gripper.pos", unit: "% open", digits: 1, minSpan: 10,
+    empty: "No gripper data.",
+    series: [{ key: "observation.arm_gripper.pos", label: "gripper", color: 0, get: (st) => st.arm && st.arm.gripper }] },
+  { id: "lin", title: "x.vel · y.vel", unit: "m/s", digits: 3, minSpan: 0.1, zero: true,
+    series: [
+      { key: "observation.x.vel", label: "observation.x.vel", color: 0, get: (st) => st.meas && st.meas.x },
+      { key: "action.x.vel", label: "action.x.vel", color: 0, dash: true, get: (st) => st.cmd && st.cmd.x },
+      { key: "observation.y.vel", label: "observation.y.vel", color: 1, get: (st) => st.meas && st.meas.y },
+      { key: "action.y.vel", label: "action.y.vel", color: 1, dash: true, get: (st) => st.cmd && st.cmd.y },
+    ] },
+  { id: "rot", title: "theta.vel", unit: "deg/s", digits: 1, minSpan: 20, zero: true,
+    series: [
+      { key: "observation.theta.vel", label: "observation.theta.vel", color: 0, get: (st) => st.meas && st.meas.theta_deg },
+      { key: "action.theta.vel", label: "action.theta.vel", color: 0, dash: true, get: (st) => st.cmd && st.cmd.theta_deg },
+    ] },
+  { id: "load_arm", title: "motors · load, arm", unit: "% of max torque", digits: 1, minSpan: 20, zero: true,
+    empty: "Motor load: wired mode only (the host does not send it).",
+    series: ARM_MOTORS.map((m, i) => ({ key: `motor.${m}.load`, label: m.replace("arm_", ""), color: i, get: (st) => st.motors && st.motors[m] && st.motors[m].load_pct })) },
+  { id: "load_wheels", title: "motors · load, wheels", unit: "% of max torque", digits: 1, minSpan: 20, zero: true,
+    empty: "Motor load: wired mode only (the host does not send it).",
+    series: WHEEL_MOTORS.map((m, i) => ({ key: `motor.${m}.load`, label: m.replace("base_", "").replace("_wheel", ""), color: i, get: (st) => st.motors && st.motors[m] && st.motors[m].load_pct })) },
+];
+const DATA = { t: [], v: {}, paused: false, pausedAt: 0, windowS: 30, hidden: new Set(), hover: null, lastLegend: 0 };
+const chartEls = {};
+
+function buildCharts() {
+  const host = $("#dp-charts");
+  for (const def of CHART_DEFS) {
+    const card = document.createElement("section");
+    card.className = "dp-chart";
+    card.innerHTML = `<header><h4></h4><span class="dp-unit"></span></header><div class="dp-legend"></div>`
+      + `<div class="dp-plot"><canvas></canvas><div class="dp-tip" hidden></div></div><p class="dp-empty" hidden></p>`;
+    card.querySelector("h4").textContent = def.title;
+    card.querySelector(".dp-unit").textContent = def.unit;
+    const legend = card.querySelector(".dp-legend"), values = {};
+    for (const sr of def.series) {
+      const key = document.createElement("button");
+      key.className = "dp-key";
+      key.innerHTML = `<i${sr.dash ? ' class="dash"' : ""}></i><span></span><b>–</b>`;
+      key.querySelector("i").style.borderTopColor = `var(--s${sr.color + 1})`;
+      key.querySelector("span").textContent = sr.label;
+      key.addEventListener("click", () => {
+        if (DATA.hidden.has(sr.key)) DATA.hidden.delete(sr.key); else DATA.hidden.add(sr.key);
+        key.classList.toggle("off", DATA.hidden.has(sr.key));
+      });
+      legend.appendChild(key);
+      values[sr.key] = key.querySelector("b");
+    }
+    const canvas = card.querySelector("canvas");
+    canvas.addEventListener("pointermove", (e) => hoverChart(def, canvas, e));
+    canvas.addEventListener("pointerleave", () => { DATA.hover = null; for (const el of Object.values(chartEls)) el.tip.hidden = true; });
+    host.appendChild(card);
+    chartEls[def.id] = { card, canvas, ctx: canvas.getContext("2d"), tip: card.querySelector(".dp-tip"), values,
+      plot: card.querySelector(".dp-plot"), empty: card.querySelector(".dp-empty"), legend, layout: null };
+  }
+}
+
+function recordSample(st) {
+  if (DATA.paused) return;
+  DATA.t.push(performance.now() / 1000);
+  for (const def of CHART_DEFS) {
+    for (const sr of def.series) {
+      const v = sr.get(st);
+      (DATA.v[sr.key] = DATA.v[sr.key] || []).push(Number.isFinite(v) ? v : null);
+    }
+  }
+  if (DATA.t.length > 2700) { // keep about two minutes at 20 samples per second
+    const drop = DATA.t.length - 2400;
+    DATA.t.splice(0, drop);
+    for (const k in DATA.v) DATA.v[k].splice(0, drop);
+  }
+  const now = performance.now();
+  if (currentTab === "data" && now - DATA.lastLegend > 200) { // legend values, five times a second
+    DATA.lastLegend = now;
+    const i = DATA.t.length - 1;
+    for (const def of CHART_DEFS) {
+      for (const sr of def.series) {
+        const v = DATA.v[sr.key][i];
+        chartEls[def.id].values[sr.key].textContent = v === null ? "–" : v.toFixed(def.digits);
+      }
+    }
+  }
+}
+
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < x) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+function niceStep(span, count) {
+  const raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function drawCharts() {
+  if (currentTab !== "data") return;
+  const t1 = DATA.paused ? DATA.pausedAt : performance.now() / 1000, t0 = t1 - DATA.windowS;
+  const start = lowerBound(DATA.t, t0);
+  for (const def of CHART_DEFS) drawChart(def, chartEls[def.id], start, t0, t1);
+}
+
+function drawChart(def, el, start, t0, t1) {
+  const n = DATA.t.length;
+  const hasData = def.series.some((sr) => (DATA.v[sr.key] || []).some((v) => v !== null));
+  el.plot.hidden = el.legend.hidden = !hasData;
+  el.empty.hidden = hasData;
+  el.empty.textContent = def.empty || "No data yet.";
+  if (!hasData) return;
+  const canvas = el.canvas, ctx = el.ctx, d = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * d) || canvas.height !== Math.round(h * d)) {
+    canvas.width = Math.round(w * d); canvas.height = Math.round(h * d);
+  }
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  let lo = Infinity, hi = -Infinity;
+  for (const sr of def.series) {
+    if (DATA.hidden.has(sr.key)) continue;
+    const vs = DATA.v[sr.key];
+    for (let i = start; i < n; i++) { const v = vs[i]; if (v !== null) { if (v < lo) lo = v; if (v > hi) hi = v; } }
+  }
+  if (!Number.isFinite(lo)) { lo = -1; hi = 1; }
+  if (def.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const mid = (lo + hi) / 2, half = Math.max(hi - lo, def.minSpan) * 0.55;
+  lo = mid - half; hi = mid + half;
+  const L = { left: 46, right: 8, top: 6, bottom: 18 };
+  const pw = w - L.left - L.right, ph = h - L.top - L.bottom;
+  const X = (t) => L.left + ((t - t0) / (t1 - t0)) * pw, Y = (v) => L.top + (1 - (v - lo) / (hi - lo)) * ph;
+  el.layout = { L, pw, t0, t1 };
+  // Grid and axes: hairline, recessive.
+  ctx.font = "11px system-ui, sans-serif"; ctx.fillStyle = colors.muted; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  const step = niceStep(hi - lo, 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.strokeStyle = Math.abs(v) < step / 1e6 ? colors.muted : colors.line;
+    ctx.globalAlpha = Math.abs(v) < step / 1e6 ? 0.6 : 1;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(L.left, y); ctx.lineTo(w - L.right, y); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillText(Math.abs(v) < step / 1e6 ? "0" : +v.toFixed(4) + "", L.left - 6, y);
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  for (const frac of [0, 0.5, 1]) {
+    const label = frac === 1 ? (DATA.paused ? "paused" : "now") : `−${Math.round(DATA.windowS * (1 - frac))} s`;
+    ctx.fillText(label, Math.min(Math.max(L.left + frac * pw, L.left + 16), w - L.right - 16), h - 4);
+  }
+  // Lines: 2 px, gaps where a value is missing; action dashed.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(L.left, L.top - 2, pw, ph + 4); ctx.clip();
+  ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const sr of def.series) {
+    if (DATA.hidden.has(sr.key)) continue;
+    const vs = DATA.v[sr.key];
+    ctx.strokeStyle = colors[`s${sr.color + 1}`];
+    ctx.setLineDash(sr.dash ? [6, 4] : []);
+    ctx.beginPath();
+    let pen = false;
+    for (let i = Math.max(0, start - 1); i < n; i++) {
+      const v = vs[i];
+      if (v === null) { pen = false; continue; }
+      const x = X(DATA.t[i]), y = Y(v);
+      if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      pen = true;
+    }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+  // Crosshair, shared by every chart: the same instant everywhere.
+  const hv = DATA.hover;
+  if (hv !== null && hv < n && DATA.t[hv] >= t0) {
+    const x = Math.round(X(DATA.t[hv])) + 0.5;
+    ctx.strokeStyle = colors.muted; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, L.top); ctx.lineTo(x, L.top + ph); ctx.stroke();
+    for (const sr of def.series) {
+      const v = DATA.hidden.has(sr.key) ? null : DATA.v[sr.key][hv];
+      if (v === null) continue;
+      ctx.fillStyle = colors.panel;
+      ctx.beginPath(); ctx.arc(x, Y(v), 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = colors[`s${sr.color + 1}`];
+      ctx.beginPath(); ctx.arc(x, Y(v), 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function hoverChart(def, canvas, e) {
+  const el = chartEls[def.id], lay = el.layout;
+  if (!lay || DATA.t.length === 0) return;
+  const r = canvas.getBoundingClientRect(), x = e.clientX - r.left;
+  const t = lay.t0 + ((x - lay.L.left) / lay.pw) * (lay.t1 - lay.t0);
+  let i = Math.min(DATA.t.length - 1, lowerBound(DATA.t, t));
+  if (i > 0 && Math.abs(DATA.t[i - 1] - t) < Math.abs(DATA.t[i] - t)) i -= 1;
+  DATA.hover = i;
+  for (const other of Object.values(chartEls)) if (other !== el) other.tip.hidden = true;
+  const tip = el.tip;
+  tip.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "head";
+  const ago = (DATA.paused ? DATA.pausedAt : performance.now() / 1000) - DATA.t[i];
+  head.textContent = `${ago.toFixed(1)} s ago · ${def.unit}`;
+  tip.appendChild(head);
+  for (const sr of def.series) { // value first, name second; text only, never HTML
+    const v = DATA.v[sr.key][i], row = document.createElement("div"), key = document.createElement("i");
+    row.className = "row";
+    if (sr.dash) key.className = "dash";
+    key.style.borderTopColor = `var(--s${sr.color + 1})`;
+    const val = document.createElement("b"), name = document.createElement("span");
+    val.textContent = v === null ? "–" : v.toFixed(def.digits);
+    name.textContent = sr.label;
+    row.append(key, val, name);
+    tip.appendChild(row);
+  }
+  tip.hidden = false;
+  const box = el.plot.getBoundingClientRect();
+  tip.style.left = x + 16 + tip.offsetWidth < box.width ? `${x + 16}px` : `${Math.max(0, x - 16 - tip.offsetWidth)}px`;
+}
+
+function downloadData() {
+  const keys = [...new Set(CHART_DEFS.flatMap((def) => def.series.map((sr) => sr.key)))];
+  const t0 = DATA.t[0] || 0;
+  const lines = [["time_s", ...keys].join(",")];
+  for (let i = 0; i < DATA.t.length; i++) {
+    lines.push([(DATA.t[i] - t0).toFixed(3), ...keys.map((k) => (DATA.v[k][i] === null ? "" : DATA.v[k][i]))].join(","));
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
+  a.download = `makai_data_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 // ---- Arm, motors, connection ---------------------------------------------------------------
@@ -1026,7 +1324,9 @@ let scale = 150; // pixels per metre
 let colors = {};
 function readColors() {
   const css = getComputedStyle(document.documentElement);
-  for (const name of ["line", "muted", "text", "accent", "meas", "panel", "sunken"]) colors[name] = css.getPropertyValue(`--${name}`).trim();
+  for (const name of ["line", "muted", "text", "accent", "meas", "panel", "sunken", "s1", "s2", "s3", "s4", "s5", "s6"]) {
+    colors[name] = css.getPropertyValue(`--${name}`).trim();
+  }
 }
 readColors();
 if (window.matchMedia) {
@@ -1211,15 +1511,30 @@ $("#m-clear").addEventListener("click", () => {
   request("POST", "/api/trials/clear", { client: CLIENT }).then(() => { M.selected = null; loadTrials(); }).catch(() => {});
 });
 renderMeasureForm();
+buildCharts();
+for (const b of document.querySelectorAll("#dp-window button")) {
+  b.addEventListener("click", () => {
+    DATA.windowS = +b.dataset.w;
+    for (const o of document.querySelectorAll("#dp-window button")) o.classList.toggle("on", o === b);
+  });
+}
+$("#dp-pause").addEventListener("click", () => {
+  DATA.paused = !DATA.paused;
+  DATA.pausedAt = performance.now() / 1000;
+  $("#dp-pause").textContent = DATA.paused ? "Resume" : "Pause";
+});
+$("#dp-clear").addEventListener("click", () => { DATA.t.length = 0; for (const k in DATA.v) DATA.v[k].length = 0; DATA.hover = null; });
+$("#dp-csv").addEventListener("click", downloadData);
 let savedTab = null;
 try { savedTab = localStorage.getItem("makai-drive-tab"); } catch (_) { /* private mode */ }
 const wantedTab = location.hash.slice(1) || savedTab;
-if (["measure", "robot"].includes(wantedTab)) setTab(wantedTab);
+if (["measure", "robot", "data"].includes(wantedTab)) setTab(wantedTab);
 
 function frame() {
   pollGamepad();
   drawGhosts();
   drawMap();
+  drawCharts();
   requestAnimationFrame(frame);
 }
 loadInfo();
