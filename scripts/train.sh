@@ -25,15 +25,15 @@ DATASET="$1"; RUN="$2"; shift 2
 cd "$(dirname "$0")/.."
 NS="${HUB_NAMESPACE:-$(uv run --no-sync python -c "from makai.config import load_config; print(load_config()['hub']['namespace'])")}"
 PUSH=true
-if [ "$NS" = "CHANGE_ME" ]; then
+if [ "$NS" = "CHANGE_ME" ] || [ "$NS" = "local" ]; then
   NS=local; PUSH=false
-  echo "No Hub namespace set: training from the local dataset, the model stays in outputs/train/${RUN}."
+  echo "No Hub namespace set: training from the local dataset, the model stays in ${OUTPUT_ROOT:-outputs/train}/${RUN}."
 fi
 
 ARGS=(
   --dataset.repo_id="${NS}/makai_${DATASET}"
   --policy.type=act
-  --output_dir="outputs/train/${RUN}"
+  --output_dir="${OUTPUT_ROOT:-outputs/train}/${RUN}"
   --job_name="${RUN}"
   --steps="${STEPS:-30000}"
   --batch_size="${BATCH:-8}"
@@ -58,4 +58,6 @@ KEEP_AWAKE=()
 if command -v caffeinate >/dev/null 2>&1 && [[ "$*" != *"--job.target"* ]]; then
   KEEP_AWAKE=(caffeinate -ims)   # keep the Mac awake for as long as training runs
 fi
-exec "${KEEP_AWAKE[@]}" uv run --no-sync lerobot-train "${ARGS[@]}" "$@"
+# No `exec`: a caller (the HPC job) may have cleanup to run when training ends.
+# ${X[@]+...}: an empty array is an "unbound variable" for bash older than 4.4 (the cluster's).
+${KEEP_AWAKE[@]+"${KEEP_AWAKE[@]}"} uv run --no-sync lerobot-train "${ARGS[@]}" "$@"
