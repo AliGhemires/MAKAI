@@ -20,6 +20,7 @@ wandb/
 trackio/
 *.pt
 *.pth
+!models/detector_*.pt
 *.safetensors
 *.onnx
 mobileclip*.ts

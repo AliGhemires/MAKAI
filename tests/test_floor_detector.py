@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from makai.contracts import Category, Observation
+from makai.perception.classify import UniformityClassifier
 from makai.perception.floor import FloorBlobDetector, FloorColor
 from makai.perception.geometry import CameraModel
 from makai.perception.pipeline import CameraPerception, build_detector
@@ -94,14 +95,37 @@ def test_perception_keeps_only_objects_of_plausible_size():
     assert scene(*big).targets == ()
 
 
+def printed(image: np.ndarray, centre=(320, 300), axes=(60, 34)) -> np.ndarray:
+    """A bright object covered with dark print, like a drink can."""
+    out = with_object(image, centre=centre, axes=axes, colour=(235, 235, 240))
+    for x in range(centre[0] - axes[0] + 8, centre[0] + axes[0] - 8, 9):
+        cv2.line(out, (x, centre[1] - 16), (x + 5, centre[1] + 16), (25, 40, 150), 3)
+    return out
+
+
+def test_uniformity_classifier_tells_plain_fabric_from_printed_packaging():
+    detector = FloorBlobDetector(classifier=UniformityClassifier())
+    sock = detector.detect(with_object(carpet(), axes=(60, 34)))[0]
+    can = detector.detect(printed(carpet()))[0]
+    assert sock.category is Category.CLOTHING and sock.confidence > 0.5
+    assert can.category is Category.TRASH and can.confidence > 0.5
+
+
+def test_object_too_small_to_classify_is_reported_as_a_guess():
+    detector = FloorBlobDetector(classifier=UniformityClassifier(), default_category=Category.CLOTHING)
+    far_can = detector.detect(printed(carpet(), axes=(18, 11)))
+    assert len(far_can) == 1
+    assert (far_can[0].category, far_can[0].confidence) == (Category.CLOTHING, 0.0)
+
+
 def test_floor_detector_is_built_from_the_shared_config():
     from makai.config import load_config
 
     perception = load_config()["perception"]
-    assert perception["detector"] == "floor" and perception["classifier"] == "none"
+    perception["detector"] = "floor"  # the fallback detector, still built from the same config
+    assert perception["classifier"] == "uniformity"
     detector = build_detector(perception)
-    assert isinstance(detector, FloorBlobDetector)
+    assert isinstance(detector, FloorBlobDetector) and isinstance(detector.classifier, UniformityClassifier)
     assert detector.floor == FloorColor(**perception["floor"]["color"])
-    assert detector.detect(with_object(carpet()))[0].category is Category(
-        perception["floor"]["default_category"]
-    )
+    assert detector.detect(with_object(carpet(), axes=(60, 34)))[0].category is Category.CLOTHING
+    assert detector.detect(printed(carpet()))[0].category is Category.TRASH

@@ -222,7 +222,24 @@ vitesse. `p` enregistre la pose courante du bras dans `configs/poses_captured.ya
    centre de la base) et remplir `perception.camera_model` dans `configs/makai.yaml`.
 3. **Définir la pose `home`** du bras : repliée, hors du champ de la caméra avant, pince
    au-dessus de la zone de saisie. La capturer (`p` pendant la téléop) et la copier dans
-   `configs/arm_poses.yaml`.
+   `configs/arm_poses.yaml`. Elle doit remplir quatre conditions :
+   - **la caméra de poignet voit toute la zone de pré-saisie** (étape 4), avec de la marge :
+     le modèle doit voir l'objet dès la première image, avant de bouger ;
+   - **le bras n'apparaît pas dans l'image de la caméra avant**, qui cherche les objets en roulant ;
+   - **elle est reposante pour les servos** : coude plié, pas de bras tendu à l'horizontale.
+     Le robot y attend, y roule et y transporte l'objet ;
+   - **le leader y retombe tout seul** sur un support fixe (cale en carton, ruban) :
+     l'enregistrement démarre et s'arrête d'après cette pose.
+
+   Pour la trouver : `make teleop`, les deux images ouvertes dans Rerun. Poser l'objet au
+   centre de la zone puis dans chacun des quatre coins, et chercher une pose repliée où il
+   reste visible dans l'image de poignet pour les cinq positions. Lâcher le leader sur son
+   support, vérifier que le bras y revient, puis `p`.
+
+   La caméra de poignet doit voir l'objet **au départ et pendant toute la descente**, jusqu'à
+   la fermeture de la pince ; après, l'objet est dans la pince et la vue change, c'est normal.
+   Faire une descente d'essai en ne regardant que l'image de poignet : si l'objet sort du
+   champ avant la saisie, corriger la pose ou la trajectoire.
 4. **Choisir la pose de pré-saisie** : poser un objet là où le bras saisit le plus
    facilement, mesurer sa position, la reporter dans `navigation.approach.goal_x_m` et `goal_y_m`.
 5. **Calibrer le sol** :

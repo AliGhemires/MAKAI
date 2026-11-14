@@ -1,26 +1,47 @@
 #!/bin/bash
-# TEMPLATE for the DTU HPC cluster (LSF). NOT TESTED: adapt the queue, modules and paths.
-# Check the available GPU queues with `bqueues` and the cluster documentation first.
+# Train an ACT policy on the DTU HPC cluster (LSF). NOT TESTED by its author: written from the
+# cluster's documented conventions. Do the "once" steps below early, not at midnight.
 #
-#   bsub < scripts/hpc/train_act.lsf
+# Once, from a login node (ssh <dtu-user>@login1.hpc.dtu.dk ; from outside DTU: VPN first):
+#   linuxsh                                              # interactive node, to install things
+#   curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.bashrc
+#   git clone https://github.com/AliGhemires/MAKAI.git   # private repo: needs a GitHub token,
+#   cd MAKAI                                             #   or rsync the folder from a laptop
+#   uv sync --extra robot                                # several GB: check your home quota
+#   uv run hf auth login                                 # token with write access
+#
+# Each training, from the MAKAI folder on a login node:
+#   DATASET=pick_sock_v1 RUN=act_sock_v1 HUB_NAMESPACE=<hub namespace> bsub < scripts/hpc/train_act.lsf
+#   Variants: STEPS=100000, AUGMENT=1, EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50"
+#   The job is cut after 8 hours whatever STEPS says. That is fine: ACT's learning rate is
+#   constant and a checkpoint goes to the Hub every SAVE_FREQ steps, so a run that is cut is
+#   simply a shorter run.
+#   bstat                    # is it waiting or running?
+#   bpeek <job id>           # live output
+#   bkill <job id>           # stop it
+#
+# The dataset is downloaded from the Hub by the job, and the checkpoints go back to the Hub
+# every SAVE_FREQ steps: nothing to copy by hand. Check the GPU queue names with `bqueues`.
 #
 #BSUB -J makai_act
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 4
-#BSUB -R "rusage[mem=8GB]"
+#BSUB -n 8
 #BSUB -R "span[hosts=1]"
-#BSUB -W 4:00
+#BSUB -R "rusage[mem=8GB]"
+#BSUB -W 8:00
 #BSUB -o makai_act_%J.out
 #BSUB -e makai_act_%J.err
 
 set -euo pipefail
-DATASET="${DATASET:-pick_sock_v1}"
-RUN="${RUN:-act_pick_v1}"
-export HUB_NAMESPACE="${HUB_NAMESPACE:?set HUB_NAMESPACE}"
-export HF_TOKEN="${HF_TOKEN:?set HF_TOKEN (write access)}"
+: "${DATASET:?set DATASET, e.g. pick_sock_v1}"
+: "${RUN:?set RUN, e.g. act_sock_v1}"
+: "${HUB_NAMESPACE:?set HUB_NAMESPACE (the Hugging Face user or org that owns the dataset)}"
+export HUB_NAMESPACE PATH="$HOME/.local/bin:$PATH"
 
-cd "$HOME/MAKAI"          # a clone of this repo
-# uv must be installed in $HOME (curl -LsSf https://astral.sh/uv/install.sh | sh)
-uv sync --extra robot
-scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda
+cd "${LS_SUBCWD:-$PWD}"          # the folder the job was submitted from: the MAKAI repo
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
+
+# pyav ships its own video libraries; the default decoder needs a system FFmpeg the nodes may lack.
+# shellcheck disable=SC2086  # EXTRA is a list of flags, split on purpose
+scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda --dataset.video_backend=pyav --num_workers=8 ${EXTRA:-}

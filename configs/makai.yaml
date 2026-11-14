@@ -18,16 +18,25 @@ hub:
   namespace: CHANGE_ME      # Hugging Face user or org that owns datasets and models
 
 perception:
-  detector: floor           # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
-  classifier: none          # none = every object gets floor.default_category | clip = clothing vs the rest
+  detector: learned         # learned = our own model, finds and classifies in one pass (robust to lighting)
+                            # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
+  learned:                  # detector: learned. Retrain with scripts/train_detector.py
+    weights: models/detector_v1.pt   # v1: black sock + crushed can, PHONE images. Retrain on robot images.
+    confidence: 0.2
+  classifier: uniformity    # only used by detector: floor.
+                            # uniformity = plain and matte is clothing | clip (340 MB download) | none
   device: null              # null = auto (mps on the Macs)
   max_range_m: 2.5
   floor:                    # detector: floor
     color: {hue_max: 25, hue_wrap_min: 170, sat_min: 50, val_min: 45}   # HSV range of the carpet
-    default_category: clothing   # category given to objects when classifier is none
+    default_category: clothing   # category when there is no classifier, or the object is too far to tell
     ignore_top_fraction: 0.0     # blobs starting in this top band of the image are background
     min_size_m: 0.03             # width on the floor: smaller is a speck...
     max_size_m: 0.35             # ...larger is furniture, a bag, a person
+  uniformity:               # classifier: uniformity. Tuned on a black sock and a drink can.
+    max_edge_density: 0.15       # above: printed or detailed surface, so not clothing
+    max_contrast: 40             # above: strong light/dark differences inside the object, so not clothing
+    min_object_px: 45            # smaller in the image: no answer yet, the robot must come closer
   clip:                     # classifier: clip
     model: ViT-B/32
     clothing: ["a photo of a sock", "a photo of a rolled up sock", "a photo of a piece of clothing", "a photo of a piece of fabric"]

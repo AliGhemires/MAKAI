@@ -36,6 +36,7 @@ et la fiche de ton workstream dans [`docs/workstreams/`](docs/workstreams/).
 | Document | Pour quoi |
 |---|---|
 | [PLAN](docs/PLAN.md) | Ce qu'on construit, niveaux de périmètre, calendrier, risques |
+| [CE_SOIR](docs/CE_SOIR.md) | Samedi soir : collecte des démonstrations et entraînement de nuit, pas à pas |
 | [WORKFLOW](docs/WORKFLOW.md) | Branches, merges, partage du robot, points d'équipe |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Modules, contrats, repères, machine à états |
 | [SETUP](docs/SETUP.md) | Installer, démarrer le robot, calibrer |

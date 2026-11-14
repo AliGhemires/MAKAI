@@ -34,6 +34,7 @@ téléopère sans à-coups, enregistre des datasets propres. Tu tiens aussi le p
 - [ ] Mesurer l'autonomie de la batterie
 
 ### Samedi soir et dimanche
+- [ ] **Suivre `docs/CE_SOIR.md`** : quatre portes, puis collecte, puis entraînement de nuit
 - [ ] Collecte v1, v2, corrections (`docs/DATA_COLLECTION.md`)
 - [ ] Tenir le planning du robot (`docs/WORKFLOW.md`, section 3)
 - [ ] Script de démarrage du host sur la Pi (`tmux`, relance automatique)

@@ -54,7 +54,12 @@ class CameraPerception:
 
 def build_detector(p: dict) -> Detector:
     """The object detector chosen by `perception.detector` in the config."""
-    if p.get("detector", "floor") == "open_vocab":
+    if p.get("detector", "floor") == "learned":
+        from makai.perception.detector import LearnedDetector
+
+        learned = p["learned"]
+        return LearnedDetector(learned["weights"], learned["confidence"], p.get("device"))
+    if p["detector"] == "open_vocab":
         from makai.perception.detector import OpenVocabDetector
 
         return OpenVocabDetector(
@@ -64,14 +69,19 @@ def build_detector(p: dict) -> Detector:
     from makai.perception.floor import FloorBlobDetector, FloorColor
 
     f = p["floor"]
+    floor = FloorColor(**f["color"])
     classifier = None
-    if p.get("classifier", "none") == "clip":
+    if p.get("classifier", "none") == "uniformity":
+        from makai.perception.classify import UniformityClassifier
+
+        classifier = UniformityClassifier(floor, **p["uniformity"])
+    elif p["classifier"] == "clip":
         from makai.perception.classify import ClipClassifier
 
         c = p["clip"]
         classifier = ClipClassifier(c["clothing"], c["other"], model=c["model"], device=p.get("device"))
     return FloorBlobDetector(
-        FloorColor(**f["color"]),
+        floor,
         classifier,
         default_category=Category(f["default_category"]),
         ignore_top_fraction=f["ignore_top_fraction"],

@@ -30,7 +30,8 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   `configs/arm_poses.yaml`, `configs/ground_plane.yaml`, `docs/PLAN.md`, ce fichier. Tu peux
   les modifier quand la tâche le demande ; signale-le à la personne, qui l'annonce dans le chat.
 - **Jamais dans git** : données, vidéos, poids de modèles, tokens. Ils vont sur le Hub
-  Hugging Face. Les valeurs propres à un laptop vont dans `configs/local.yaml` (ignoré).
+  Hugging Face. Seule exception : les petits poids du détecteur, `models/detector_*.pt`
+  (quelques Mo). Les valeurs propres à un laptop vont dans `configs/local.yaml` (ignoré).
 - **En fin de session**, proposer de mettre à jour la fiche du workstream : tâches
   cochées, section « État » avec des chiffres, pièges rencontrés. Une décision qui engage
   les autres va dans `docs/DECISIONS.md`.
@@ -52,6 +53,9 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   en degrés et deg/s : la conversion est dans `src/makai/robot/lekiwi.py` uniquement.
 - La distance aux objets vient d'une homographie du sol (`perception/geometry.py`), pas
   d'un modèle de profondeur.
+- Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
+  `models/detector_v1.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
+  Mesures et limites : `docs/workstreams/WS2_perception.md`.
 - LeRobot 0.7.0 a beaucoup changé par rapport aux versions antérieures : **vérifier dans
   le code installé** (`.venv/lib/python3.12/site-packages/lerobot/`) ou avec `--help`
   avant d'écrire une commande ou un import. Points déjà vérifiés : `docs/ARCHITECTURE.md`,
@@ -68,14 +72,20 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Écrit et contrôlé contre l'API de LeRobot 0.7.0, mais jamais exécuté sur le matériel :
-`LeKiwiRobot` dans `src/makai/robot/lekiwi.py` (`make_client` marche, via la téléop),
-`PolicyPick` dans `src/makai/manipulation/skills.py`, `scripts/record.py`, `build_real` dans
-`src/makai/app.py`. Validés sur le robot le sam. 14 : `scripts/teleop.py` (laptop Windows),
-`scripts/lekiwi_host.py` (sur la Pi). Le détecteur
-`OpenVocabDetector` fonctionne sur une image d'exemple, pas encore sur nos objets. Première
-exécution prudente : vitesses réduites, bras dégagé. Retirer un élément de cette liste
-une fois validé.
+Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.py`
+(`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
+`src/makai/app.py`.
+
+Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
+`src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout
+d'une session, vidéos), `scripts/train.sh` (ACT en local), `PolicyPick` et
+`scripts/try_pick.py` (chargement d'un checkpoint, commande à 29 Hz).
+
+Validés sur le robot le sam. 14 : `scripts/teleop.py` (laptop Windows, leader en `COM8`),
+`scripts/lekiwi_host.py` (sur la Pi).
+
+Première exécution réelle prudente : vitesses réduites, bras dégagé. Retirer un élément de
+cette liste une fois validé.
 
 ## Commandes
 
@@ -85,6 +95,8 @@ make check                  # lint + tests (ce que fait la CI)
 make sim                    # mission complète simulée
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
-uv run python scripts/record.py --name pick_sock_v1 --episodes 25
-scripts/train.sh pick_sock_v1 act_pick_v1 --job.target=a10g-large
+uv run python scripts/preflight.py                      # avant d'enregistrer (--dry-run sans robot)
+uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30    # relancer = ajouter
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                   # ou --policy.device=mps
+uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
 ```

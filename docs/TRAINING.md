@@ -10,6 +10,85 @@ SmolVLA ou π0 ne sont à tenter qu'en bonus (niveau L5) : plus longs à entraî
 lents à l'inférence, et leur intérêt principal, les consignes en langage, ne sert pas à
 notre tâche unique.
 
+## Protocole : ce qui fait une bonne policy
+
+Par ordre d'effet sur le résultat. Les deux premiers points pèsent plus que tous les
+hyperparamètres réunis.
+
+1. **Les données.** Un geste unique et franc, la zone de saisie couverte de façon régulière,
+   60 épisodes propres par objet. Voir `docs/DATA_COLLECTION.md`.
+2. **Les mêmes conditions à l'entraînement et en démo** : caméras, pose de départ, cadence de
+   30 Hz, et surtout **le lieu**. La démo de lundi est dans une autre salle : lumière, sol et
+   décor changent. Parades, détaillées dans `docs/CE_SOIR.md` : des épisodes enregistrés dans
+   cette salle dès qu'on y a accès, un tapis de démo qu'on emporte, des conditions variées, un
+   modèle qui ne regarde que la caméra de poignet, et `AUGMENT=1`.
+3. **Choisir le modèle sur le robot, jamais sur la perte.** Un checkpoint tous les 5 000 pas,
+   et le même test pour tous (voir « Évaluer »).
+4. **Entraîner assez longtemps, et raisonner en heures.** ACT continue de progresser bien après
+   que la perte semble plate. Sur GPU, les essais de référence visent 100 000 pas et sont coupés
+   à 8 heures ; on compare ensuite les checkpoints sur le robot. Couper un entraînement ne
+   l'abîme pas : le taux d'apprentissage d'ACT est constant (vérifié dans LeRobot 0.7.0).
+5. **Les hyperparamètres.** Les valeurs par défaut d'ACT sont bonnes ; on ne teste que ce qui
+   répond à une question précise (tableau ci-dessous).
+
+### Les essais à lancer, par priorité
+
+Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on peut dans la liste.
+
+| # | Essai | Commande (après `scripts/train.sh <dataset> <run>` ou les variables du job HPC) | Question |
+|---|---|---|---|
+| 1 | Chaussette, référence | `STEPS=100000` | Est-ce que ça marche, et à partir de combien de pas ? |
+| 2 | Canette, référence | `STEPS=100000` | Idem pour le second objet |
+| 3 | Chaussette, images augmentées (luminosité ×0,5 à ×1,5, contraste, couleurs ; pas de déformation) | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
+| 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
+| 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
+| 6 | Chaussette, caméra de poignet seule | `scripts/wrist_only.sh pick_sock_v1`, puis `STEPS=40000` sur `pick_sock_v1_wrist` | La démo est dans une autre salle : un modèle qui ne voit pas le décor tient-il mieux ? |
+
+Sur des Mac seulement : les essais 1 et 2, un par Mac, `STEPS=15000 SAVE_FREQ=2500` (8 heures
+à 1,9 s par pas). Mesuré le 14 nov. : un batch de 16 ne va pas plus vite qu'un batch de 8, et
+`--policy.use_amp=true` plante sur Mac. On garde donc les réglages par défaut.
+
+Les réglages par défaut d'ACT (taux d'apprentissage 1e-5, batch 8, horizon 100, poids KL 10)
+sont ceux avec lesquels il a été validé sur ce type de bras. Avec une seule nuit, on ne les
+change pas : on change la durée et les données.
+
+Ce qu'on ne fait pas cette nuit, et pourquoi :
+- **changer d'architecture** (Diffusion Policy, SmolVLA, π0) : plus longs à entraîner, trop
+  lents à l'inférence sur un Mac, et un jour ne suffit pas à les fiabiliser. ACT est le bon
+  choix pour un geste court sur ce bras ;
+- **balayer le taux d'apprentissage, la taille du modèle, le poids KL** : gain faible devant
+  la qualité des données, et chaque essai coûte un test sur le robot demain ;
+- **un modèle commun aux deux objets** : possible plus tard (fusion des datasets), mais deux
+  modèles simples sont plus sûrs pour dimanche matin.
+
+### Deux réglages gratuits, à l'essai, sans réentraîner
+
+- **Le checkpoint** : `--policy outputs/train/<run>/checkpoints/020000/pretrained_model`, ou
+  `--revision 020000` pour un modèle sur le Hub.
+- **La réactivité** : ACT prédit 100 actions d'avance (3,3 s) et les joue toutes avant de
+  regarder à nouveau. `--n-action-steps 50` ou `25` le fait regarder plus souvent : plus
+  réactif si l'objet n'est pas exactement où il l'attend, au prix d'une courte pause à chaque
+  nouvelle prédiction (environ 100 ms sur un Mac).
+
+**Choisir la réactivité : trois tests sur le même modèle.** 3,3 s n'est pas un optimum
+calculé : la valeur 100 vient de l'article d'ACT, dont le robot tournait à 50 Hz (2 s).
+À 30 Hz, jouer 100 actions sans regarder couvre à peu près toute la descente vers l'objet :
+une erreur de placement n'est alors jamais rattrapée. On le mesure, sans réentraîner, avec
+10 saisies par test et l'objet aux mêmes endroits pour les trois (grille de « Évaluer ») :
+
+| Test | Commande (après `uv run python scripts/try_pick.py --policy <chemin> --trials 10`) | Joué sans regarder | Attendu |
+|---|---|---|---|
+| A | (rien) | 100 actions, 3,3 s | Geste fluide, ne corrige pas |
+| B | `--n-action-steps 50` | 50 actions, 1,7 s | Corrige plus souvent |
+| C | `--n-action-steps 25` | 25 actions, 0,8 s | Corrige encore plus, petites pauses |
+
+Garder le réglage au meilleur score et noter les trois dans `docs/REGISTRY.md`. Hypothèse,
+non mesurée : B fait mieux que A pour une saisie précise. Réentraîner avec un horizon plus
+court (essai 5) ne vaut ses heures que si B ou C fait nettement mieux que A.
+
+`try_pick.py` affiche le nombre de commandes par seconde réellement atteint : nettement sous
+30, le laptop ne suit pas et le geste sera plus lent que les démonstrations.
+
 ## Où entraîner
 
 | Option | Mise en route | Quand l'utiliser |
@@ -17,7 +96,7 @@ notre tâche unique.
 | **Hugging Face Jobs** | Un argument : `--job.target=a10g-large`. Facturé à la seconde | Par défaut. `hf jobs hardware` liste les GPU et les prix ; vérifier dès samedi que le compte y a accès |
 | GPU loué (RunPod, Lambda, Vast) | Louer une RTX 4090, installer `lerobot[training]`, lancer la même commande | Si HF Jobs n'est pas accessible |
 | Google Colab | Notebook ACT de la doc LeRobot | Dépannage |
-| DTU HPC | `scripts/hpc/train_act.lsf` (modèle à adapter) | Si on a déjà un accès qui marche depuis l'extérieur ; ne pas y passer plus de 30 minutes |
+| DTU HPC | `DATASET=... RUN=... HUB_NAMESPACE=... bsub < scripts/hpc/train_act.lsf` (installation décrite en tête du fichier) | Gratuit. Script non testé : vérifier dès le début de soirée la connexion depuis l'extérieur (VPN) et l'attente dans la file |
 | Mac (MPS) | `POLICY_DEVICE=mps` | Dernier recours : 6 à 14 heures |
 
 Ordres de grandeur donnés par la doc LeRobot pour 50 épisodes (~45 000 images), 5
@@ -31,13 +110,30 @@ sur le Hub, téléchargement, chargement). On ne veut pas découvrir un problèm
 
 ```bash
 # <dataset> et <run> sans le préfixe : le namespace Hub vient de la config
-scripts/train.sh pick_sock_v1 act_pick_v1 --job.target=a10g-large       # sur HF Jobs
-scripts/train.sh pick_sock_v1 act_pick_v1 --policy.device=cuda          # sur une machine avec GPU
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large       # sur HF Jobs
+scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=cuda          # sur une machine avec GPU
+STEPS=15000 SAVE_FREQ=2500 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps   # sur un Mac, la nuit
 ```
 
 Le script appelle `lerobot-train` avec nos conventions : policy ACT, checkpoints envoyés
 sur le Hub au fur et à mesure, suivi Trackio. Variables : `STEPS` (30 000 par défaut),
 `BATCH` (16), `SAVE_FREQ` (5 000).
+
+Mesuré le 14 nov. sur un Mac M5 : **2 secondes par pas** en batch 8 (deux caméras 640×480),
+soit environ 7 heures pour 12 000 pas. Le script lit le dataset sur le laptop s'il y est,
+enveloppe l'entraînement dans `caffeinate` (sans quoi le Mac se met en veille et tout
+s'arrête), et fonctionne sans compte Hugging Face : le modèle reste alors dans `outputs/train/`.
+`AUGMENT=1` ajoute des variations aléatoires de luminosité et de couleur aux images.
+
+**Un dataset et un modèle par objet.** LeRobot 0.7.0 ne sait pas entraîner sur plusieurs
+datasets à la fois (malgré ce que dit l'aide de `--dataset.repo_id`). Pour un modèle commun,
+fusionner d'abord avec `lerobot-edit-dataset --operation.type merge`.
+
+Tester un modèle sur le robot, ou sans robot avec `--dry-run` :
+
+```bash
+uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
+```
 
 ### Combien de pas
 
@@ -58,7 +154,9 @@ données ou deux réglages) : si l'un échoue, on ne perd pas la nuit.
 
 Un checkpoint n'est jugé que par un protocole fixe, toujours le même :
 
-- 10 essais, objet amené par l'approche autonome, positions variées ;
+- 10 essais sur une **grille fixe**, la même pour tous les modèles : 5 positions dans la zone
+  (centre et quatre coins) × 2 orientations de l'objet. Tant que l'approche autonome n'est pas
+  prête, l'objet est posé à la main avec le gabarit ;
 - succès = l'objet est tenu, bras revenu en pose `home` ;
 - noter aussi **comment** ça échoue (rate l'objet, le lâche, n'ose pas descendre...).
 
