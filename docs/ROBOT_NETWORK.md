@@ -117,6 +117,10 @@ Puis `remote_ip` = IP de ton OS ci-dessus et `ssh kiwi@<cette IP>`.
   5 m en vue directe, et **un seul programme connecté au host** (deux clients se partagent
   les images, chacun en reçoit la moitié). Vérifier avec `scripts/net_check.py`, puis
   `scripts/preflight.py` : chaque caméra doit livrer près de 30 nouvelles images par seconde.
+  Une personne entre la Pi et le laptop suffit à faire décrocher un lien sans marge. S'il
+  reste du retard en option A : `--jpeg_quality=75` sur le host (`docs/SETUP.md`, section 4).
+  Débit radio vu par la Pi : `iw dev wlan0 station dump` en option A, `iw dev wlan0 link`
+  sinon (ligne « tx bitrate » ; il en faut plusieurs fois le poids du flux).
 - La Pi a perdu son alimentation plusieurs fois : si elle disparaît, attendre 2 à 3 min
   (elle essaie les réseaux connus), puis débrancher et rebrancher son USB-C.
 - macOS : autoriser le Terminal dans Confidentialité → Surveillance de l'entrée et

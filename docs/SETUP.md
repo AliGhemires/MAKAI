@@ -310,6 +310,12 @@ python ~/makai_host.py --arm_acceleration=50 \
   échoue sur la caméra de poignet, vérifier son câble, puis `ls /dev/video*`.
 - Fermer la page de contrôle (`scripts/drive.py`) avant de lancer le host : ils ne peuvent
   pas tenir le port des moteurs en même temps.
+- **Si les images arrivent en retard** alors que le laptop est près du robot (Wi-Fi saturé) :
+  recopier le script sur la Pi (`scp`, ci-dessus) et ajouter `--jpeg_quality=75` à la
+  commande. Le flux pèse environ 40 % de moins (61 → 37 Mbit/s sur nos photos de sol), pour
+  une image à peine différente à l'œil. À choisir **avant** la collecte et à garder jusqu'à
+  la démo : le modèle doit voir les mêmes images qu'à l'entraînement. Testé sans robot, pas
+  encore lancé sur la Pi (15 nov., 0 h 40).
 - Sans `--host.connection_time_s`, le host s'arrête au bout de 30 secondes. Le lancer dans
   `tmux` (installé sur la Pi le 14 au soir) pour qu'il survive à une coupure SSH.
 - Arrêter le host coupe le couple des moteurs : **tenir le bras**, il tombe.
