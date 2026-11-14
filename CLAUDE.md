@@ -63,8 +63,8 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 Écrit et contrôlé contre l'API de LeRobot 0.7.0, mais jamais exécuté sur le matériel :
 `src/makai/robot/lekiwi.py`, `PolicyPick` dans `src/makai/manipulation/skills.py`,
-`scripts/teleop.py`, `scripts/record.py`, `build_real` dans `src/makai/app.py`. De même,
-`OpenVocabDetector` n'a pas encore produit de détection de bout en bout (poids à télécharger). Première
+`scripts/teleop.py`, `scripts/record.py`, `build_real` dans `src/makai/app.py`. Le détecteur
+`OpenVocabDetector` fonctionne sur une image d'exemple, pas encore sur nos objets. Première
 exécution prudente : vitesses réduites, bras dégagé. Retirer un élément de cette liste
 une fois validé.
 

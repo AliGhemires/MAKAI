@@ -22,6 +22,7 @@ trackio/
 *.pth
 *.safetensors
 *.onnx
+mobileclip*.ts
 *.mcap
 *.rrd
 *.mp4

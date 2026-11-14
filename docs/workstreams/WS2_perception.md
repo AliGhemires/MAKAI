@@ -55,10 +55,14 @@ catégorie est juste à plus de 90 %, la position est juste à ±2 cm en dessous
 
 ## Pièges connus
 
-- Au premier lancement, le détecteur télécharge ses poids : `yoloe-11s-seg.pt` (28 Mo) puis
-  l'encodeur de texte `mobileclip_blt.ts` (plusieurs centaines de Mo). À faire tôt et sur une
-  bonne connexion ; ensuite tout est en cache. Le 14 nov. le chargement a été vérifié jusqu'à
-  ce téléchargement, pas l'inférence complète : c'est ta première tâche.
+- Au premier lancement, le détecteur télécharge ses poids dans le dossier courant :
+  `yoloe-11s-seg.pt` (28 Mo) et l'encodeur de texte `mobileclip_blt.ts` (572 Mo, 12 minutes
+  sur le WiFi de la salle le 14 nov.). Lancer depuis la racine du dépôt pour qu'ils soient
+  retrouvés ensuite (ils sont ignorés par git). Plutôt que de retélécharger, se passer les
+  deux fichiers par AirDrop ou clé USB.
+- Essai du 14 nov. sur un Mac M5 : chargement et détection fonctionnent, environ 53 ms par
+  image (640 px), sur l'image d'exemple d'Ultralytics avec les mots `person` et `bus`. Rien
+  n'est encore mesuré sur nos objets ni depuis la caméra du robot : c'est ta première tâche.
 - La caméra avant a un champ étroit et ne voit ni tout près ni les marqueurs en hauteur :
   lire `docs/ARCHITECTURE.md`, section du compromis de la caméra.
 - Le point utilisé est le bas de la boîte (contact avec le sol). Une boîte qui inclut
