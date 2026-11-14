@@ -2,32 +2,57 @@
 # Train an ACT policy on one of our datasets, with the team's naming conventions.
 #
 #   scripts/train.sh <dataset> <run> [extra lerobot-train flags]
-#   scripts/train.sh pick_sock_v1 act_pick_v1 --job.target=a10g-large   # Hugging Face Jobs
-#   scripts/train.sh pick_sock_v1 act_pick_v1 --policy.device=cuda      # this machine
 #
-# Env: STEPS (30000), BATCH (16), SAVE_FREQ (5000), HUB_NAMESPACE (default: from configs/).
-# See docs/TRAINING.md.
+#   scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large    # cloud: Hugging Face Jobs
+#   scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=cuda       # this machine, NVIDIA GPU
+#   scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps        # this Mac (slow: ~2 s per step)
+#
+# The dataset is read from this laptop if it is here (~/.cache/huggingface/lerobot/...), from
+# the Hub otherwise. Without a Hub namespace (configs/local.yaml) everything stays local.
+# On a Mac the run is wrapped in `caffeinate`: otherwise the laptop sleeps and training stops.
+#
+# Env: STEPS (30000), BATCH (8), SAVE_FREQ (5000), AUGMENT=1 (random brightness / contrast /
+# colour on the images: helps when the lighting changes), HUB_NAMESPACE.
+# See docs/TRAINING.md and docs/CE_SOIR.md.
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
-  sed -n '2,9p' "$0"; exit 1
+  sed -n '2,16p' "$0"; exit 1
 fi
 DATASET="$1"; RUN="$2"; shift 2
 cd "$(dirname "$0")/.."
 NS="${HUB_NAMESPACE:-$(uv run --no-sync python -c "from makai.config import load_config; print(load_config()['hub']['namespace'])")}"
+PUSH=true
 if [ "$NS" = "CHANGE_ME" ]; then
-  echo "Set hub.namespace in configs/local.yaml (or HUB_NAMESPACE) first." >&2; exit 1
+  NS=local; PUSH=false
+  echo "No Hub namespace set: training from the local dataset, the model stays in outputs/train/${RUN}."
 fi
 
-exec uv run --no-sync lerobot-train \
-  --dataset.repo_id="${NS}/makai_${DATASET}" \
-  --policy.type=act \
-  --policy.repo_id="${NS}/makai_${RUN}" \
-  --output_dir="outputs/train/${RUN}" \
-  --job_name="${RUN}" \
-  --steps="${STEPS:-30000}" \
-  --batch_size="${BATCH:-16}" \
-  --save_freq="${SAVE_FREQ:-5000}" \
-  --save_checkpoint_to_hub=true \
-  --trackio.enable=true \
-  "$@"
+ARGS=(
+  --dataset.repo_id="${NS}/makai_${DATASET}"
+  --policy.type=act
+  --output_dir="outputs/train/${RUN}"
+  --job_name="${RUN}"
+  --steps="${STEPS:-30000}"
+  --batch_size="${BATCH:-8}"
+  --save_freq="${SAVE_FREQ:-5000}"
+)
+LOCAL_DATA="${HF_LEROBOT_HOME:-$HOME/.cache/huggingface/lerobot}/${NS}/makai_${DATASET}"
+if [ -d "$LOCAL_DATA" ]; then
+  ARGS+=(--dataset.root="$LOCAL_DATA")
+  echo "Dataset: local copy at $LOCAL_DATA"
+fi
+if [ "$PUSH" = true ]; then
+  ARGS+=(--policy.repo_id="${NS}/makai_${RUN}" --save_checkpoint_to_hub=true --trackio.enable=true)
+else
+  ARGS+=(--policy.push_to_hub=false)
+fi
+if [ "${AUGMENT:-0}" = "1" ]; then
+  ARGS+=(--dataset.image_transforms.enable=true)
+fi
+
+KEEP_AWAKE=()
+if command -v caffeinate >/dev/null 2>&1 && [[ "$*" != *"--job.target"* ]]; then
+  KEEP_AWAKE=(caffeinate -ims)   # keep the Mac awake for as long as training runs
+fi
+exec "${KEEP_AWAKE[@]}" uv run --no-sync lerobot-train "${ARGS[@]}" "$@"

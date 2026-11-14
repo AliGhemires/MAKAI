@@ -17,6 +17,7 @@ On ajoute en bas, on ne réécrit pas l'historique.
 | D10 | sam. 14 | Pas de relecture de code : chacun merge sur `main` dès que `make check` passe | Deux jours de hackathon ; les branches servent à s'organiser, pas à se contrôler | `main` cassé de façon répétée |
 | D11 | sam. 14 | Tri linge / reste par l'aspect de l'objet (uni et mat = linge), décidé de près seulement | 12 photos sur 12 de près, sans modèle ; le classifieur CLIP n'a pas pu être téléchargé | Objets de démo que la règle confond (clairs et unis, tissus à motifs) |
 | D12 | sam. 14 | Détecteur appris sur nos images (auto-étiquetées, ré-éclairées) à la place de la couleur du sol | Images du soir : 96 % contre 15 % ; 23 sur 24 jamais vues, sans fausse alerte | Ne tient pas avec la caméra du robot malgré un réentraînement |
+| D13 | sam. 14 | Objets de la démo : une chaussette noire roulée et une canette écrasée (à confirmer en équipe). Un dataset et un modèle de saisie par objet | Deux objets fixes simplifient la détection et la saisie ; LeRobot 0.7.0 n'entraîne pas sur plusieurs datasets | La canette ne se saisit pas proprement en téléop : chaussette seule |
 
 À décider samedi et à inscrire ici : montage et inclinaison de la caméra avant, pose
 `home`, pose de pré-saisie (`goal_x_m`, `goal_y_m`), liste des objets, bacs, namespace du Hub.

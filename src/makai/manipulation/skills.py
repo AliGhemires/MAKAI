@@ -123,6 +123,7 @@ class PolicyPick:
         from lerobot.policies.utils import make_robot_action
         from lerobot.utils.constants import ACTION, OBS_STR
         from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
+        from lerobot.utils.robot_utils import precise_sleep
 
         client = robot.client  # LeKiwiRobot only
         if self._features is None:
@@ -149,7 +150,8 @@ class PolicyPick:
             )
             # The policy was trained with the base still: never let it drive.
             client.send_action({**make_robot_action(action, self._features), **stop})
-            time.sleep(max(0.0, 1.0 / self.fps - (time.perf_counter() - tick)))
+            # time.sleep overshoots by several ms: at 30 Hz that costs 10 % of the rate.
+            precise_sleep(max(0.0, 1.0 / self.fps - (time.perf_counter() - tick)))
 
         gripper = robot.get_observation().arm.get(GRIPPER)
         if self.after:
