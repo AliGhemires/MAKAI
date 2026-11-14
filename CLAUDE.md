@@ -63,6 +63,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Inférence et déploiement : `lerobot-rollout` (stratégies `base`, `dagger`...).
   Entraînement cloud : `lerobot-train --job.target=<gpu>`.
 - Le host LeKiwi s'arrête après 30 s sans `--host.connection_time_s`.
+- **Se connecter au robot** : `docs/ROBOT_NETWORK.md` (choix du réseau selon l'OS et la
+  préférence : iPhone, option A ou B, commandes pas à pas), puis `docs/SETUP.md` section 4
+  pour le host et la téléop ; état dans `docs/workstreams/WS1_robot_data.md`. Mots de
+  passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
+  `scripts/net_check.py` avant d'accuser le code.
 - Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
   qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
   installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
@@ -72,13 +77,17 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Jamais exécuté sur le matériel : `src/makai/robot/lekiwi.py`, `scripts/teleop.py`,
-`scripts/preflight.py`, `build_real` dans `src/makai/app.py`.
+Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.py`
+(`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
+`src/makai/app.py`.
 
 Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
 `src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout
 d'une session, vidéos), `scripts/train.sh` (ACT en local), `PolicyPick` et
 `scripts/try_pick.py` (chargement d'un checkpoint, commande à 29 Hz).
+
+Validés sur le robot le sam. 14 : `scripts/teleop.py` (laptop Windows, leader en `COM8`),
+`scripts/lekiwi_host.py` (sur la Pi).
 
 Première exécution réelle prudente : vitesses réduites, bras dégagé. Retirer un élément de
 cette liste une fois validé.

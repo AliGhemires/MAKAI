@@ -70,6 +70,22 @@ Ce qu'on ne fait pas cette nuit, et pourquoi :
   réactif si l'objet n'est pas exactement où il l'attend, au prix d'une courte pause à chaque
   nouvelle prédiction (environ 100 ms sur un Mac).
 
+**Choisir la réactivité : trois tests sur le même modèle.** 3,3 s n'est pas un optimum
+calculé : la valeur 100 vient de l'article d'ACT, dont le robot tournait à 50 Hz (2 s).
+À 30 Hz, jouer 100 actions sans regarder couvre à peu près toute la descente vers l'objet :
+une erreur de placement n'est alors jamais rattrapée. On le mesure, sans réentraîner, avec
+10 saisies par test et l'objet aux mêmes endroits pour les trois (grille de « Évaluer ») :
+
+| Test | Commande (après `uv run python scripts/try_pick.py --policy <chemin> --trials 10`) | Joué sans regarder | Attendu |
+|---|---|---|---|
+| A | (rien) | 100 actions, 3,3 s | Geste fluide, ne corrige pas |
+| B | `--n-action-steps 50` | 50 actions, 1,7 s | Corrige plus souvent |
+| C | `--n-action-steps 25` | 25 actions, 0,8 s | Corrige encore plus, petites pauses |
+
+Garder le réglage au meilleur score et noter les trois dans `docs/REGISTRY.md`. Hypothèse,
+non mesurée : B fait mieux que A pour une saisie précise. Réentraîner avec un horizon plus
+court (essai 5) ne vaut ses heures que si B ou C fait nettement mieux que A.
+
 `try_pick.py` affiche le nombre de commandes par seconde réellement atteint : nettement sous
 30, le laptop ne suit pas et le geste sera plus lent que les démonstrations.
 
