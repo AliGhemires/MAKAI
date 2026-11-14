@@ -169,35 +169,52 @@ loué va environ 10 fois plus vite.
 
 ### Plan A · Sur le HPC de DTU
 
-Testé de bout en bout le 14 nov. Trois commandes par dataset.
+Testé de bout en bout le 14 nov., y compris les six essais lancés d'un coup. Une seule personne
+a accès au cluster : c'est son laptop qui envoie les données et lance les entraînements.
 
-**1. Depuis le laptop qui a enregistré : envoyer le dataset** (et sa copie « poignet seul »)
+**1. Celui qui a enregistré : envoyer les datasets au laptop qui a l'accès**
 
-```bash
-scripts/hpc/push_dataset.sh pick_sock_v1
-scripts/hpc/push_dataset.sh pick_can_v1
-scripts/wrist_only.sh pick_sock_v1 && scripts/hpc/push_dataset.sh pick_sock_v1_wrist
-```
-
-**2. Sur le cluster : lancer les six essais**, dans l'ordre de priorité
+À la fin d'une session, `record.py` affiche le dossier du dataset (`local copy: ...`). Le zipper
+et le transmettre par AirDrop ou clé USB (100 à 300 Mo par objet) :
 
 ```bash
-ssh dtu
-cd ~/MAKAI
-scripts/hpc/submit.sh pick_sock_v1 act_sock_v1 STEPS=100000                       # 1
-scripts/hpc/submit.sh pick_can_v1  act_can_v1  STEPS=100000                       # 2
-scripts/hpc/submit.sh pick_sock_v1 act_sock_v1_aug STEPS=40000 AUGMENT=1          # 3
-scripts/hpc/submit.sh pick_can_v1  act_can_v1_aug  STEPS=40000 AUGMENT=1          # 4
-scripts/hpc/submit.sh pick_sock_v1 act_sock_v1_c50 STEPS=40000 EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50"   # 5
-scripts/hpc/submit.sh pick_sock_v1_wrist act_sock_v1_wrist STEPS=40000            # 6
-bstat                 # en attente (PEND) ou en cours (RUN) ?
-bpeek <numéro>        # voir la sortie d'un job en direct
+# Mac ou Linux
+cd ~/.cache/huggingface/lerobot/local && zip -r ~/Desktop/makai_pick_sock_v1.zip makai_pick_sock_v1
 ```
 
-Si le dépôt a changé depuis l'installation, le recopier d'abord sur le cluster (commande en tête
-de `scripts/hpc/submit.sh`).
+```powershell
+# Windows (PowerShell)
+Compress-Archive -Path $HOME\.cache\huggingface\lerobot\local\makai_pick_sock_v1 -DestinationPath $HOME\Desktop\makai_pick_sock_v1.zip
+```
 
-**3. Dimanche matin, depuis le laptop : rapatrier un modèle**
+Pareil pour `makai_pick_can_v1`. Les noms comptent : `pick_sock_v1` et `pick_can_v1`.
+
+**2. Sur le laptop qui a l'accès : tout lancer en une commande**
+
+```bash
+ssh -o ControlMaster=yes -o ControlPath=~/.ssh/cm-dtu -o ControlPersist=8h -fN dtu    # mot de passe, une fois
+mkdir -p ~/.cache/huggingface/lerobot/local
+unzip -o ~/Downloads/makai_pick_sock_v1.zip -d ~/.cache/huggingface/lerobot/local/
+unzip -o ~/Downloads/makai_pick_can_v1.zip  -d ~/.cache/huggingface/lerobot/local/
+scripts/hpc/tonight.sh
+```
+
+`tonight.sh` envoie les datasets au cluster, crée la copie « poignet seul », met le code à jour
+là-bas et soumet les six essais dans l'ordre de priorité. Un dataset absent est sauté avec ses
+essais : avec la chaussette seule, il lance les quatre essais de la chaussette. On peut le
+relancer plus tard quand la canette arrive (les essais déjà lancés seraient soumis une seconde
+fois : dans ce cas, lancer plutôt les essais de la canette à la main, voir ci-dessous).
+
+Suivre les jobs : `ssh dtu bstat` (PEND = attend un GPU, RUN = s'entraîne), `ssh dtu bpeek <numéro>`.
+
+Pour lancer un essai à la main, sur le cluster (`ssh dtu`, puis `cd ~/MAKAI`) :
+
+```bash
+scripts/hpc/submit.sh pick_can_v1 act_can_v1 STEPS=100000
+scripts/hpc/submit.sh pick_can_v1 act_can_v1_aug STEPS=40000 AUGMENT=1
+```
+
+**3. Dimanche matin, depuis le même laptop : rapatrier un modèle**
 
 ```bash
 scripts/hpc/fetch_model.sh act_sock_v1 list       # quels checkpoints existent
@@ -205,7 +222,8 @@ scripts/hpc/fetch_model.sh act_sock_v1            # le dernier (200 Mo, moins d'
 scripts/hpc/fetch_model.sh act_sock_v1 020000     # ou un pas précis
 ```
 
-La commande affiche ensuite la ligne `try_pick.py` à lancer.
+La commande affiche ensuite la ligne `try_pick.py` à lancer. Si l'essai se fait sur un autre
+laptop, lui transmettre le dossier `outputs/train/<run>/checkpoints/<pas>/pretrained_model`.
 
 **Le budget est de 8 heures, pas un nombre de pas.** À 0,21 s par pas (mesuré sur des images
 de synthèse ; compter un peu plus avec de vraies images), 100 000 pas prennent 6 à 8 heures et
@@ -213,7 +231,8 @@ de synthèse ; compter un peu plus avec de vraies images), 100 000 pas prennent 
 5 000 pas, donc un entraînement coupé est simplement plus court.
 
 À savoir sur ce cluster :
-- la file `gpuv100` démarre en quelques secondes ce soir ; `gpul40s` a mis 15 minutes, et
+- la file `gpuv100` démarre vite ce soir : 12 secondes pour un job seul, quatre minutes pour
+  que six jobs soumis ensemble aient tous démarré ; `gpul40s` a mis 15 minutes, et
   `gpua100`, `gpua10`, `gpua40` n'avaient pas démarré après 20 minutes. Rester sur `gpuv100` ;
 - si un job reste en attente (`PEND`) plus de 20 minutes, le nombre de GPU par utilisateur est
   sans doute atteint : les suivants partiront quand les premiers finiront ;
