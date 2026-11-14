@@ -2,7 +2,8 @@
 
     uv run python scripts/eval_lighting.py data/test_images/*.jpg
 
-Each photo is re-lit artificially (darker, brighter, warmer, cooler, washed out, noisy...) and
+Each photo is re-lit artificially (darker, brighter, warmer, cooler, washed out, noisy, with
+hard shadows: see `makai.perception.lighting`) and
 the detector must still find the same object, with the same category, and report nothing new.
 The reference is what the detector finds on the untouched photo, so check those by eye first
 (`scripts/detect.py`).
@@ -18,47 +19,10 @@ import argparse
 import sys
 
 import cv2
-import numpy as np
 
 from makai.config import load_config
+from makai.perception.lighting import LIGHTINGS
 from makai.perception.pipeline import build_detector
-
-
-def _scale(image: np.ndarray, r: float = 1.0, g: float = 1.0, b: float = 1.0) -> np.ndarray:
-    return np.clip(image.astype(np.float32) * np.array([r, g, b], dtype=np.float32), 0, 255).astype(np.uint8)
-
-
-def _noise(image: np.ndarray, sigma: float, seed: int = 0) -> np.ndarray:
-    noise = np.random.default_rng(seed).normal(0.0, sigma, image.shape)
-    return np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-
-
-def _gamma(image: np.ndarray, gamma: float) -> np.ndarray:
-    return (255.0 * (image.astype(np.float32) / 255.0) ** gamma).astype(np.uint8)
-
-
-def _desaturate(image: np.ndarray, keep: float) -> np.ndarray:
-    gray = image.astype(np.float32).mean(axis=2, keepdims=True)
-    return np.clip(gray + keep * (image.astype(np.float32) - gray), 0, 255).astype(np.uint8)
-
-
-LIGHTINGS = {
-    "very dark (x0.3)": lambda im: _scale(im, 0.3, 0.3, 0.3),
-    "dark (x0.5)": lambda im: _scale(im, 0.5, 0.5, 0.5),
-    "dim (x0.75)": lambda im: _scale(im, 0.75, 0.75, 0.75),
-    "bright (x1.3)": lambda im: _scale(im, 1.3, 1.3, 1.3),
-    "very bright (x1.6)": lambda im: _scale(im, 1.6, 1.6, 1.6),
-    "gamma 0.6": lambda im: _gamma(im, 0.6),
-    "gamma 1.6": lambda im: _gamma(im, 1.6),
-    "warm light": lambda im: _scale(im, 1.2, 1.0, 0.7),
-    "cool light": lambda im: _scale(im, 0.8, 1.0, 1.25),
-    "green tint": lambda im: _scale(im, 0.95, 1.12, 0.95),
-    "washed out": lambda im: _desaturate(im, 0.5),
-    "low contrast": lambda im: np.clip(0.6 * (im.astype(np.float32) - 128) + 128, 0, 255).astype(np.uint8),
-    "dark + noise": lambda im: _noise(_scale(im, 0.35, 0.35, 0.35), 8.0),
-    "evening (dark, warm, noise)": lambda im: _noise(_scale(im, 0.6, 0.5, 0.35), 6.0),
-    "cold lamp (dark, cool, noise)": lambda im: _noise(_scale(im, 0.45, 0.55, 0.7), 6.0),
-}
 
 
 def iou(a: tuple, b: tuple) -> float:
