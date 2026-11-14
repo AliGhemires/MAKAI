@@ -11,6 +11,11 @@ What it does, in order:
      "Ready" -> place the object -> move -> come back to rest and hold still one second);
   3. zips the whole dataset onto your Desktop, ready to hand to whoever launches the training.
 
+Two ways to record, the count of saved episodes is always on screen:
+  automatic (default): an episode starts when the leader moves and is saved when it is back
+      on its rest (RIGHT ARROW saves at once, LEFT ARROW drops it);
+  --manual: each episode runs until the RIGHT ARROW, then a fixed time to reset the scene.
+
 Anything else on the line goes to record.py, for example:  --home-tol 10   or   --manual
 `--dry-run` rehearses everything with a fake robot and leader.
 """
@@ -74,6 +79,7 @@ def main() -> None:
 
     print(f"\n== 2/3 recording {episodes} episodes of '{args.object}' into {name} ==")
     print("A Rerun window opens with the two cameras: a live view first, the recording starts after Enter.")
+    print("Each line below starts with [saved/asked]; the Rerun window shows the same in its 'status' panel.")
     record = [sys.executable, str(SCRIPTS / "record.py"), "--name", name, "--object", args.object]
     code = subprocess.run([*record, "--episodes", str(episodes), *dry, *for_record]).returncode
 

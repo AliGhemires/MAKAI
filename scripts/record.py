@@ -21,6 +21,10 @@ If "Ready" never comes, the arm does not settle within the tolerance: raise --ho
 use --manual (RIGHT ARROW ends each episode, LEFT ARROW redoes it, fixed reset time).
 Use the arrows, not the letters: r, f and q also drive the base.
 
+Where the session stands is always on screen: every line in this terminal starts with
+[saved in this session / asked], and the Rerun window has a "status" panel next to the cameras
+(WAIT, READY or RECORDING, the count, the size of the dataset). It is also spoken.
+
     uv run python scripts/record.py --name rehearsal --object sock --episodes 2 --dry-run
 
 --dry-run rehearses the whole session with a fake robot and leader (no hardware, nothing
@@ -43,6 +47,7 @@ from pathlib import Path
 
 import numpy as np
 from lerobot.datasets import LeRobotDataset
+from lerobot.lerobot_types import TransitionKey
 from lerobot.processor import make_default_processors
 from lerobot.scripts.lerobot_record import record_loop
 from lerobot.teleoperators.keyboard import KeyboardTeleop, KeyboardTeleopConfig
@@ -62,8 +67,28 @@ STOP = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
 ARM = [key for key in ARM_KEYS if "gripper" not in key]
 
 
+STATUS = {
+    "live": "LIVE VIEW: nothing is recorded yet.\nPut the leader on its rest, hands off, then press Enter.",
+    "reset": "WAIT: put the leader back on its rest and let go.",
+    "armed": "READY: place the object, then move the leader. Recording starts by itself.",
+    "recording": "RECORDING: bring the leader back to its rest and hold still to save.",
+}
+
+
+def status_panel(state: str, recorded: int, asked: int, total: int) -> dict:
+    """Where the session stands, as a text panel in Rerun next to the cameras.
+
+    LeRobot's viewer lays out a text panel for a policy's predicted text: we pass ours that way.
+    """
+    text = (
+        f"{STATUS[state]}\n\nSaved in this session: {recorded} of {asked}\nEpisodes in the dataset: {total}"
+    )
+    return {TransitionKey.PREDICTION: {"language": {"status": [text]}}}
+
+
 def hands_free_session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad):
     """Record episodes that start and end by themselves (see the module docstring)."""
+    total = dataset.meta.total_episodes
 
     def tick():
         observation = robot.get_observation()
@@ -95,7 +120,8 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
         start = time.perf_counter()
         observation, action, _, _ = tick()
         if display:
-            log_visualization_data("rerun", observation=observation, action=action)
+            panel = status_panel("live", 0, args.episodes, total)
+            log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
     events["exit_early"] = False
 
@@ -135,18 +161,19 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
             events["rerecord_episode"] = False
             if recorded > 0 and start - saved_at < 20.0:
                 on_bad()
-                say("Marked as bad")
+                say("Marked as bad", "the last episode: it is listed at the end, to remove before training")
                 saved_at = -1e9
 
         if state == "reset":
             if at_home and still_for(0.5):
                 state = "armed"
                 preroll.clear()
-                say("Ready")
+                say("Ready", "place the object, then move the leader: recording starts by itself")
         elif state == "armed":
             preroll.append(frame)
             if float(np.abs(hand - home_hand).max()) > args.leave_tol:
                 state, started = "recording", start
+                say("Recording", "back to the rest and hold still = saved | RIGHT ARROW = save now | LEFT ARROW = drop", speak=False)  # fmt: skip
                 for earlier in preroll:  # ends with the current frame
                     dataset.add_frame(earlier)
         else:
@@ -155,7 +182,10 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
             back_home = at_home and still_for(args.end_still)
             dropped = events["rerecord_episode"]
             if dropped or (back_home and elapsed < args.min_episode) or elapsed > args.episode_time:
-                say("Dropped" if dropped else "Too long" if elapsed > args.episode_time else "False start")
+                reason = (
+                    "Dropped" if dropped else "Too long" if elapsed > args.episode_time else "False start"
+                )
+                say(reason, "not saved: put the leader back on its rest")
                 events["rerecord_episode"] = False
                 dataset.clear_episode_buffer()
                 state = "reset"
@@ -165,12 +195,14 @@ def hands_free_session(robot, leader, dataset, events, args, fps, task, display,
                 recorded += 1
                 saved_at = time.perf_counter()
                 on_saved(elapsed)
-                say(f"{recorded}")
+                total = dataset.meta.total_episodes
+                say("Saved", f"{elapsed:.1f} s. The dataset now holds {total} episodes", speak=f"{recorded}")
                 recent.clear()
                 state = "reset"
 
         if display:
-            log_visualization_data("rerun", observation=observation, action=action)
+            panel = status_panel(state, recorded, args.episodes, total)
+            log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
 
 
@@ -178,15 +210,15 @@ def manual_session(loop, dataset, events, args, say, on_saved):
     """LeRobot's own loop: the RIGHT ARROW ends each episode, then a fixed reset time."""
     recorded = 0
     while recorded < args.episodes and not events["stop_recording"]:
-        say(f"Episode {recorded + 1} of {args.episodes}")
+        say(f"Episode {recorded + 1} of {args.episodes}", "recording | RIGHT ARROW = stop and save | LEFT ARROW = redo | ESC = end")  # fmt: skip
         record_loop(**loop, dataset=dataset, control_time_s=args.episode_time)
 
         if not events["stop_recording"] and (recorded < args.episodes - 1 or events["rerecord_episode"]):
-            say("Reset")
+            say("Reset", f"{args.reset_time:.0f} s to put the scene back")
             record_loop(**loop, control_time_s=args.reset_time)
 
         if events["rerecord_episode"]:
-            say("Again")
+            say("Again", "not saved")
             events["rerecord_episode"] = False
             events["exit_early"] = False
             dataset.clear_episode_buffer()
@@ -195,6 +227,7 @@ def manual_session(loop, dataset, events, args, say, on_saved):
         dataset.save_episode()
         recorded += 1
         on_saved(None)
+        say("Saved", f"the dataset now holds {dataset.meta.total_episodes} episodes", speak=False)
 
 
 def main() -> None:
@@ -302,8 +335,14 @@ def main() -> None:
     bad: list[int] = []
     started = time.time()
 
-    def say(text: str) -> None:
-        log_say(text, play_sounds=not args.dry_run)
+    def say(text: str, hint: str = "", speak: str | bool = True) -> None:
+        """Show and speak what the recorder is doing: the voice alone is easy to miss.
+
+        The line starts with the number of episodes saved in this session."""
+        saved = dataset.meta.total_episodes - first_episode
+        print(f"[{saved:>2}/{args.episodes}] {text.upper():<14} {hint}", flush=True)
+        if speak:
+            log_say(text if speak is True else speak, play_sounds=not args.dry_run)
 
     def log_episode(note: str) -> None:  # which episode holds which object
         with log_path.open("a", newline="") as f:
