@@ -51,6 +51,21 @@ uv run python scripts/eval_frames.py --clothing ... --trash ...
 Environ 10 minutes sur un Mac. Mettre ensuite le chemin des poids dans
 `perception.learned.weights` et commiter le fichier.
 
+Temps par image, mesuré le 14 nov. sur un Mac M5, image 640×480 :
+
+| Étape | Temps |
+|---|---|
+| Détecteur appris, GPU du Mac (`mps`) | 10 ms (pire cas 13 ms) |
+| Détecteur appris, processeur seul | 32 ms |
+| Marqueurs des stations | 6,5 ms |
+| Décodage de l'image reçue de la Pi | 1 ms |
+
+Soit environ 18 ms par image sur 33 disponibles à 30 images par seconde. Le premier appel
+coûtait 1,3 s : le détecteur s'échauffe maintenant au démarrage. Réduire la taille de l'image
+ne fait rien gagner sur le GPU. Sur un laptop sans GPU la boucle descend vers 25 images par
+seconde : **le laptop qui pilote la démo doit avoir un GPU**. Non mesuré, faute de robot : le
+réseau entre la Pi et le laptop, et la policy du bras.
+
 Limites :
 - **entraîné sur des images de téléphone** : à réentraîner avec la caméra du robot dès qu'elle
   est montée, c'est une autre optique et une autre résolution ;

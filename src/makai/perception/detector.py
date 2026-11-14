@@ -87,12 +87,27 @@ class LearnedDetector:
         if not path.exists():
             raise FileNotFoundError(f"detector weights not found: {path} (git pull, or train them)")
         self.model = YOLO(str(path))
-        self.confidence, self.device, self.max_box_fraction = confidence, device, max_box_fraction
+        self.confidence, self.max_box_fraction = confidence, max_box_fraction
+        self.device = device or best_device()
+        # The first call compiles the model for the device (over a second on a Mac GPU). Pay
+        # that now, not on the first camera frame while the robot is waiting for a command.
+        for _ in range(2):
+            self.model.predict(np.zeros((480, 640, 3), np.uint8), device=self.device, verbose=False)
 
     def detect(self, image_rgb: np.ndarray) -> list[Detection]:
         return _predict(
             self.model, image_rgb, self.confidence, self.device, self.max_box_fraction, _category_named
         )
+
+
+def best_device() -> str:
+    """Fastest device on this machine. Measured 14 Nov on a Mac: 10 ms per image on the GPU
+    (mps), 32 ms on the CPU. The laptop driving the demo should have a GPU."""
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
 def _category_named(label: str) -> Category:

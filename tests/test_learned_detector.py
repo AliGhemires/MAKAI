@@ -26,6 +26,7 @@ def detector():
     assert perception["detector"] == "learned"
     built = build_detector(perception)
     assert isinstance(built, LearnedDetector)
+    assert built.device in ("cuda", "mps", "cpu")
     return built
 
 
