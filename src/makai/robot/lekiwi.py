@@ -94,10 +94,18 @@ class BaseGeometry:
 
     def wheel_raw_to_body(self, raw: Mapping[str, float]) -> dict[str, float]:
         """Present_Velocity of each wheel -> base velocity in LeRobot units, keyed like the host's."""
-        steps = np.array([raw[name] for name in self.names], dtype=float)
-        rim_m_s = np.radians(steps / STEPS_PER_DEG) * self.wheel_radius_m
-        x, y, theta = np.linalg.solve(self._matrix(), rim_m_s)
-        return {"x.vel": float(x), "y.vel": float(y), "theta.vel": math.degrees(theta)}
+        x, y, theta = self.wheel_steps_to_body(raw)
+        return {"x.vel": x, "y.vel": y, "theta.vel": math.degrees(theta)}
+
+    def wheel_steps_to_body(self, steps: Mapping[str, float]) -> tuple[float, float, float]:
+        """Encoder steps of each wheel -> base motion (m, m, rad) in the base frame.
+
+        Steps per second give a velocity, a step difference gives a displacement.
+        """
+        wheel = np.array([steps[name] for name in self.names], dtype=float)
+        rim_m = np.radians(wheel / STEPS_PER_DEG) * self.wheel_radius_m
+        x, y, theta = np.linalg.solve(self._matrix(), rim_m)
+        return float(x), float(y), float(theta)
 
 
 def to_lerobot_base(velocity: BaseVelocity) -> dict[str, float]:
@@ -203,6 +211,11 @@ class WiredBase:
             raw = self.bus.sync_read("Present_Velocity", normalize=False)
         return self.geometry.wheel_raw_to_body(raw)
 
+    def read_positions(self) -> dict[str, int]:
+        """Encoder position of each wheel, 0 to 4095 steps per turn (it wraps around)."""
+        with self._lock:
+            return self.bus.sync_read("Present_Position", normalize=False)
+
     def read_voltage(self) -> float:
         """Battery voltage seen by the wheel servos, in volts."""
         with self._lock:
@@ -275,4 +288,9 @@ class LeKiwiRobot:
     def battery_voltage(self) -> float | None:
         """Battery voltage in volts, read from the wheel servos. None through the host."""
         read = getattr(self.client, "read_voltage", None)
+        return read() if read is not None else None
+
+    def wheel_positions(self) -> dict[str, int] | None:
+        """Wheel encoder positions (wired mode). None through the host, which does not send them."""
+        read = getattr(self.client, "read_positions", None)
         return read() if read is not None else None

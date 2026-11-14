@@ -130,8 +130,55 @@
   .overlay-card p { margin: 0 0 18px; color: var(--muted); }
   .resume { width: 100%; height: 52px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font-size: 16px; font-weight: 700; }
 
+  /* Tabs and the Measure panel */
+  .tabs { align-self: flex-start; }
+  .center.measuring .map { flex: 0 0 34%; }
+  .measure { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; outline: none; }
+  .m-row { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+  .m-label { width: 62px; flex-shrink: 0; font-size: 12px; color: var(--muted); }
+  .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips-row button { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+  .chips-row button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .m-input { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .measure input[type=number] { width: 86px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); color: var(--text); font: inherit; user-select: text; -webkit-user-select: text; }
+  .m-hint { font-size: 12px; color: var(--muted); }
+  .go { width: 100%; height: 46px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
+  .go:disabled { opacity: .45; cursor: default; }
+  .m-progress-text { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 13px; }
+  .m-bar { height: 8px; border-radius: 6px; background: var(--sunken); border: 1px solid var(--line); overflow: hidden; }
+  .m-bar div { height: 100%; width: 0; background: var(--accent); }
+  .m-msg { font-size: 13px; color: var(--danger); }
+  .m-result { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken); }
+  .m-result-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+  .m-status { padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; font-weight: 600; }
+  .m-status.ok { color: var(--ok); } .m-status.bad { color: var(--warn); }
+  .m-result-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+  .m-result-grid span { color: var(--muted); }
+  .m-tape { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .btn { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; }
+  .btn.ghost-btn { background: transparent; color: var(--accent); }
+  .btn.danger-btn { background: transparent; color: var(--danger); border-color: var(--danger); }
+  .m-tip { font-size: 12px; color: var(--muted); }
+  .m-stats { display: flex; flex-direction: column; gap: 8px; }
+  .m-stat { padding: 6px 10px; border-left: 3px solid var(--accent); font-size: 13px; line-height: 1.5; }
+  .m-stat .sub { color: var(--muted); }
+  .m-stat code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 1px 5px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line); user-select: text; -webkit-user-select: text; }
+  .m-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .m-table th { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; text-align: right; }
+  .m-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+  .m-table th:nth-child(-n+2), .m-table td:nth-child(-n+2) { text-align: left; }
+  .m-table tbody tr { cursor: pointer; }
+  .m-table tr.sel td { background: var(--accent-soft); }
+  .m-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+  .m-actions a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .locked { opacity: .4; pointer-events: none; }
+
   /* Phone, portrait: map and numbers on top, one stick under each thumb */
   @media (max-width: 760px) {
+    .center.measuring .map { flex-basis: 30%; }
+    body.measuring .pad { display: none; } /* Drive tab to reposition the robot */
+    body.measuring main { grid-template-rows: minmax(0, 1fr); grid-template-areas: "center center"; }
+    .m-label { width: 100%; }
     header { padding: 8px 12px; }
     .chip.mode { display: none; }
     main { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "center center" "move turn"; gap: 10px; padding: 10px 12px; }
@@ -146,8 +193,10 @@
   @media (max-height: 520px) and (min-width: 761px) {
     header { padding: 6px 12px; }
     main { padding: 8px 12px; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); }
-    .telemetry, .hints, .speed-info, .map-legend, .chip.mode, .pad .label { display: none; }
+    .telemetry, .hints, .speed-info, .map-legend, .chip.mode, .pad .label, .center.measuring .map { display: none; }
     .stick { --size: min(230px, 46vh, 28vw); }
+    body.measuring .pad { display: none; }
+    body.measuring main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
     .slider, .turn-hint { --w: min(230px, 28vw); width: var(--w); }
     footer { padding: 6px 12px; }
     .stop { height: 48px; }
@@ -180,7 +229,10 @@
     <div class="label">Move</div>
   </section>
 
-  <section class="center">
+  <section class="center" id="center">
+    <div class="seg tabs" id="tabs" role="tablist">
+      <button data-tab="drive" class="on" role="tab">Drive</button><button data-tab="measure" role="tab">Measure</button>
+    </div>
     <div class="card map">
       <canvas id="map" aria-label="Path of the robot, from wheel odometry"></canvas>
       <div class="map-legend">
@@ -206,6 +258,63 @@
         <span class="name">Left</span><div class="bar" id="wheel-left"><div class="fill"></div></div>
         <span class="name">Back</span><div class="bar" id="wheel-back"><div class="fill"></div></div>
         <span class="name">Right</span><div class="bar" id="wheel-right"><div class="fill"></div></div>
+      </div>
+    </div>
+    <div class="card measure" id="measure" hidden>
+      <div class="m-row">
+        <span class="m-label">Move</span>
+        <div class="chips-row" id="m-kind">
+          <button data-axis="x" data-sign="1" class="on">↑ Forward</button>
+          <button data-axis="x" data-sign="-1">↓ Back</button>
+          <button data-axis="y" data-sign="1">← Left</button>
+          <button data-axis="y" data-sign="-1">→ Right</button>
+          <button data-axis="theta" data-sign="1">↺ Turn left</button>
+          <button data-axis="theta" data-sign="-1">↻ Turn right</button>
+        </div>
+      </div>
+      <div class="m-row">
+        <span class="m-label" id="m-amount-label">Distance</span>
+        <div class="chips-row" id="m-presets"></div>
+        <label class="m-input"><input id="m-amount" type="number" inputmode="decimal" min="0.1" step="0.1" value="10"><span id="m-unit">cm</span></label>
+      </div>
+      <div class="m-row">
+        <span class="m-label">Speed</span>
+        <div class="chips-row" id="m-speed">
+          <button data-level="0">Slow</button><button data-level="1" class="on">Medium</button><button data-level="2">Fast</button>
+        </div>
+        <span class="m-hint num" id="m-speed-text"></span>
+      </div>
+      <div>
+        <button class="go" id="m-go">Go</button>
+        <div id="m-progress" hidden>
+          <div class="m-progress-text num"><span id="m-progress-text"></span><button class="btn ghost-btn" id="m-cancel">Cancel</button></div>
+          <div class="m-bar"><div id="m-bar-fill"></div></div>
+        </div>
+      </div>
+      <div class="m-msg" id="m-msg" hidden></div>
+      <div class="m-result" id="m-result" hidden>
+        <div class="m-result-head"><b id="m-r-title"></b><span class="m-status" id="m-r-status"></span></div>
+        <div class="m-result-grid num">
+          <span>Asked</span><b id="m-r-target"></b>
+          <span>Wheels say</span><b id="m-r-wheels"></b>
+          <span>Drift</span><b id="m-r-drift"></b>
+        </div>
+        <div class="m-tape">
+          <label for="m-tape" id="m-tape-label">Tape measure says</label>
+          <input id="m-tape" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 9.7">
+          <span id="m-tape-unit">cm</span>
+          <button class="btn" id="m-save">Save</button>
+        </div>
+        <div class="m-tip" id="m-tip"></div>
+      </div>
+      <div class="m-stats" id="m-stats"></div>
+      <table class="m-table num" id="m-table" hidden>
+        <thead><tr><th>#</th><th>Move</th><th>Asked</th><th>Wheels</th><th>Tape</th><th>Error</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="m-actions">
+        <a href="/api/trials.csv" download id="m-csv">Download CSV</a>
+        <button class="btn danger-btn" id="m-clear">Clear all</button>
       </div>
     </div>
   </section>
@@ -333,7 +442,13 @@ async function request(method, path, body, timeoutMs = 1500) {
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try { message = (await res.json()).error || message; } catch (_) { /* not JSON */ }
+      const err = new Error(message);
+      err.refused = true; // the robot answered: not a connection problem
+      throw err;
+    }
     return await res.json();
   } finally { clearTimeout(timer); }
 }
@@ -463,6 +578,170 @@ function render(st) {
     if (trail.length > 4000) trail.shift();
   }
   $("#pose-text").textContent = `x ${p.x.toFixed(2)} m · y ${p.y.toFixed(2)} m · ${Math.round(p.yaw_deg)}°`;
+  renderMove(st);
+}
+
+// ---- Measure: precise moves checked with a tape --------------------------------------------
+const LIN_SPEEDS = [0.05, 0.1, 0.2];   // m/s
+const ANG_SPEEDS = [20, 45, 90];       // deg/s
+const PRESETS = { cm: [5, 10, 20, 50, 100], deg: [15, 45, 90, 180, 360] };
+const M = { axis: "x", sign: 1, amount: { x: 10, y: 10, theta: 90 }, level: 1, trials: null, version: -1,
+  loading: false, selected: null, shownId: null, lastSeen: null };
+const isTurn = () => M.axis === "theta";
+const unitOf = (axis) => (axis === "theta" ? "deg" : "cm");
+const unitText = (unit) => (unit === "deg" ? "°" : " cm");
+const fmtErr = (value, unit) => (unit === "deg" ? `${value >= 0 ? "+" : ""}${value.toFixed(1)}°` : `${value >= 0 ? "+" : ""}${(value * 10).toFixed(1)} mm`);
+
+function renderMeasureForm() {
+  for (const b of document.querySelectorAll("#m-kind button")) b.classList.toggle("on", b.dataset.axis === M.axis && +b.dataset.sign === M.sign);
+  for (const b of document.querySelectorAll("#m-speed button")) b.classList.toggle("on", +b.dataset.level === M.level);
+  const unit = unitOf(M.axis);
+  $("#m-amount-label").textContent = isTurn() ? "Angle" : "Distance";
+  $("#m-unit").textContent = unit === "deg" ? "°" : "cm";
+  $("#m-presets").innerHTML = PRESETS[unit].map((v) => `<button data-v="${v}">${v}${unitText(unit)}</button>`).join("");
+  for (const b of document.querySelectorAll("#m-presets button")) {
+    b.classList.toggle("on", +b.dataset.v === M.amount[M.axis]);
+    b.addEventListener("click", () => { M.amount[M.axis] = +b.dataset.v; $("#m-amount").value = b.dataset.v; renderMeasureForm(); });
+  }
+  if (document.activeElement !== $("#m-amount")) $("#m-amount").value = M.amount[M.axis];
+  $("#m-speed-text").textContent = isTurn() ? `${ANG_SPEEDS[M.level]}°/s` : `${LIN_SPEEDS[M.level] * 100} cm/s`;
+  const name = { "x1": "forward", "x-1": "back", "y1": "left", "y-1": "right", "theta1": "left", "theta-1": "right" }[M.axis + M.sign];
+  $("#m-go").textContent = isTurn() ? `Turn ${M.amount[M.axis]}° ${name}` : `Go ${M.amount[M.axis]} cm ${name}`;
+}
+
+function showMoveMessage(text) { const el = $("#m-msg"); el.hidden = !text; el.textContent = text || ""; }
+
+async function startMove() {
+  const amount = parseFloat($("#m-amount").value);
+  if (!(amount > 0)) { showMoveMessage("Type a distance (or an angle) above zero."); return; }
+  M.amount[M.axis] = amount;
+  const target = M.sign * (isTurn() ? (amount * Math.PI) / 180 : amount / 100);
+  const moveSpeed = isTurn() ? (ANG_SPEEDS[M.level] * Math.PI) / 180 : LIN_SPEEDS[M.level];
+  resetInputs();
+  try {
+    render(await request("POST", "/api/move", { client: CLIENT, label: LABEL, axis: M.axis, target, speed: moveSpeed }));
+    showMoveMessage("");
+  } catch (e) { showMoveMessage(e.refused ? e.message : "Could not reach the robot."); }
+}
+
+function renderMove(st) {
+  const mv = st.move;
+  $("#m-go").hidden = !!mv;
+  $("#m-go").disabled = !!st.estop;
+  $("#m-progress").hidden = !mv;
+  $("#move-stick").classList.toggle("locked", !!mv);
+  $("#turn-stick").classList.toggle("locked", !!mv);
+  $("#reset-odo").disabled = !!mv;
+  if (mv) {
+    const u = unitText(mv.unit);
+    $("#m-progress-text").textContent = `${mv.phase === "settling" ? "Settling" : "Moving"} · ${mv.progress.toFixed(1)}${u} of ${mv.target}${u} ${mv.move}`;
+    $("#m-bar-fill").style.width = `${clamp(mv.progress / mv.target, 0, 1) * 100}%`;
+  }
+  if (st.last_trial && st.last_trial.id !== M.lastSeen) {
+    const first = M.lastSeen === null;
+    M.lastSeen = st.last_trial.id;
+    if (!first || !M.selected) M.selected = st.last_trial.id; // a new move: show its result
+  }
+  if (st.trials_version !== M.version) loadTrials();
+  renderResult(st);
+}
+
+async function loadTrials() {
+  if (M.loading) return;
+  M.loading = true;
+  try { M.trials = await request("GET", "/api/trials"); M.version = M.trials.version; renderTrials(); }
+  catch (_) { /* next state retries */ } finally { M.loading = false; }
+}
+
+function selectedTrial(st) {
+  const fromList = M.trials ? M.trials.trials.find((t) => t.id === M.selected) : null;
+  return fromList || (st && st.last_trial && st.last_trial.id === M.selected ? st.last_trial : null);
+}
+
+function renderResult(st) {
+  const t = selectedTrial(st);
+  $("#m-result").hidden = !t;
+  if (!t) return;
+  const u = unitText(t.unit), ok = t.status === "done";
+  $("#m-r-title").textContent = `Move ${t.id} · ${t.move} ${t.target}${u}`;
+  const status = $("#m-r-status");
+  status.textContent = { done: "done", cancelled: "cancelled", stopped: "emergency stop", timeout: "timed out" }[t.status] || t.status;
+  status.className = "m-status " + (ok ? "ok" : "bad");
+  $("#m-r-target").textContent = `${t.target.toFixed(t.unit === "deg" ? 1 : 2)}${u}`;
+  $("#m-r-wheels").textContent = `${t.wheels.toFixed(2)}${u}  (${fmtErr(t.wheels - t.target, t.unit)})`;
+  $("#m-r-drift").textContent = t.unit === "deg" ? `${t.off_axis_cm.toFixed(2)} cm off the spot` : `${t.off_axis_cm.toFixed(2)} cm sideways · ${t.heading_drift_deg.toFixed(1)}° turned`;
+  $("#m-tape-label").textContent = t.unit === "deg" ? "It really turned" : "Tape measure says";
+  $("#m-tape-unit").textContent = t.unit === "deg" ? "°" : "cm";
+  if (M.shownId !== t.id) { // only when the selection changes: never overwrite what is being typed
+    M.shownId = t.id;
+    const prefill = t.tape ?? t.sim_truth;
+    $("#m-tape").value = prefill === null || prefill === undefined ? "" : Math.abs(prefill);
+  }
+  const sim = info && info.link === "sim";
+  $("#m-tip").textContent = sim
+    ? "Simulation: the value filled in is where the simulated robot really went. Save it like a tape measurement."
+    : t.unit === "deg"
+      ? "Before the turn, lay a strip of tape along the front of the robot; after it, read the angle between the strip and the robot (a 360° turn makes it easy)."
+      : "Before the move, put a mark on the floor at a fixed point of the robot (front edge); after it, measure from the mark to the same point.";
+}
+
+async function saveTape() {
+  const t = selectedTrial(state);
+  if (!t) return;
+  const raw = $("#m-tape").value.trim();
+  try {
+    await request("POST", "/api/trials/measure", { client: CLIENT, id: t.id, tape: raw === "" ? null : parseFloat(raw) });
+    showMoveMessage("");
+    loadTrials();
+  } catch (e) { showMoveMessage(e.refused ? e.message : "Could not reach the robot."); }
+}
+
+function renderTrials() {
+  const data = M.trials;
+  const rows = data.trials.slice().reverse().slice(0, 50);
+  $("#m-table").hidden = rows.length === 0;
+  $("#m-table tbody").innerHTML = rows.map((t) => {
+    const u = unitText(t.unit);
+    const err = t.tape === null ? "–" : fmtErr(t.tape - t.target, t.unit);
+    const flag = t.status === "done" ? "" : ` (${t.status})`;
+    return `<tr data-id="${t.id}" class="${t.id === M.selected ? "sel" : ""}"><td>${t.id}</td><td>${t.move}${flag}</td>`
+      + `<td>${t.target}${u}</td><td>${t.wheels.toFixed(2)}${u}</td><td>${t.tape === null ? "–" : t.tape + u}</td><td>${err}</td></tr>`;
+  }).join("");
+  for (const tr of document.querySelectorAll("#m-table tbody tr")) {
+    tr.addEventListener("click", () => { M.selected = +tr.dataset.id; renderTrials(); renderResult(state); });
+  }
+  $("#m-stats").innerHTML = Object.values(data.stats).map((g) => {
+    const lines = [`<b>${g.label[0].toUpperCase() + g.label.slice(1)}</b> <span class="sub">· ${g.moves} move${g.moves > 1 ? "s" : ""}, ${g.measured} measured</span>`];
+    lines.push(`<span class="sub">Wheels stop at</span> ${fmtErr(g.wheels_error_mean, g.unit)} <span class="sub">on average (worst ${fmtErr(g.wheels_error_max, g.unit)})</span>`);
+    if (g.measured) {
+      const spread = g.tape_error_std === null ? "" : ` <span class="sub">± ${fmtErr(g.tape_error_std, g.unit).replace("+", "")} spread</span>`;
+      lines.push(`<span class="sub">Real error (tape − asked)</span> ${fmtErr(g.tape_error_mean, g.unit)}${spread}`);
+      lines.push(`<span class="sub">Tape ÷ wheels</span> ${g.tape_over_wheels.toFixed(3)}`);
+    }
+    const s = g.suggestion, wheel = data.stats.x && data.stats.x.suggestion;
+    if (s && s.key === "base_radius_m" && wheel && Math.abs(wheel.change_pct) >= 0.5) {
+      lines.push(`<span class="sub">Correct wheel_radius_m first, then measure turns again: a wrong wheel radius makes turns wrong too.</span>`);
+    } else if (s) {
+      lines.push(Math.abs(s.change_pct) < 0.5
+        ? `<span class="sub">Calibration is good: within 0.5 % (${s.key} ${s.current}).</span>`
+        : `Set <code>robot.base.${s.key}: ${s.value}</code> <span class="sub">(now ${s.current}, ${s.change_pct > 0 ? "+" : ""}${s.change_pct} %)</span>`);
+    } else if (g.measured < 3) {
+      lines.push(`<span class="sub">Measure ${3 - g.measured} more move${3 - g.measured > 1 ? "s" : ""} for a calibration suggestion.</span>`);
+    }
+    return `<div class="m-stat">${lines.join("<br>")}</div>`;
+  }).join("");
+  renderResult(state);
+}
+
+function setTab(tab) {
+  for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
+  $("#center").classList.toggle("measuring", tab === "measure");
+  document.body.classList.toggle("measuring", tab === "measure");
+  $("#telemetry").hidden = tab === "measure";
+  $("#measure").hidden = tab !== "measure";
+  try { localStorage.setItem("makai-drive-tab", tab); } catch (_) { /* private mode */ }
+  history.replaceState(null, "", tab === "measure" ? "#measure" : location.pathname);
+  resizeCanvas();
 }
 
 function setSpeed(value) {
@@ -549,6 +828,16 @@ function drawMap() {
     ctx.stroke(); ctx.globalAlpha = 1;
   }
 
+  // Goal of a precise move: where the centre of the robot should stop.
+  const goal = state && state.move && state.move.goal;
+  if (goal) {
+    const [gx, gy] = S(goal.x, goal.y);
+    ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.arc(gx, gy, Math.max(8, 0.04 * scale), 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(gx - 4, gy); ctx.lineTo(gx + 4, gy); ctx.moveTo(gx, gy - 4); ctx.lineTo(gx, gy + 4); ctx.stroke();
+  }
+
   // Robot seen from above: round base, three omni wheels, camera at the front.
   const yaw = (pose.yaw_deg * Math.PI) / 180, [rx, ry] = S(pose.x, pose.y), body = 0.17 * scale;
   const toScreenDir = (bx, by) => { // base-frame vector -> screen vector
@@ -613,6 +902,12 @@ const KEYS = { KeyW: "fwd", ArrowUp: "fwd", KeyS: "back", ArrowDown: "back", Key
   KeyD: "right", ArrowRight: "right", KeyQ: "ccw", KeyE: "cw" };
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target instanceof HTMLInputElement) { // typing a number: only STOP stays on the keyboard
+    if (e.code === "Space") { e.preventDefault(); emergencyStop(); }
+    else if (e.key === "Enter" && e.target.id === "m-tape") saveTape();
+    else if (e.key === "Enter" && e.target.id === "m-amount") startMove();
+    return;
+  }
   if (KEYS[e.code]) { input.keys.add(KEYS[e.code]); e.preventDefault(); }
   else if (e.code === "Space") { e.preventDefault(); if (!e.repeat) emergencyStop(); }
   else if (e.code === "Enter" && !$("#overlay").hidden) { e.preventDefault(); resume(); }
@@ -649,6 +944,26 @@ $("#stop").addEventListener("pointerdown", (e) => { e.preventDefault(); emergenc
 $("#resume").addEventListener("click", resume);
 $("#takeover").addEventListener("click", () => { wantTakeover = true; });
 for (const b of document.querySelectorAll("#speed-seg button")) b.addEventListener("click", () => setSpeed(+b.dataset.speed));
+for (const b of document.querySelectorAll("#tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+for (const b of document.querySelectorAll("#m-kind button")) {
+  b.addEventListener("click", () => { M.axis = b.dataset.axis; M.sign = +b.dataset.sign; renderMeasureForm(); });
+}
+for (const b of document.querySelectorAll("#m-speed button")) b.addEventListener("click", () => { M.level = +b.dataset.level; renderMeasureForm(); });
+$("#m-amount").addEventListener("input", () => {
+  const v = parseFloat($("#m-amount").value);
+  if (v > 0) { M.amount[M.axis] = v; renderMeasureForm(); }
+});
+$("#m-go").addEventListener("click", startMove);
+$("#m-cancel").addEventListener("click", () => { request("POST", "/api/move/cancel", { client: CLIENT }).then(render).catch(() => {}); });
+$("#m-save").addEventListener("click", saveTape);
+$("#m-clear").addEventListener("click", () => {
+  if (!confirm("Delete all moves and measurements? A copy of the CSV is kept on the robot.")) return;
+  request("POST", "/api/trials/clear", { client: CLIENT }).then(() => { M.selected = null; loadTrials(); }).catch(() => {});
+});
+renderMeasureForm();
+let savedTab = null;
+try { savedTab = localStorage.getItem("makai-drive-tab"); } catch (_) { /* private mode */ }
+if (location.hash === "#measure" || savedTab === "measure") setTab("measure");
 
 function frame() {
   pollGamepad();

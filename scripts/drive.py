@@ -14,6 +14,9 @@ Through the host (arm mounted, host running on the Pi), from a laptop:
 Without a robot, to try the page:
 
     uv run python scripts/drive.py --sim
+    uv run python scripts/drive.py --sim --sim-scale 0.96   # a robot whose wheels are 4 % off
+
+Precise moves and their tape measurements are saved in data/move_trials.csv (not in git).
 """
 
 from __future__ import annotations
@@ -24,12 +27,14 @@ import signal
 import socket
 from dataclasses import asdict
 
-from makai.config import load_config
+from makai.config import REPO_ROOT, load_config
 from makai.robot.drive_server import DriveServer
 from makai.robot.lekiwi import LINKS, BaseGeometry, LeKiwiRobot
 from makai.robot.manual import DriveLimits, DriveLoop, ManualDriver
+from makai.robot.moves import TrialLog
 
 TELEMETRY_HZ = 10.0
+SIM_HZ = 50.0  # the simulated robot gives no encoders: read its speed at the control rate
 log = logging.getLogger("drive")
 
 
@@ -41,6 +46,22 @@ def lan_address() -> str | None:
             return sock.getsockname()[0]
     except OSError:
         return None
+
+
+def make_sim(scale: float):
+    """Simulated base that really moves `scale` times what its wheels report (a wrong wheel
+    radius, or slip). Returns the robot and where it really is, the "tape" of the simulation."""
+    from makai.contracts import BaseVelocity, Observation
+    from makai.sim.world import SimRobot, SimWorld
+
+    class MiscalibratedSim(SimRobot):
+        def get_observation(self) -> Observation:
+            v = self._vel
+            self.world.advance(BaseVelocity(v.x * scale, v.y * scale, v.theta * scale), self.dt)
+            return Observation(stamp=self.world.time, base_velocity=v)
+
+    robot = MiscalibratedSim(SimWorld(), dt=1 / SIM_HZ)
+    return robot, lambda: (robot.world.x, robot.world.y, robot.world.yaw)
 
 
 def _interrupt(signum, frame) -> None:
@@ -56,6 +77,9 @@ def main() -> None:
         "--link", choices=LINKS, help="how to reach the wheels (default: robot.link in the config)"
     )
     where.add_argument("--sim", action="store_true", help="no robot: drive a simulated base")
+    parser.add_argument(
+        "--sim-scale", type=float, default=1.0, help="simulated robot moves this times what its wheels say"
+    )
     parser.add_argument("--serial-port", help="motor board port in wired mode (default: robot.base.port)")
     parser.add_argument("--http-port", type=int, help="port of the page (default: teleop.drive.http_port)")
     parser.add_argument("--bind", default="0.0.0.0", help="listen address; 127.0.0.1 = this machine only")
@@ -66,10 +90,9 @@ def main() -> None:
     drive_cfg = cfg["teleop"]["drive"]
     limits = DriveLimits.from_config(drive_cfg)
     geometry = BaseGeometry.from_config(cfg["robot"]["base"])
+    truth = None
     if args.sim:
-        from makai.sim.world import SimRobot, SimWorld
-
-        robot, link, serial_port = SimRobot(SimWorld(), dt=1 / TELEMETRY_HZ), "sim", None
+        (robot, truth), link, serial_port = make_sim(args.sim_scale), "sim", None
     else:
         link = args.link or cfg["robot"].get("link", "host")
         if args.serial_port:
@@ -78,7 +101,10 @@ def main() -> None:
         robot = LeKiwiRobot.from_config(cfg, link=link)
 
     driver = ManualDriver(limits)
-    loop = DriveLoop(robot, driver, geometry, telemetry_hz=TELEMETRY_HZ)
+    trials = TrialLog(REPO_ROOT / "data" / ("move_trials_sim.csv" if args.sim else "move_trials.csv"))
+    loop = DriveLoop(
+        robot, driver, geometry, telemetry_hz=SIM_HZ if args.sim else TELEMETRY_HZ, trials=trials, truth=truth
+    )
     info = {
         "link": link,
         "serial_port": serial_port,

@@ -8,7 +8,10 @@ velocities:
 - an emergency stop that cuts the speed at once and stays latched until released.
 
 `DriveLoop` runs it against any `Robot` (real, wired or simulated) at a fixed rate, and
-keeps what the page displays: measured velocity, odometry, battery voltage, errors.
+keeps what the page displays: measured velocity, odometry, battery voltage, errors. It also
+runs precise moves (`moves.py`): while one runs, it drives the wheels instead of the sticks.
+Odometry comes from the wheel encoders when the robot gives them (wired mode), otherwise
+from the measured speed.
 """
 
 from __future__ import annotations
@@ -24,6 +27,17 @@ from typing import Any
 from makai.contracts import BaseVelocity, Robot
 from makai.navigation.odometry import Odometry
 from makai.robot.lekiwi import BaseGeometry
+from makai.robot.moves import (
+    MOVE_NAMES,
+    MoveSpec,
+    MoveTuning,
+    Pose,
+    PreciseMove,
+    TrialLog,
+    WheelOdometry,
+    in_start_frame,
+    to_display,
+)
 
 log = logging.getLogger(__name__)
 
@@ -146,6 +160,25 @@ class ManualDriver:
             self._estop = False
             self._target = ZERO
 
+    @property
+    def estopped(self) -> bool:
+        with self._lock:
+            return self._estop
+
+    def claim(self, client: str, now: float, label: str = "") -> bool:
+        """Become the driver without moving a stick, to start a precise move. False if another page drives."""
+        with self._lock:
+            if self._owner != client and self._owner_active(now):
+                return False
+            self._owner, self._owner_label, self._last_input = client, label[:40], now
+            return True
+
+    def reset_motion(self) -> None:
+        """Forget the current speed and stick target: a precise move takes or gives back the wheels."""
+        with self._lock:
+            self._target = self._current = ZERO
+            self._last_step = None  # the next step must not see the whole move as one long tick
+
     def step(self, now: float) -> BaseVelocity:
         """Velocity to send now. Call it at a steady rate."""
         with self._lock:
@@ -175,6 +208,28 @@ def _velocity_dict(v: BaseVelocity) -> dict[str, float]:
     return {"x": round(v.x, 4), "y": round(v.y, 4), "theta_deg": round(math.degrees(v.theta), 2)}
 
 
+def _move_dict(move: PreciseMove) -> dict[str, Any]:
+    """A running move, in the page's units (cm or degrees), with its goal on the map."""
+    axis, target = move.spec.axis, move.spec.target
+    sign = math.copysign(1.0, target)
+    x0, y0, yaw0 = move.start
+    goal = None
+    if axis != "theta":
+        gx, gy = (target, 0.0) if axis == "x" else (0.0, target)
+        goal = {
+            "x": round(x0 + math.cos(yaw0) * gx - math.sin(yaw0) * gy, 4),
+            "y": round(y0 + math.sin(yaw0) * gx + math.cos(yaw0) * gy, 4),
+        }
+    return {
+        "move": MOVE_NAMES[(axis, int(sign))],
+        "unit": "deg" if axis == "theta" else "cm",
+        "target": round(abs(to_display(axis, target)), 2),
+        "progress": round(sign * to_display(axis, move.progress), 2),
+        "phase": move.phase,
+        "goal": goal,
+    }
+
+
 class DriveLoop:
     """Owns the robot: at `rate_hz`, asks the driver for a velocity and sends it.
 
@@ -191,6 +246,9 @@ class DriveLoop:
         telemetry_hz: float = 10.0,
         voltage_period_s: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
+        trials: TrialLog | None = None,
+        truth: Callable[[], Pose] | None = None,
+        tuning: MoveTuning | None = None,
     ):
         self.robot, self.driver, self.geometry = robot, driver, geometry
         self.period, self.telemetry_period, self.voltage_period = (
@@ -199,16 +257,23 @@ class DriveLoop:
             voltage_period_s,
         )
         self.clock = clock
+        self.trials = trials if trials is not None else TrialLog()
+        self.truth = truth  # simulation only: where the robot really is
+        self.tuning = tuning or MoveTuning()
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._next_telemetry = self._next_voltage = -math.inf
-        self.odometry = Odometry()
+        self._encoders: bool | None = None  # does the robot give wheel encoders? found on the first tick
+        self.odometry: Odometry | WheelOdometry = Odometry()
         self.odometry_epoch = 0  # bumped on reset, so the page clears its trail
         self.commanded = BaseVelocity()
         self.measured: BaseVelocity | None = None
         self.voltage: float | None = None
         self.errors: dict[str, str] = {}
+        self._move: PreciseMove | None = None
+        self._cancel: str | None = None
+        self.last_trial: dict[str, Any] | None = None
 
     def start(self) -> None:
         self._stop.clear()
@@ -223,26 +288,56 @@ class DriveLoop:
         self.robot.stop()
 
     def tick(self, now: float) -> None:
-        velocity = self.driver.step(now)
-        self._attempt("drive", lambda: self.robot.drive(velocity))
-        with self._lock:
-            self.commanded = velocity
+        if self._encoders is not False:
+            self._attempt("encoders", self._read_encoders)
         if now >= self._next_telemetry:
             self._next_telemetry = now + self.telemetry_period
             self._attempt("observation", self._observe)
+        velocity = self._next_velocity(now)
+        self._attempt("drive", lambda: self.robot.drive(velocity))
+        with self._lock:
+            self.commanded = velocity
         if now >= self._next_voltage and hasattr(self.robot, "battery_voltage"):
             self._next_voltage = now + self.voltage_period
             self._attempt("battery", self._read_voltage)
 
-    def reset_odometry(self) -> None:
+    def reset_odometry(self) -> bool:
+        """Start the path from here. Refused (False) during a precise move."""
         with self._lock:
-            self.odometry = Odometry()
+            if self._move is not None:
+                return False
+            self.odometry = WheelOdometry(self.geometry) if self._encoders and self.geometry else Odometry()
             self.odometry_epoch += 1
+            return True
+
+    def start_move(self, client: str, spec: MoveSpec, now: float, label: str = "") -> None:
+        """Start a precise move from where the robot is. ValueError, with the reason, if it cannot."""
+        if self.driver.estopped:
+            raise ValueError("Emergency stop is on: resume first.")
+        with self._lock:
+            if self._move is not None:
+                raise ValueError("A move is already running.")
+            if not self.commanded.is_zero():
+                raise ValueError("The robot is still moving: let it stop first.")
+        if not self.driver.claim(client, now, label):
+            raise ValueError("Another device is driving: take over first.")
+        self.driver.reset_motion()
+        limits = self.driver.limits
+        with self._lock:
+            self._cancel = None
+            self._move = PreciseMove(
+                spec, self._pose(), now, self.tuning, limits.max_lin_m_s, limits.max_ang_deg_s
+            )
+
+    def cancel_move(self) -> None:
+        with self._lock:
+            if self._move is not None:
+                self._cancel = "cancelled"
 
     def snapshot(self) -> dict[str, Any]:
         """What the page shows, as JSON-ready values."""
         with self._lock:
-            cmd, odo = self.commanded, self.odometry
+            cmd, odo, move = self.commanded, self.odometry, self._move
             wheels = None
             if self.geometry is not None:
                 raw = self.geometry.body_to_wheel_raw(cmd.x, cmd.y, math.degrees(cmd.theta))
@@ -262,8 +357,12 @@ class DriveLoop:
                     "yaw_deg": round(math.degrees(odo.yaw), 2),
                 },
                 "odometry_epoch": self.odometry_epoch,
+                "odometry_source": {True: "wheel encoders", False: "measured speed"}.get(self._encoders),
                 "battery_v": None if self.voltage is None else round(self.voltage, 2),
                 "error": "; ".join(f"{what}: {message}" for what, message in self.errors.items()) or None,
+                "move": None if move is None else _move_dict(move),
+                "last_trial": self.last_trial,
+                "trials_version": self.trials.version,
             }
 
     def _run(self) -> None:
@@ -276,11 +375,65 @@ class DriveLoop:
                 next_tick = self.clock()
             self._stop.wait(max(0.0, delay))
 
+    def _pose(self) -> Pose:  # caller holds the lock
+        return self.odometry.x, self.odometry.y, self.odometry.yaw
+
+    def _read_encoders(self) -> None:
+        read = getattr(self.robot, "wheel_positions", None)
+        positions = read() if read is not None and self.geometry is not None else None
+        with self._lock:
+            if positions is None:
+                self._encoders = False  # through the host, or simulated: odometry from the speed
+                return
+            if not self._encoders:
+                self._encoders = True
+                self.odometry = WheelOdometry(self.geometry)
+            self.odometry.update(positions)
+
     def _observe(self) -> None:
         obs = self.robot.get_observation()
         with self._lock:
             self.measured = obs.base_velocity
-            self.odometry.update(obs.base_velocity, obs.stamp)
+            if not self._encoders:
+                self.odometry.update(obs.base_velocity, obs.stamp)
+
+    def _next_velocity(self, now: float) -> BaseVelocity:
+        with self._lock:
+            move, cancel, pose = self._move, self._cancel, self._pose()
+            self._cancel = None
+        if move is None:
+            return self.driver.step(now)
+        if move.truth_start is None and self.truth is not None:
+            move.truth_start = self.truth()
+        if self.driver.estopped:
+            move.cancel("stopped", pose, now)
+        elif cancel:
+            move.cancel(cancel, pose, now)
+        velocity = move.step(pose, now)
+        if velocity is not None:
+            return velocity
+        self._finish_move(move)
+        return BaseVelocity()
+
+    def _finish_move(self, move: PreciseMove) -> None:
+        truth = None
+        if self.truth is not None and move.truth_start is not None:
+            truth = dict(
+                zip(("x", "y", "theta"), in_start_frame(move.truth_start, self.truth()), strict=True)
+            )[move.spec.axis]
+        trial = self.trials.add(move.result, self.geometry, truth)
+        self.driver.reset_motion()  # the sticks start again from standstill
+        with self._lock:
+            self._move, self.last_trial = None, trial
+        log.info(
+            "move %d: %s %.2f %s, wheels %.2f (%s)",
+            trial["id"],
+            trial["move"],
+            trial["target"],
+            trial["unit"],
+            trial["wheels"],
+            trial["status"],
+        )
 
     def _read_voltage(self) -> None:
         voltage = self.robot.battery_voltage()

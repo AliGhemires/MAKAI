@@ -328,6 +328,40 @@ Limites :
   débranche, les roues gardent leur dernière vitesse : couper l'interrupteur ;
 - le chemin affiché vient de l'odométrie des roues : il dérive, surtout en tournant.
 
+### Mesurer et calibrer les déplacements (onglet Measure)
+
+L'onglet **Measure** de la page de pilotage (lien direct : `http://lekiwi.local:8000/#measure`)
+fait faire au robot un déplacement précis : avancer, reculer, aller à gauche ou à droite d'une
+distance donnée, ou tourner d'un angle donné. Le robot suit ses encodeurs de roues
+(`src/makai/robot/moves.py`) : démarrage doux, ralentissement avant l'arrivée, arrêt quand la
+distance est atteinte, sans jamais revenir en arrière, et maintien des deux autres axes. Ensuite
+on mesure au mètre ce qu'il a vraiment parcouru, et la page compare.
+
+Les roues ne savent que de combien elles ont tourné : elles ne voient ni le glissement ni une
+erreur sur le rayon des roues. Seule une mesure extérieure (mètre, rapporteur) dit la vérité.
+
+Procédure, sur le sol de la démo et batterie chargée :
+1. Coller un mètre ruban au sol dans la direction du déplacement, et repérer un point fixe du
+   robot (le bord avant).
+2. Measure → Forward, 20 cm, Medium → **Go**. Lire le mètre, taper la valeur dans « Tape
+   measure says », **Save**. Recommencer au moins 3 fois, puis avec 50 cm.
+3. Lire le bloc **Forward / back** :
+   - *Wheels stop at* : où le robot s'arrête d'après ses roues. Doit rester sous 1 mm ;
+   - *Real error (tape − asked)* : l'erreur réelle, celle qui compte ; *spread* : sa
+     dispersion d'un essai à l'autre, qu'aucune calibration ne corrige ;
+   - *Tape ÷ wheels* et la ligne `Set robot.base.wheel_radius_m: ...` : la correction proposée.
+4. Reporter la valeur dans `configs/makai.yaml` → `robot.base.wheel_radius_m` (fichier partagé :
+   l'annoncer), relancer `drive.py`, refaire 3 mesures : l'erreur doit tomber sous 0,5 %.
+5. Ensuite seulement, les rotations : Turn left 360° (et Turn right), mesurer l'angle réel avec
+   une bande collée au sol le long de l'avant du robot, en déduire `robot.base.base_radius_m`.
+6. Vérifier Left / Right : si l'écart diffère beaucoup de l'avant, les galets des roues
+   glissent sur le côté ; le noter dans la fiche WS1.
+
+Les mesures sont gardées dans `data/move_trials.csv` sur la Pi (hors git, conservées au
+redémarrage) et se téléchargent avec **Download CSV**. « Clear all » garde une copie datée.
+En simulation, `--sim --sim-scale 0.96` simule un robot dont les roues se trompent de 4 % :
+la valeur « mesurée » est remplie automatiquement, ce qui permet d'essayer toute la procédure.
+
 ## 5. Mise en place avant toute collecte (porte G2)
 
 À faire dans cet ordre, une fois, puis **ne plus rien toucher au montage**.

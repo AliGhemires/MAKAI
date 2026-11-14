@@ -10,7 +10,14 @@ Endpoints, all JSON:
 - `POST /api/drive` {client, label, x, y, turn, speed, takeover}: stick input, see
   `ManualDriver.command`; answers the telemetry;
 - `POST /api/stop`, `POST /api/release`: emergency stop and release, from any page;
-- `POST /api/reset_odometry`.
+- `POST /api/reset_odometry`;
+- `POST /api/move` {client, axis, target, speed}: precise move (m or rad, m/s or rad/s),
+  `POST /api/move/cancel`;
+- `GET /api/trials`, `GET /api/trials.csv`: the moves and their statistics;
+  `POST /api/trials/measure` {id, tape}: what the tape says (cm, or degrees for turns);
+  `POST /api/trials/clear`.
+
+Refused requests answer {"error": "why"} with a 4xx status.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from makai.robot.manual import DriveLoop, ManualDriver
+from makai.robot.moves import MoveSpec
 
 PAGE = Path(__file__).with_name("drive_page.html")
 MAX_BODY_BYTES = 4096
@@ -57,6 +65,17 @@ class DriveHandler(BaseHTTPRequestHandler):
             self._json(self.server.info)
         elif path == "/api/state":
             self._json(self.server.state(None))
+        elif path == "/api/trials":
+            self._json(self.server.loop.trials.snapshot())
+        elif path == "/api/trials.csv":
+            body = self.server.loop.trials.csv_text().encode()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="move_trials.csv"')
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
@@ -87,7 +106,39 @@ class DriveHandler(BaseHTTPRequestHandler):
         elif path == "/api/release":
             driver.release()
         elif path == "/api/reset_odometry":
-            self.server.loop.reset_odometry()
+            if not self.server.loop.reset_odometry():
+                self._error(HTTPStatus.CONFLICT, "Wait for the move to finish.")
+                return
+        elif path == "/api/move":
+            if client is None:
+                self._error(HTTPStatus.BAD_REQUEST, "missing client id")
+                return
+            try:
+                spec = MoveSpec(str(body.get("axis")), float(body.get("target")), float(body.get("speed")))
+            except (TypeError, ValueError) as exc:
+                self._error(HTTPStatus.BAD_REQUEST, f"Invalid move: {exc}")
+                return
+            try:
+                self.server.loop.start_move(client or "", spec, time.monotonic(), str(body.get("label", "")))
+            except ValueError as exc:
+                self._error(HTTPStatus.CONFLICT, str(exc))
+                return
+        elif path == "/api/move/cancel":
+            self.server.loop.cancel_move()
+        elif path == "/api/trials/measure":
+            try:
+                tape = body.get("tape")
+                self.server.loop.trials.measure(
+                    int(body.get("id")), None if tape in (None, "") else float(tape)
+                )
+            except KeyError:
+                self._error(HTTPStatus.NOT_FOUND, "No such move.")
+                return
+            except (TypeError, ValueError) as exc:
+                self._error(HTTPStatus.BAD_REQUEST, str(exc) or "invalid measurement")
+                return
+        elif path == "/api/trials/clear":
+            self.server.loop.trials.clear()
         else:
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
             return
@@ -115,8 +166,11 @@ class DriveHandler(BaseHTTPRequestHandler):
             return None
         return body if isinstance(body, dict) else None
 
-    def _json(self, payload: dict[str, Any]) -> None:
-        self._send(HTTPStatus.OK, json.dumps(payload).encode(), "application/json")
+    def _json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+        self._send(status, json.dumps(payload).encode(), "application/json")
+
+    def _error(self, status: HTTPStatus, message: str) -> None:
+        self._json({"error": message}, status)
 
     def _send(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
         self.send_response(status)
