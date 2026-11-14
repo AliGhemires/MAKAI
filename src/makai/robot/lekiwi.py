@@ -8,9 +8,10 @@ Two ways to reach the hardware, chosen by `robot.link` in the config:
       python -m lerobot.robots.lekiwi.lekiwi_host --robot.id=<robot.id> --host.connection_time_s=36000
 
 - `wired`: `WiredBase` talks to the wheel servos over the motor board's USB cable, plugged
-  into the machine running MAKAI: the Pi itself (/dev/ttyACM0), or a laptop (COM5). Base
-  only. Needed while the arm is not mounted: LeRobot's LeKiwi, hence the host, refuses to
-  start unless all nine motors answer.
+  into the machine running MAKAI: the Pi itself (/dev/ttyACM0), or a laptop (COM5). It
+  drives the base, and only READS the arm (joint angles, with the arm calibration saved on
+  that machine by `lerobot-calibrate`): it never writes to the arm servos, not even their
+  torque. Works without the arm too.
 
 The wheel values (motor IDs, port, radii, angles, speed cap) are in `robot.base`. In host
 mode LeRobot on the Pi does the kinematics with its own built-in values, which are the same.
@@ -28,11 +29,14 @@ unchanged in the 0.7.1 source install used on the robot):
 
 from __future__ import annotations
 
+import json
+import logging
 import math
 import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -41,9 +45,11 @@ from makai.contracts import BaseVelocity, Observation
 
 ARM_JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")
 ARM_KEYS = tuple(f"arm_{joint}.pos" for joint in ARM_JOINTS)
+ARM_MOTOR_IDS = {f"arm_{joint}": motor_id for motor_id, joint in enumerate(ARM_JOINTS, start=1)}  # as LeKiwi
 BASE_KEYS = ("x.vel", "y.vel", "theta.vel")
 LINKS = ("host", "wired")
 STEPS_PER_DEG = 4096 / 360
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -148,28 +154,54 @@ def make_client(cfg: dict):
     )
 
 
-def make_wheel_bus(port: str, geometry: BaseGeometry):
-    """LeRobot bus holding the three wheel servos only."""
+def arm_calibration_path(robot_id: str) -> Path | None:
+    """Where `lerobot-calibrate --robot.type=lekiwi` saved the arm calibration on this machine."""
+    try:
+        from lerobot.utils.constants import HF_LEROBOT_CALIBRATION, ROBOTS
+    except ImportError:
+        return None
+    return HF_LEROBOT_CALIBRATION / ROBOTS / "lekiwi" / f"{robot_id}.json"
+
+
+def load_arm_calibration(path: Path | None) -> dict[str, Any] | None:
+    """The six arm servos' calibration, or None when there is no complete calibration file."""
+    if path is None or not path.is_file():
+        return None
+    from lerobot.motors import MotorCalibration
+
+    data = json.loads(path.read_text())
+    calibration = {name: MotorCalibration(**data[name]) for name in ARM_MOTOR_IDS if name in data}
+    return calibration if len(calibration) == len(ARM_MOTOR_IDS) else None
+
+
+def make_wheel_bus(port: str, geometry: BaseGeometry, arm_calibration: Mapping[str, Any] | None = None):
+    """LeRobot bus holding the three wheel servos, plus the arm servos (to read) if calibrated."""
     from lerobot.motors import Motor, MotorNormMode, SerialMotorsBus
 
     motors = {
         name: Motor(motor_id, "sts3215", MotorNormMode.RANGE_M100_100)
         for name, motor_id in geometry.motor_ids.items()
     }
-    return SerialMotorsBus(port=port, motors=motors)
+    if arm_calibration:  # same units as the host: degrees, gripper 0 (closed) to 100 (open)
+        for name, motor_id in ARM_MOTOR_IDS.items():
+            mode = MotorNormMode.RANGE_0_100 if name == "arm_gripper" else MotorNormMode.DEGREES
+            motors[name] = Motor(motor_id, "sts3215", mode)
+    return SerialMotorsBus(port=port, motors=motors, calibration=dict(arm_calibration or {}) or None)
 
 
 class WiredBase:
-    """Stands in for `LeKiwiClient` when the motor board is plugged into this machine: base only.
+    """Stands in for `LeKiwiClient` when the motor board is plugged into this machine.
 
-    It takes and returns the client's x.vel / y.vel / theta.vel, so `LeKiwiRobot` works
-    unchanged. Like the host, it stops the wheels when no command came for `watchdog_s`. It
-    cannot stop them if the USB link itself drops, or if this process is killed: the servos
-    then keep their last speed.
+    It takes and returns the client's x.vel / y.vel / theta.vel (plus the arm joint angles
+    when the arm is on the bus), so `LeKiwiRobot` works unchanged. Only the wheels are ever
+    written to: torque, mode and speed. Like the host, it stops the wheels when no command came
+    for `watchdog_s`. It cannot stop them if the USB link itself drops, or if this process is
+    killed: the servos then keep their last speed.
     """
 
-    def __init__(self, bus, geometry: BaseGeometry, watchdog_s: float = 0.5):
+    def __init__(self, bus, geometry: BaseGeometry, watchdog_s: float = 0.5, fallback_bus=None):
         self.bus = bus
+        self.fallback_bus = fallback_bus  # wheels only: used if the arm servos do not answer
         self.geometry = geometry
         self.watchdog_s = watchdog_s
         self._lock = threading.Lock()  # the bus is shared with the watchdog thread
@@ -178,11 +210,27 @@ class WiredBase:
         self._closing = threading.Event()
         self._watchdog: threading.Thread | None = None
 
+    @property
+    def wheels(self) -> list[str]:
+        return list(self.geometry.names)
+
+    @property
+    def arm(self) -> list[str]:
+        return [name for name in self.bus.motors if name not in self.geometry.motor_ids]
+
     def connect(self) -> None:
-        self.bus.connect()  # fails unless every wheel servo answers
-        self.bus.disable_torque()
-        self.bus.set_operating_mode("velocity")  # written with the torque off
-        self.bus.enable_torque()
+        try:
+            self.bus.connect()  # only pings: fails unless every servo on this bus answers
+        except RuntimeError as exc:
+            if self.fallback_bus is None:
+                raise
+            log.warning("arm servos do not answer (%s): driving the wheels only", exc)
+            self.bus, self.fallback_bus = self.fallback_bus, None
+            self.bus.connect()
+        wheels = self.wheels
+        self.bus.disable_torque(wheels)
+        self.bus.set_operating_mode("velocity", wheels)  # written with the torque off
+        self.bus.enable_torque(wheels)
         self._closing.clear()
         self._watchdog = threading.Thread(target=self._watch, name="wired-base-watchdog", daemon=True)
         self._watchdog.start()
@@ -194,8 +242,9 @@ class WiredBase:
         try:
             with self._lock:
                 self._write(0.0, 0.0, 0.0)
+                self.bus.disable_torque(self.wheels)
         finally:
-            self.bus.disconnect()
+            self.bus.disconnect(disable_torque=False)  # the default would also release the arm
 
     def send_action(self, action: Mapping[str, float]) -> None:
         with self._lock:
@@ -207,20 +256,31 @@ class WiredBase:
             )
 
     def get_observation(self) -> dict[str, float]:
+        arm = self.arm
         with self._lock:
-            raw = self.bus.sync_read("Present_Velocity", normalize=False)
-        return self.geometry.wheel_raw_to_body(raw)
+            raw = self.bus.sync_read("Present_Velocity", self.wheels, normalize=False)
+            joints = self.bus.sync_read("Present_Position", arm) if arm else {}
+        return {
+            **self.geometry.wheel_raw_to_body(raw),
+            **{f"{name}.pos": float(v) for name, v in joints.items()},
+        }
 
     def read_positions(self) -> dict[str, int]:
         """Encoder position of each wheel, 0 to 4095 steps per turn (it wraps around)."""
         with self._lock:
-            return self.bus.sync_read("Present_Position", normalize=False)
+            return self.bus.sync_read("Present_Position", self.wheels, normalize=False)
 
     def read_voltage(self) -> float:
         """Battery voltage seen by the wheel servos, in volts."""
         with self._lock:
-            raw = self.bus.sync_read("Present_Voltage", normalize=False)
+            raw = self.bus.sync_read("Present_Voltage", self.wheels, normalize=False)
         return sum(raw.values()) / len(raw) / 10.0
+
+    def read_temperatures(self) -> dict[str, int]:
+        """Temperature of every servo on the bus, in degrees Celsius."""
+        with self._lock:
+            raw = self.bus.sync_read("Present_Temperature", normalize=False)
+        return {name: int(value) for name, value in raw.items()}
 
     def check_watchdog(self, now: float) -> bool:
         """Stop the wheels if the last motion command is older than `watchdog_s`. True if it did."""
@@ -254,10 +314,14 @@ class LeKiwiRobot:
         """`link` overrides `robot.link` from the config: "host" or "wired"."""
         robot = cfg["robot"]
         link = link or robot.get("link", "host")
-        if link == "wired":  # base only: no host, no arm, no cameras
+        if link == "wired":  # no host: the wheels, the arm read-only, cameras opened by the caller
             geometry = BaseGeometry.from_config(robot["base"])
-            bus = make_wheel_bus(robot["base"]["port"], geometry)
-            return cls(WiredBase(bus, geometry, robot["base"].get("watchdog_s", 0.5)), camera_names=())
+            port = robot["base"]["port"]
+            arm_calibration = load_arm_calibration(arm_calibration_path(robot["id"]))
+            bus = make_wheel_bus(port, geometry, arm_calibration)
+            fallback = make_wheel_bus(port, geometry) if arm_calibration else None
+            base = WiredBase(bus, geometry, robot["base"].get("watchdog_s", 0.5), fallback_bus=fallback)
+            return cls(base, camera_names=())
         if link == "host":
             return cls(make_client(cfg), tuple(robot["cameras"]))
         raise ValueError(f"robot.link must be one of {LINKS}, got {link!r}")
@@ -288,6 +352,11 @@ class LeKiwiRobot:
     def battery_voltage(self) -> float | None:
         """Battery voltage in volts, read from the wheel servos. None through the host."""
         read = getattr(self.client, "read_voltage", None)
+        return read() if read is not None else None
+
+    def motor_temperatures(self) -> dict[str, int] | None:
+        """Servo temperatures in Celsius (wired mode). None through the host."""
+        read = getattr(self.client, "read_temperatures", None)
         return read() if read is not None else None
 
     def wheel_positions(self) -> dict[str, int] | None:

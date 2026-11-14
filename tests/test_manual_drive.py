@@ -277,7 +277,7 @@ def call(srv, path, body=None, raw=None):
 
 def test_server_serves_the_page_and_its_info(server):
     page = call(server, "/")
-    assert "<title>MAKAI drive</title>" in page and "/api/drive" in page
+    assert "<title>MAKAI control</title>" in page and "/api/drive" in page
     assert call(server, "/api/info")["link"] == "test"
     assert call(server, "/api/state")["you_drive"] is False
 

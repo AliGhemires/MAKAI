@@ -26,7 +26,8 @@ from typing import Any
 
 from makai.contracts import BaseVelocity, Robot
 from makai.navigation.odometry import Odometry
-from makai.robot.lekiwi import BaseGeometry
+from makai.robot.cameras import CameraHub
+from makai.robot.lekiwi import ARM_KEYS, BaseGeometry
 from makai.robot.moves import (
     MOVE_NAMES,
     MoveSpec,
@@ -248,6 +249,7 @@ class DriveLoop:
         clock: Callable[[], float] = time.monotonic,
         trials: TrialLog | None = None,
         truth: Callable[[], Pose] | None = None,
+        cameras: CameraHub | None = None,
         tuning: MoveTuning | None = None,
     ):
         self.robot, self.driver, self.geometry = robot, driver, geometry
@@ -259,6 +261,7 @@ class DriveLoop:
         self.clock = clock
         self.trials = trials if trials is not None else TrialLog()
         self.truth = truth  # simulation only: where the robot really is
+        self.cameras = cameras  # images from the observations go there (host mode)
         self.tuning = tuning or MoveTuning()
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -270,6 +273,8 @@ class DriveLoop:
         self.commanded = BaseVelocity()
         self.measured: BaseVelocity | None = None
         self.voltage: float | None = None
+        self.temperatures: dict[str, int] | None = None
+        self.arm: dict[str, float] = {}
         self.errors: dict[str, str] = {}
         self._move: PreciseMove | None = None
         self._cancel: str | None = None
@@ -299,7 +304,7 @@ class DriveLoop:
             self.commanded = velocity
         if now >= self._next_voltage and hasattr(self.robot, "battery_voltage"):
             self._next_voltage = now + self.voltage_period
-            self._attempt("battery", self._read_voltage)
+            self._attempt("battery", self._read_health)
 
     def reset_odometry(self) -> bool:
         """Start the path from here. Refused (False) during a precise move."""
@@ -359,6 +364,12 @@ class DriveLoop:
                 "odometry_epoch": self.odometry_epoch,
                 "odometry_source": {True: "wheel encoders", False: "measured speed"}.get(self._encoders),
                 "battery_v": None if self.voltage is None else round(self.voltage, 2),
+                "temperatures": self.temperatures,
+                # Joint angles in degrees, gripper 0 (closed) to 100 (open); {} when unknown.
+                "arm": {
+                    key.removeprefix("arm_").removesuffix(".pos"): round(v, 1) for key, v in self.arm.items()
+                },
+                "cameras": self.cameras.status() if self.cameras is not None else {},
                 "error": "; ".join(f"{what}: {message}" for what, message in self.errors.items()) or None,
                 "move": None if move is None else _move_dict(move),
                 "last_trial": self.last_trial,
@@ -392,8 +403,12 @@ class DriveLoop:
 
     def _observe(self) -> None:
         obs = self.robot.get_observation()
+        if self.cameras is not None:
+            for name, image in obs.images.items():
+                self.cameras.put(name, image, rgb=True)  # LeRobot images are RGB
         with self._lock:
             self.measured = obs.base_velocity
+            self.arm = {key: obs.arm[key] for key in ARM_KEYS if key in obs.arm}
             if not self._encoders:
                 self.odometry.update(obs.base_velocity, obs.stamp)
 
@@ -435,10 +450,12 @@ class DriveLoop:
             trial["status"],
         )
 
-    def _read_voltage(self) -> None:
+    def _read_health(self) -> None:
         voltage = self.robot.battery_voltage()
+        read_temperatures = getattr(self.robot, "motor_temperatures", None)
+        temperatures = read_temperatures() if read_temperatures is not None else None
         with self._lock:
-            self.voltage = voltage
+            self.voltage, self.temperatures = voltage, temperatures
 
     def _attempt(self, what: str, action: Callable[[], None]) -> None:
         try:

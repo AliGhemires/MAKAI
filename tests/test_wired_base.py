@@ -24,34 +24,53 @@ def drive_pi_body_to_raw(x, y, theta_deg):
     return out
 
 
-class FakeBus:
-    """Stands in for lerobot's SerialMotorsBus holding the three wheels."""
+WHEELS = ",".join(GEOMETRY.names)
+ARM_ANGLES = {"arm_shoulder_pan": -12.0, "arm_shoulder_lift": 35.0, "arm_elbow_flex": -80.0,
+              "arm_wrist_flex": 10.0, "arm_wrist_roll": 0.0, "arm_gripper": 40.0}  # fmt: skip
 
-    def __init__(self):
+
+class FakeBus:
+    """Stands in for lerobot's SerialMotorsBus: the three wheels, plus the arm if `arm`."""
+
+    def __init__(self, arm=False, arm_answers=True):
         self.calls = []
+        self.motors = dict.fromkeys([*GEOMETRY.names, *(lekiwi.ARM_MOTOR_IDS if arm else [])])
+        self.arm_answers = arm_answers
         self.present = dict(STOPPED)
         self.voltage = dict.fromkeys(GEOMETRY.names, 124)
 
     def connect(self):
+        if any(name.startswith("arm_") for name in self.motors) and not self.arm_answers:
+            raise RuntimeError("Missing motor IDs: [1, 2, 3, 4, 5, 6]")
         self.calls.append("connect")
 
-    def disconnect(self):
-        self.calls.append("disconnect")
+    def disconnect(self, disable_torque=True):
+        self.calls.append(f"disconnect, torque off: {disable_torque}")
 
-    def disable_torque(self):
-        self.calls.append("torque off")
+    def disable_torque(self, motors=None):
+        self.calls.append(f"torque off {','.join(motors or self.motors)}")
 
-    def enable_torque(self):
-        self.calls.append("torque on")
+    def enable_torque(self, motors=None):
+        self.calls.append(f"torque on {','.join(motors or self.motors)}")
 
-    def set_operating_mode(self, mode):
-        self.calls.append(f"mode {mode}")
+    def set_operating_mode(self, mode, motors=None):
+        self.calls.append(f"mode {mode} {','.join(motors or self.motors)}")
 
     def sync_write(self, register, values, normalize=True):
         self.calls.append((register, dict(values)))
 
-    def sync_read(self, register, normalize=True):
-        return dict({"Present_Velocity": self.present, "Present_Voltage": self.voltage}[register])
+    def sync_read(self, register, motors=None, normalize=True):
+        names = list(motors or self.motors)
+        values = {
+            "Present_Velocity": self.present,
+            "Present_Voltage": self.voltage,
+            "Present_Temperature": dict.fromkeys(self.motors, 31),
+            "Present_Position": {**dict.fromkeys(GEOMETRY.names, 2048), **ARM_ANGLES},
+        }[register]
+        assert normalize == (register == "Present_Position" and all(n.startswith("arm_") for n in names)), (
+            "raw for the wheels, degrees for the arm"
+        )
+        return {name: values[name] for name in names}
 
     @property
     def last_goal(self):
@@ -111,14 +130,19 @@ def test_robot_drives_the_wheels_over_the_wire():
     robot = LeKiwiRobot(WiredBase(bus, GEOMETRY, watchdog_s=60), camera_names=())
     assert isinstance(robot, Robot)
     robot.connect()
-    assert bus.calls[:4] == ["connect", "torque off", "mode velocity", "torque on"]
+    assert bus.calls[:4] == [
+        "connect",
+        f"torque off {WHEELS}",
+        f"mode velocity {WHEELS}",
+        f"torque on {WHEELS}",
+    ]
     robot.drive(BaseVelocity(x=0.15))
     assert bus.last_goal == GEOMETRY.body_to_wheel_raw(0.15, 0, 0)
     robot.drive(BaseVelocity(theta=math.radians(45)))
     assert bus.last_goal == GEOMETRY.body_to_wheel_raw(0, 0, 45)
     robot.disconnect()
     assert bus.last_goal == STOPPED
-    assert bus.calls[-1] == "disconnect"
+    assert bus.calls[-2:] == [f"torque off {WHEELS}", "disconnect, torque off: False"]
 
 
 def test_wired_base_stops_the_wheels_when_commands_stop():
@@ -149,7 +173,10 @@ def test_wired_robot_reports_measured_velocity_and_battery_and_refuses_the_arm()
 
 def test_link_from_config_picks_the_wired_base_with_the_configured_port(monkeypatch):
     opened = []
-    monkeypatch.setattr(lekiwi, "make_wheel_bus", lambda port, geometry: opened.append(port) or FakeBus())
+    monkeypatch.setattr(
+        lekiwi, "make_wheel_bus", lambda port, geometry, arm=None: opened.append(port) or FakeBus()
+    )
+    monkeypatch.setattr(lekiwi, "load_arm_calibration", lambda path: None)
     cfg = {"robot": {**COMMITTED["robot"], "link": "wired"}}
     robot = LeKiwiRobot.from_config(cfg)
     assert isinstance(robot.client, WiredBase) and robot.camera_names == ()
@@ -164,3 +191,47 @@ def test_battery_is_unknown_through_the_host():
         def send_action(self, action): ...
 
     assert LeKiwiRobot(Client()).battery_voltage() is None
+
+
+def test_the_arm_is_read_but_never_written_to():
+    bus = FakeBus(arm=True)
+    robot = LeKiwiRobot(WiredBase(bus, GEOMETRY, watchdog_s=60), camera_names=())
+    robot.connect()
+    robot.drive(BaseVelocity(x=0.1))
+    obs = robot.get_observation()
+    assert obs.arm == {f"{name}.pos": value for name, value in ARM_ANGLES.items()}
+    assert robot.motor_temperatures() == dict.fromkeys(bus.motors, 31)
+    robot.disconnect()
+    for call in bus.calls:  # torque, mode and goals: wheels only, and the arm keeps its torque
+        text = str(call)
+        assert "arm_" not in text, call
+    assert bus.calls[-1] == "disconnect, torque off: False"
+
+
+def test_without_an_answering_arm_the_wheels_still_drive():
+    arm_bus, wheels_bus = FakeBus(arm=True, arm_answers=False), FakeBus()
+    base = WiredBase(arm_bus, GEOMETRY, watchdog_s=60, fallback_bus=wheels_bus)
+    robot = LeKiwiRobot(base, camera_names=())
+    robot.connect()
+    assert base.bus is wheels_bus and base.arm == []
+    robot.drive(BaseVelocity(x=0.1))
+    assert wheels_bus.last_goal == GEOMETRY.body_to_wheel_raw(0.1, 0, 0)
+    assert robot.get_observation().arm == {}
+
+
+def test_wired_config_adds_the_arm_when_it_is_calibrated(monkeypatch):
+    built = []
+    monkeypatch.setattr(lekiwi, "load_arm_calibration", lambda path: {"arm_gripper": "calibration"})
+    monkeypatch.setattr(
+        lekiwi, "make_wheel_bus", lambda port, geometry, arm=None: built.append(arm) or FakeBus()
+    )
+    robot = LeKiwiRobot.from_config({"robot": {**COMMITTED["robot"], "link": "wired"}})
+    assert built == [{"arm_gripper": "calibration"}, None]  # with the arm, and a wheels-only fallback
+    assert robot.client.fallback_bus is not None
+
+
+def test_temperatures_are_unknown_through_the_host():
+    class Client:
+        def send_action(self, action): ...
+
+    assert LeKiwiRobot(Client()).motor_temperatures() is None

@@ -72,7 +72,8 @@ Jamais exécuté sur le matériel : le mode host de `src/makai/robot/lekiwi.py` 
 
 Validé sur le robot le 14 novembre, bras non monté : le mode filaire (`WiredBase`,
 `robot.link: wired`) et la page de pilotage `scripts/drive.py`. Pas encore sur le robot :
-l'onglet Measure (déplacements précis, `src/makai/robot/moves.py`).
+l'onglet Measure (déplacements précis, `src/makai/robot/moves.py`), les caméras de la page
+(`src/makai/robot/cameras.py`) et la lecture du bras en mode filaire.
 
 Validé de bout en bout avec un robot et un leader simulés (`--dry-run`,
 `src/makai/robot/fake.py`), mais pas sur le matériel : `scripts/record.py` (création, ajout

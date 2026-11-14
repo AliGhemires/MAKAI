@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>MAKAI drive</title>
+<title>MAKAI control</title>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --sunken: #eceef2; --line: #d8dce3; --text: #15181d; --muted: #5f6876;
@@ -132,7 +132,52 @@
 
   /* Tabs and the Measure panel */
   .tabs { align-self: flex-start; }
-  .center.measuring .map { flex: 0 0 34%; }
+  /* What each tab shows (data-tab on .center and body) */
+  .center[data-tab="drive"] .measure, .center[data-tab="drive"] .robot-panel { display: none; }
+  .center[data-tab="measure"] .camera, .center[data-tab="measure"] .telemetry, .center[data-tab="measure"] .robot-panel { display: none; }
+  .center[data-tab="robot"] .camera, .center[data-tab="robot"] .row-2, .center[data-tab="robot"] .measure { display: none; }
+  .center[data-tab="measure"] .row-2 { flex: 0 0 34%; height: auto; grid-template-columns: minmax(0, 1fr); }
+  .center.no-camera .camera { display: none; }
+  .center.no-camera[data-tab="drive"] .row-2 { flex: 1 1 0; height: auto; }
+
+  /* Camera */
+  .camera { position: relative; flex: 1 1 0; min-height: 160px; overflow: hidden; background: #0b0d10; }
+  .camera > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .cam-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; color: #9aa3ad; font-size: 13px; text-align: center; }
+  .cam-badge, .cam-save { position: absolute; top: 8px; padding: 3px 9px; border-radius: 6px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 12px; text-decoration: none; }
+  .cam-badge { left: 10px; } .cam-save { right: 10px; }
+  .cam-pip { position: absolute; right: 10px; bottom: 10px; width: 27%; max-width: 220px; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 2px solid rgba(255, 255, 255, .85); border-radius: 8px; background: #000; }
+  .cam-pip img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .cam-pip span { position: absolute; left: 6px; top: 3px; color: #fff; font-size: 11px; text-shadow: 0 1px 2px #000; }
+  .cam-pip .cam-pip-empty { inset: 0; top: 0; display: flex; align-items: center; justify-content: center; padding: 6px; color: #9aa3ad; text-align: center; text-shadow: none; }
+
+  /* Map and numbers, side by side under the camera */
+  .row-2 { flex: 0 0 auto; height: clamp(190px, 32vh, 290px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 0; }
+  .row-2 .map { height: 100%; }
+  .row-2 .telemetry { overflow: auto; align-content: start; }
+  .arm-strip { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .arm-chip { padding: 2px 8px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--line); font-size: 12px; white-space: nowrap; }
+  .arm-chip span { color: var(--muted); }
+
+  /* Robot tab */
+  .robot-panel { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+  .rp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .rp-card { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .rp-card h3 { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .rp-rows { display: grid; grid-template-columns: auto minmax(60px, 1fr) 56px; align-items: center; gap: 8px 10px; font-size: 13px; }
+  .rp-rows .name { color: var(--muted); }
+  .rp-rows b { text-align: right; }
+  .rp-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .bar.one::before { display: none; } /* one-way bar: no centre line */
+  .rp-batt { font-size: 28px; font-weight: 700; }
+  .rp-batt small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .t-ok { color: var(--ok); } .t-warn { color: var(--warn); } .t-hot { color: var(--danger); }
+  .rp-cam { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .rp-cam:last-child { border-bottom: 0; }
+  .rp-cam .sub { color: var(--muted); font-size: 12px; }
+  .rp-cam a { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .rp-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+  .rp-dl dt { color: var(--muted); } .rp-dl dd { margin: 0; overflow-wrap: anywhere; }
   .measure { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; outline: none; }
   .m-row { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
   .m-label { width: 62px; flex-shrink: 0; font-size: 12px; color: var(--muted); }
@@ -178,9 +223,12 @@
 
   /* Phone, portrait: map and numbers on top, one stick under each thumb */
   @media (max-width: 760px) {
-    .center.measuring .map { flex-basis: 30%; }
-    body.measuring .pad { display: none; } /* Drive tab to reposition the robot */
-    body.measuring main { grid-template-rows: minmax(0, 1fr); grid-template-areas: "center center"; }
+    .center[data-tab="measure"] .row-2 { flex-basis: 30%; }
+    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad { display: none; } /* Drive tab to move the robot */
+    body[data-tab="measure"] main, body[data-tab="robot"] main { grid-template-rows: minmax(0, 1fr); grid-template-areas: "center center"; }
+    .center[data-tab="drive"] .camera { flex: 0 0 auto; aspect-ratio: 4 / 3; max-height: 38vh; }
+    .center[data-tab="drive"] .row-2 { flex: 1 1 0; height: auto; min-height: 90px; grid-template-columns: minmax(0, 1fr); }
+    .center[data-tab="drive"] .telemetry { display: none; }
     .m-label { width: 100%; }
     header { padding: 8px 12px; }
     .chip.mode { display: none; }
@@ -196,10 +244,10 @@
   @media (max-height: 520px) and (min-width: 761px) {
     header { padding: 6px 12px; }
     main { padding: 8px 12px; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); }
-    .telemetry, .hints, .speed-info, .map-legend, .chip.mode, .pad .label, .center.measuring .map { display: none; }
+    .telemetry, .hints, .speed-info, .map-legend, .chip.mode, .pad .label, .center[data-tab="drive"] .row-2, .center[data-tab="measure"] .row-2 { display: none; }
     .stick { --size: min(230px, 46vh, 28vw); }
-    body.measuring .pad { display: none; }
-    body.measuring main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
+    body[data-tab="measure"] .pad, body[data-tab="robot"] .pad { display: none; }
+    body[data-tab="measure"] main, body[data-tab="robot"] main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
     .slider, .turn-hint { --w: min(230px, 28vw); width: var(--w); }
     footer { padding: 6px 12px; }
     .stop { height: 48px; }
@@ -209,7 +257,7 @@
 </head>
 <body>
 <header>
-  <div class="brand">MAKAI<span>drive</span></div>
+  <div class="brand">MAKAI<span>control</span></div>
   <div class="chips">
     <span class="chip strong" id="driver-chip">Connecting…</span>
     <span class="chip mode" id="mode-chip">…</span>
@@ -232,10 +280,22 @@
     <div class="label">Move</div>
   </section>
 
-  <section class="center" id="center">
+  <section class="center" id="center" data-tab="drive">
     <div class="seg tabs" id="tabs" role="tablist">
-      <button data-tab="drive" class="on" role="tab">Drive</button><button data-tab="measure" role="tab">Measure</button>
+      <button data-tab="drive" class="on" role="tab">Drive</button><button data-tab="measure" role="tab">Measure</button><button data-tab="robot" role="tab">Robot</button>
     </div>
+    <div class="card camera" id="camera">
+      <img id="cam-main" alt="Robot camera">
+      <div class="cam-empty" id="cam-main-empty">Waiting for the camera…</div>
+      <div class="cam-badge num" id="cam-main-badge"></div>
+      <a class="cam-save" id="cam-save" href="#" download>Save image</a>
+      <button class="cam-pip" id="cam-pip" hidden aria-label="Swap cameras">
+        <img id="cam-pip-img" alt="Second camera">
+        <span class="cam-pip-empty" id="cam-pip-empty"></span>
+        <span id="cam-pip-badge"></span>
+      </button>
+    </div>
+    <div class="row-2" id="row-2">
     <div class="card map">
       <canvas id="map" aria-label="Path of the robot, from wheel odometry"></canvas>
       <div class="map-legend">
@@ -262,8 +322,10 @@
         <span class="name">Back</span><div class="bar" id="wheel-back"><div class="fill"></div></div>
         <span class="name">Right</span><div class="bar" id="wheel-right"><div class="fill"></div></div>
       </div>
+      <div class="arm-strip" id="arm-strip" hidden></div>
     </div>
-    <div class="card measure" id="measure" hidden>
+    </div>
+    <div class="card measure" id="measure">
       <div class="m-row">
         <span class="m-label">Move</span>
         <div class="chips-row" id="m-kind">
@@ -320,6 +382,14 @@
       <div class="m-actions">
         <a href="/api/trials.csv" download id="m-csv">Download CSV</a>
         <button class="btn danger-btn" id="m-clear">Clear all</button>
+      </div>
+    </div>
+    <div class="card robot-panel" id="robot-panel">
+      <div class="rp-grid">
+        <section class="rp-card"><h3>Arm</h3><div class="rp-rows num" id="rp-arm"></div><p class="rp-note" id="rp-arm-note"></p></section>
+        <section class="rp-card"><h3>Power and motors</h3><div class="rp-batt num" id="rp-batt">–</div><div class="rp-rows num" id="rp-motors"></div><p class="rp-note" id="rp-motors-note"></p></section>
+        <section class="rp-card"><h3>Cameras</h3><div id="rp-cams"></div></section>
+        <section class="rp-card"><h3>Connection</h3><dl class="rp-dl" id="rp-link"></dl></section>
       </div>
     </div>
   </section>
@@ -507,6 +577,8 @@ async function loadInfo() {
   setSpeed(presets.reduce((a, b) => (Math.abs(b - wanted) < Math.abs(a - wanted) ? b : a)));
   $("#mode-chip").textContent = info.link === "sim" ? "simulation" : info.serial_port ? `${info.link} · ${info.serial_port}` : info.link;
   if (!info.wheels) $("#wheels").hidden = true;
+  pickCameras();
+  updateStreams();
 }
 
 // ---- Display -------------------------------------------------------------------------------
@@ -584,6 +656,10 @@ function render(st) {
   }
   $("#pose-text").textContent = `x ${p.x.toFixed(2)} m · y ${p.y.toFixed(2)} m · ${Math.round(p.yaw_deg)}°`;
   renderMove(st);
+  renderCameras(st);
+  renderArm(st);
+  renderMotors(st);
+  renderLink(st);
 }
 
 // ---- Measure: precise moves checked with a tape --------------------------------------------
@@ -646,7 +722,7 @@ function renderMove(st) {
     const first = M.lastSeen === null;
     M.lastSeen = st.last_trial.id;
     if (!first || !M.selected) M.selected = st.last_trial.id; // a new move: show its result
-    if (!first && st.last_trial.status === "done" && !$("#measure").hidden) {
+    if (!first && st.last_trial.status === "done" && currentTab === "measure") {
       setTimeout(() => { $("#m-tape").focus(); $("#m-tape").select(); }, 50); // step 2: measure, type
     }
   }
@@ -750,15 +826,136 @@ function renderTrials() {
   renderResult(state);
 }
 
+let currentTab = "drive";
 function setTab(tab) {
+  currentTab = tab;
   for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
-  $("#center").classList.toggle("measuring", tab === "measure");
-  document.body.classList.toggle("measuring", tab === "measure");
-  $("#telemetry").hidden = tab === "measure";
-  $("#measure").hidden = tab !== "measure";
+  $("#center").dataset.tab = tab;
+  document.body.dataset.tab = tab;
   try { localStorage.setItem("makai-drive-tab", tab); } catch (_) { /* private mode */ }
-  history.replaceState(null, "", tab === "measure" ? "#measure" : location.pathname);
+  history.replaceState(null, "", tab === "drive" ? location.pathname : `#${tab}`);
   resizeCanvas();
+  updateStreams();
+  if (state) render(state);
+}
+
+// ---- Cameras: MJPEG streams in <img>, only while the Drive tab is on screen ----------------
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const CAM = { main: null, pip: null, streaming: { main: null, pip: null } };
+const cameraNames = () => (info && info.cameras) || [];
+
+function pickCameras() {
+  const names = cameraNames();
+  if (!names.includes(CAM.main)) CAM.main = names.includes("front") ? "front" : names[0] || null;
+  CAM.pip = names.find((n) => n !== CAM.main) || null;
+  $("#center").classList.toggle("no-camera", names.length === 0);
+}
+
+function setStream(img, slot, name) {
+  if (CAM.streaming[slot] === name) return;
+  CAM.streaming[slot] = name;
+  img.src = name ? `/api/camera/${encodeURIComponent(name)}.mjpg?fps=${(info && info.camera_fps) || 10}&v=${Date.now()}` : BLANK;
+}
+
+function updateStreams() {
+  const live = currentTab === "drive" && !document.hidden && cameraNames().length > 0;
+  setStream($("#cam-main"), "main", live ? CAM.main : null);
+  setStream($("#cam-pip-img"), "pip", live ? CAM.pip : null);
+  $("#cam-pip").hidden = !CAM.pip;
+  $("#cam-save").href = CAM.main ? `/api/camera/${encodeURIComponent(CAM.main)}.jpg?download=1` : "#";
+}
+
+for (const [id, slot] of [["#cam-main", "main"], ["#cam-pip-img", "pip"]]) {
+  $(id).addEventListener("error", () => { // the stream ended (robot restarted, Wi-Fi cut): retry
+    if (CAM.streaming[slot] === null) return;
+    CAM.streaming[slot] = null;
+    setTimeout(updateStreams, 2000);
+  });
+}
+$("#cam-pip").addEventListener("click", () => { [CAM.main, CAM.pip] = [CAM.pip, CAM.main]; updateStreams(); });
+
+function cameraText(name, status) {
+  if (!status) return `${name}: unknown camera`;
+  if (status.ok) return "";
+  return `${name}: ${status.error || "no image"}`;
+}
+
+function renderCameras(st) {
+  const cams = st.cameras || {}, main = cams[CAM.main], pip = cams[CAM.pip];
+  if (CAM.main) {
+    const text = cameraText(CAM.main, main);
+    $("#cam-main-empty").hidden = !text;
+    $("#cam-main-empty").textContent = text;
+    $("#cam-main-badge").textContent = main && main.ok ? `${CAM.main} · ${main.fps} fps` : CAM.main;
+  }
+  if (CAM.pip) {
+    const text = cameraText(CAM.pip, pip);
+    $("#cam-pip-empty").hidden = !text;
+    $("#cam-pip-empty").textContent = pip && !pip.ok ? "no image" : "";
+    $("#cam-pip-badge").textContent = CAM.pip;
+  }
+  if (currentTab !== "robot") return;
+  $("#rp-cams").innerHTML = Object.entries(cams).map(([name, c]) => {
+    const detail = c.ok ? `${c.width}×${c.height} · ${c.fps} fps${c.viewers ? ` · ${c.viewers} watching` : ""}` : c.error;
+    return `<div class="rp-cam"><div><i class="dot ${c.ok ? "ok" : "bad"}"></i> <b>${name}</b><div class="sub">${detail}${c.source ? ` · ${c.source}` : ""}</div></div>`
+      + (c.ok ? `<a href="/api/camera/${encodeURIComponent(name)}.jpg?download=1" download>Save image</a>` : "") + `</div>`;
+  }).join("") || `<p class="rp-note">No camera configured.</p>`;
+}
+
+// ---- Arm, motors, connection ---------------------------------------------------------------
+const JOINTS = [["shoulder_pan", "Shoulder pan"], ["shoulder_lift", "Shoulder lift"], ["elbow_flex", "Elbow"],
+  ["wrist_flex", "Wrist flex"], ["wrist_roll", "Wrist roll"], ["gripper", "Gripper"]];
+const MOTOR_NAMES = { base_left_wheel: "Left wheel", base_back_wheel: "Back wheel", base_right_wheel: "Right wheel",
+  arm_shoulder_pan: "Shoulder pan", arm_shoulder_lift: "Shoulder lift", arm_elbow_flex: "Elbow",
+  arm_wrist_flex: "Wrist flex", arm_wrist_roll: "Wrist roll", arm_gripper: "Gripper" };
+const jointText = (key, v) => (key === "gripper" ? `${Math.round(v)} %` : `${Math.round(v)}°`);
+
+function renderArm(st) {
+  const arm = st.arm || {}, joints = JOINTS.filter(([k]) => k in arm);
+  $("#arm-strip").hidden = joints.length === 0;
+  if (joints.length) {
+    $("#arm-strip").innerHTML = `<span class="name">Arm</span>`
+      + joints.map(([k, label]) => `<span class="arm-chip"><span>${label}</span> <b>${jointText(k, arm[k])}</b></span>`).join("");
+  }
+  if (currentTab !== "robot") return;
+  $("#rp-arm").innerHTML = joints.map(([k, label]) => {
+    const v = arm[k], f = k === "gripper" ? clamp(v / 100, 0, 1) : clamp(v / 150, -1, 1);
+    const left = k === "gripper" ? 0 : 50 + Math.min(0, f) * 50, width = k === "gripper" ? f * 100 : Math.abs(f) * 50;
+    return `<span class="name">${label}</span><div class="bar${k === "gripper" ? " one" : ""}"><div class="fill" style="left:${left}%;width:${width}%"></div></div><b>${jointText(k, v)}</b>`;
+  }).join("");
+  const link = info && info.link;
+  $("#rp-arm-note").textContent = joints.length
+    ? "Joints in degrees from the middle of their calibrated range; gripper 0 % closed, 100 % open. Read only: this page never moves the arm."
+    : link === "sim" ? "No arm in the simulation."
+      : link === "host" ? "Waiting for the arm in the host's observations."
+        : "Arm not read: no arm calibration on the Pi (lerobot-calibrate --robot.type=lekiwi --robot.id=makai_kiwi), or the arm is not powered.";
+}
+
+function renderMotors(st) {
+  if (currentTab !== "robot") return;
+  const v = st.battery_v;
+  $("#rp-batt").innerHTML = v === null || v === undefined ? "– <small>battery: wired mode only</small>"
+    : `<span class="${v >= 11.4 ? "t-ok" : v >= 10.8 ? "t-warn" : "t-hot"}">${v.toFixed(1)} V</span> <small>battery · full 12.6 V, low 10.8 V</small>`;
+  const temps = st.temperatures || {};
+  $("#rp-motors").innerHTML = Object.entries(temps).map(([name, t]) => {
+    const cls = t < 45 ? "t-ok" : t < 60 ? "t-warn" : "t-hot";
+    return `<span class="name">${MOTOR_NAMES[name] || name}</span><div class="bar one"><div class="fill" style="left:0;width:${clamp(t / 80, 0, 1) * 100}%"></div></div><b class="${cls}">${t} °C</b>`;
+  }).join("");
+  $("#rp-motors-note").textContent = Object.keys(temps).length
+    ? "Servos above 60 °C: give them a break (arm at rest)."
+    : "Motor temperatures: wired mode only (the host does not send them).";
+}
+
+function renderLink(st) {
+  if (currentTab !== "robot") return;
+  const rows = [
+    ["Mode", info ? (info.link === "sim" ? "simulation" : info.link === "wired" ? `wired, ${info.serial_port}` : "through the host") : "–"],
+    ["Link", online ? `${Math.round(rtt ?? 0)} ms round trip` : "offline"],
+    ["Driver", st.you_drive ? "you" : st.driver || "nobody"],
+    ["Position from", st.odometry_source || "–"],
+    ["Errors", st.error || "none"],
+  ];
+  $("#rp-link").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }
 
 function setSpeed(value) {
@@ -937,7 +1134,7 @@ window.addEventListener("keyup", (e) => {
 });
 // A key released while the page is not focused never sends keyup: forget everything.
 window.addEventListener("blur", () => { input.keys.clear(); slow = false; });
-document.addEventListener("visibilitychange", () => { if (document.hidden) resetInputs(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) resetInputs(); updateStreams(); });
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 
 let padWas = [];
@@ -980,7 +1177,8 @@ $("#m-clear").addEventListener("click", () => {
 renderMeasureForm();
 let savedTab = null;
 try { savedTab = localStorage.getItem("makai-drive-tab"); } catch (_) { /* private mode */ }
-if (location.hash === "#measure" || savedTab === "measure") setTab("measure");
+const wantedTab = location.hash.slice(1) || savedTab;
+if (["measure", "robot"].includes(wantedTab)) setTab(wantedTab);
 
 function frame() {
   pollGamepad();

@@ -279,6 +279,26 @@ mesurées, la tension de la batterie. Elle marche sur téléphone, tablette ou l
 installer, et le script n'utilise que la bibliothèque standard de Python : rien à ajouter
 sur la Pi.
 
+C'est l'interface du robot, **MAKAI control**, en trois onglets :
+- **Drive** : la caméra avant en direct (la caméra de poignet en vignette, un clic les
+  échange ; « Save image » enregistre l'image), le chemin parcouru, les vitesses, la charge
+  des roues et les angles du bras ;
+- **Measure** : déplacements précis vérifiés au mètre (section suivante) ;
+- **Robot** : bras (angle de chaque articulation, pince en %), batterie et température de
+  chaque moteur, état des caméras, connexion. Lien direct : `http://lekiwi.local:8000/#robot`.
+
+D'où viennent les données :
+
+| | Mode filaire, sur la Pi | Mode host, depuis un laptop |
+|---|---|---|
+| Caméras | ouvertes directement (`robot.cameras` de la config) | images du host |
+| Bras | lu sur le bus, **jamais commandé** (pas même son couple), si la calibration du bras existe sur la Pi | angles du host |
+| Batterie, températures | oui | non (le host ne les envoie pas) |
+
+En mode host, ne pas lancer la page en même temps que `teleop.py` ou `record.py` : ils se
+partagent le flux du host. Une caméra absente (poignet pas branché) est signalée, sans
+empêcher le reste. `--no-cameras` pour ne pas les ouvrir, `--camera-fps 5` pour un réseau lent.
+
 Sur la Pi, carte moteurs branchée sur la Pi (le bras n'est pas nécessaire) :
 
 ```bash
