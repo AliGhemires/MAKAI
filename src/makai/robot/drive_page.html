@@ -142,6 +142,9 @@
   .m-input { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
   .measure input[type=number] { width: 86px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); color: var(--text); font: inherit; user-select: text; -webkit-user-select: text; }
   .m-hint { font-size: 12px; color: var(--muted); }
+  .m-steps { margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+  .m-secondary { font-weight: 500; color: var(--muted); }
+  .m-real-bad { color: var(--warn); } .m-real-ok { color: var(--ok); }
   .go { width: 100%; height: 46px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
   .go:disabled { opacity: .45; cursor: default; }
   .m-progress-text { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 13px; }
@@ -285,6 +288,7 @@
         <span class="m-hint num" id="m-speed-text"></span>
       </div>
       <div>
+        <div class="m-steps">1 · Choose and press Go &nbsp;→&nbsp; 2 · Measure with a tape &nbsp;→&nbsp; 3 · Type it, Enter</div>
         <button class="go" id="m-go">Go</button>
         <div id="m-progress" hidden>
           <div class="m-progress-text num"><span id="m-progress-text"></span><button class="btn ghost-btn" id="m-cancel">Cancel</button></div>
@@ -296,12 +300,13 @@
         <div class="m-result-head"><b id="m-r-title"></b><span class="m-status" id="m-r-status"></span></div>
         <div class="m-result-grid num">
           <span>Asked</span><b id="m-r-target"></b>
-          <span>Wheels say</span><b id="m-r-wheels"></b>
+          <span>You measured</span><b id="m-r-real"></b>
+          <span>Wheels say</span><b id="m-r-wheels" class="m-secondary"></b>
           <span>Drift</span><b id="m-r-drift"></b>
         </div>
         <div class="m-tape">
           <label for="m-tape" id="m-tape-label">Tape measure says</label>
-          <input id="m-tape" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 9.7">
+          <input id="m-tape" type="number" inputmode="decimal" step="0.1" min="0" placeholder="measured">
           <span id="m-tape-unit">cm</span>
           <button class="btn" id="m-save">Save</button>
         </div>
@@ -641,6 +646,9 @@ function renderMove(st) {
     const first = M.lastSeen === null;
     M.lastSeen = st.last_trial.id;
     if (!first || !M.selected) M.selected = st.last_trial.id; // a new move: show its result
+    if (!first && st.last_trial.status === "done" && !$("#measure").hidden) {
+      setTimeout(() => { $("#m-tape").focus(); $("#m-tape").select(); }, 50); // step 2: measure, type
+    }
   }
   if (st.trials_version !== M.version) loadTrials();
   renderResult(st);
@@ -668,7 +676,14 @@ function renderResult(st) {
   status.textContent = { done: "done", cancelled: "cancelled", stopped: "emergency stop", timeout: "timed out" }[t.status] || t.status;
   status.className = "m-status " + (ok ? "ok" : "bad");
   $("#m-r-target").textContent = `${t.target.toFixed(t.unit === "deg" ? 1 : 2)}${u}`;
-  $("#m-r-wheels").textContent = `${t.wheels.toFixed(2)}${u}  (${fmtErr(t.wheels - t.target, t.unit)})`;
+  const real = $("#m-r-real");
+  if (t.tape === null || t.tape === undefined) { real.textContent = "– (type it below)"; real.className = ""; }
+  else {
+    const err = t.tape - t.target, pct = (100 * err) / t.target;
+    real.textContent = `${t.tape.toFixed(t.unit === "deg" ? 1 : 2)}${u} → ${fmtErr(err, t.unit)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)} %)`;
+    real.className = Math.abs(pct) <= 1 ? "m-real-ok" : "m-real-bad";
+  }
+  $("#m-r-wheels").textContent = `${t.wheels.toFixed(2)}${u} (${fmtErr(t.wheels - t.target, t.unit)}): what the robot thinks`;
   $("#m-r-drift").textContent = t.unit === "deg" ? `${t.off_axis_cm.toFixed(2)} cm off the spot` : `${t.off_axis_cm.toFixed(2)} cm sideways · ${t.heading_drift_deg.toFixed(1)}° turned`;
   $("#m-tape-label").textContent = t.unit === "deg" ? "It really turned" : "Tape measure says";
   $("#m-tape-unit").textContent = t.unit === "deg" ? "°" : "cm";
@@ -692,7 +707,9 @@ async function saveTape() {
   try {
     await request("POST", "/api/trials/measure", { client: CLIENT, id: t.id, tape: raw === "" ? null : parseFloat(raw) });
     showMoveMessage("");
-    loadTrials();
+    await loadTrials();
+    $("#m-go").focus(); // Enter now runs the same move again
+
   } catch (e) { showMoveMessage(e.refused ? e.message : "Could not reach the robot."); }
 }
 
