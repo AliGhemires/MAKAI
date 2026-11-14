@@ -45,6 +45,8 @@ addopts = "-q"
 line-length = 110
 target-version = "py312"
 src = ["src", "tests", "scripts"]
+# Docs are written by hand, often in a hurry: the code blocks inside them are not ours to police.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
