@@ -1,0 +1,66 @@
+# Shared configuration (committed): properties of THE robot and of the demo.
+# Per-laptop values (serial port of the leader arm, HF user...) go in configs/local.yaml,
+# which is git-ignored and overrides this file key by key. See configs/local.example.yaml.
+
+robot:
+  id: makai_kiwi            # calibration name: use the SAME id everywhere, forever
+  remote_ip: 192.168.1.50   # Raspberry Pi address (`hostname -I` on the Pi) -> override in local.yaml if needed
+  fps: 30
+  cameras:                  # must match what the host on the Pi is started with (docs/SETUP.md)
+    front: {index_or_path: /dev/video0, width: 640, height: 480, rotation: 0}   # Logitech C270
+    wrist: {index_or_path: /dev/video2, width: 640, height: 480, rotation: 0}   # HBVCAM
+
+teleop:
+  leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)
+  leader_id: makai_leader
+
+hub:
+  namespace: CHANGE_ME      # Hugging Face user or org that owns datasets and models
+
+perception:
+  model: yoloe-11s-seg.pt   # or the path to our fine-tuned weights
+  confidence: 0.15
+  device: null              # null = auto (mps on the Macs)
+  max_range_m: 2.5
+  prompts:                  # words the open-vocabulary detector looks for, per category
+    clothing: [sock, t-shirt, towel, cloth, glove]
+    trash: [can, plastic bottle, crumpled paper, paper cup, wrapper]
+  camera_model:             # MEASURE these on the robot once the front camera is fixed
+    width: 640
+    height: 480
+    hfov_deg: 55.0          # Logitech C270: 55 deg diagonal-ish; refine if distances look off
+    height_m: 0.25
+    pitch_deg: 35.0
+    x_offset_m: 0.05
+  ground_plane_file: ground_plane.yaml   # written by `makai-calibrate-ground`; used when present
+  stations:
+    marker_size_m: 0.10
+    marker_ids: {0: clothing, 1: trash}
+
+navigation:
+  approach:                 # canonical pre-grasp pose: where the object must be, in the base frame
+    goal_x_m: 0.22
+    goal_y_m: 0.0
+    tol_x_m: 0.01
+    tol_y_m: 0.01
+    max_lin: 0.15
+    max_ang: 0.8
+  mission:
+    station_standoff_m: 0.35
+    search_speed: 0.6
+
+manipulation:
+  poses_file: arm_poses.yaml   # named arm poses, captured with scripts/teleop.py (key `p`)
+  pick:
+    kind: policy              # policy | scripted  (scripted = open-loop fallback, no training)
+    policy_type: act
+    policy_path: CHANGE_ME/makai_act_pick_v1   # Hub repo or local checkpoint dir
+    task: "Pick up the object from the floor"  # must be the task string used when recording
+    duration_s: 12.0
+    device: null              # null = as trained; "mps" on the Macs
+    after: [home]             # poses played once the policy is done (carry pose)
+    gripper_open_above: null  # set to a gripper value to detect an empty grasp
+    steps: [pick_above, [pick_down, 1.0], [pick_close, 0.8], home]   # used when kind: scripted
+  drop:                       # scripted, per category
+    clothing: [drop_reach, [drop_open, 0.6], home]
+    trash: [drop_reach, [drop_open, 0.6], home]

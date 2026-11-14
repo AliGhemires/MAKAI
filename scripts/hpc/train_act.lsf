@@ -1,0 +1,26 @@
+#!/bin/bash
+# TEMPLATE for the DTU HPC cluster (LSF). NOT TESTED: adapt the queue, modules and paths.
+# Check the available GPU queues with `bqueues` and the cluster documentation first.
+#
+#   bsub < scripts/hpc/train_act.lsf
+#
+#BSUB -J makai_act
+#BSUB -q gpuv100
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -n 4
+#BSUB -R "rusage[mem=8GB]"
+#BSUB -R "span[hosts=1]"
+#BSUB -W 4:00
+#BSUB -o makai_act_%J.out
+#BSUB -e makai_act_%J.err
+
+set -euo pipefail
+DATASET="${DATASET:-pick_sock_v1}"
+RUN="${RUN:-act_pick_v1}"
+export HUB_NAMESPACE="${HUB_NAMESPACE:?set HUB_NAMESPACE}"
+export HF_TOKEN="${HF_TOKEN:?set HF_TOKEN (write access)}"
+
+cd "$HOME/MAKAI"          # a clone of this repo
+# uv must be installed in $HOME (curl -LsSf https://astral.sh/uv/install.sh | sh)
+uv sync --extra robot
+scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda

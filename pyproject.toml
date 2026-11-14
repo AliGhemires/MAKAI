@@ -1,0 +1,51 @@
+[project]
+name = "makai"
+version = "0.1.0"
+description = "MAKAI - mobile tidy-up robot (LeKiwi + SO-101) for the Leukerbad Robotics Carnival Hack 2026"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+# Core deps stay light on purpose: everything in `makai` that is not hardware- or
+# model-specific must import and test with only these (this is what CI installs).
+dependencies = [
+    "numpy>=2.0,<2.3",
+    "opencv-python-headless>=4.9,<4.14",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Real robot + datasets + policies (heavy: torch). Needed by WS1 / WS4 / integration.
+robot = ["lerobot[lekiwi,core-scripts,training]==0.7.0"]
+# Object detection (heavy: torch + ultralytics). Needed by WS2 / integration.
+# `clip` is needed by the open-vocabulary models; Ultralytics tries to pip-install it at
+# runtime, which does not work inside a uv environment, so we declare it here.
+perception = ["ultralytics>=8.4", "clip @ git+https://github.com/ultralytics/CLIP.git"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[project.scripts]
+makai-mission = "makai.app:main"
+makai-calibrate-ground = "makai.perception.calibrate_ground:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/makai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]

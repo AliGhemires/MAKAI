@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Per-machine config and secrets (never commit)
+configs/local.yaml
+.env
+
+# Data, models, training outputs: these live on the Hugging Face Hub, NOT in git
+outputs/
+data/
+datasets/
+wandb/
+trackio/
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.mcap
+*.rrd
+*.mp4
+*.mov
+!assets/**/*.mp4
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code: shared settings are committed, personal ones are not
+.claude/settings.local.json

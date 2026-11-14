@@ -1,0 +1,13 @@
+# Named arm poses (degrees, LeRobot joint keys). PLACEHOLDERS: capture the real ones on the
+# robot with `uv run python scripts/teleop.py`, key `p`, then paste them here and commit.
+#
+# home       : arm folded, out of the front camera's view. Pose while driving, start pose of
+#              every demonstration, and carry pose. NEVER change it once data collection started.
+# pick_*     : open-loop grasp at the canonical pre-grasp pose (fallback without policy).
+# drop_reach : gripper above the station opening. drop_open: same pose, gripper open.
+home: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+pick_above: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+pick_down: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+pick_close: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+drop_reach: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+drop_open: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}

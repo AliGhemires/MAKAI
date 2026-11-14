@@ -1,0 +1,7 @@
+# Copy to configs/local.yaml (git-ignored) and keep only what differs on YOUR laptop.
+teleop:
+  leader_port: /dev/tty.usbmodem58760431551
+hub:
+  namespace: your-hf-username
+# robot:
+#   remote_ip: 192.168.1.50
