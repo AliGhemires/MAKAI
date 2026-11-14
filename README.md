@@ -21,6 +21,9 @@ et la fiche de ton workstream dans [`docs/workstreams/`](docs/workstreams/).
 
 `make help` liste toutes les commandes.
 
+Collecter des démonstrations, robot allumé : `uv run python scripts/collect.py sock` (détail
+dans [docs/CE_SOIR.md](docs/CE_SOIR.md)).
+
 ## L'équipe
 
 | Workstream | Responsable | Fiche |

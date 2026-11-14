@@ -87,5 +87,6 @@ _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui blo
   y compris la caméra de poignet sur `/dev/video2`), bras lu avec la calibration de la Pi,
   9 moteurs à 27–30 °C sans erreur, batterie 11,7 V, odométrie par les encodeurs.
 - La caméra de poignet donne des images : à ajouter à la commande du host avant la collecte.
+  Fait dans `docs/SETUP.md`, section 4 (commande à deux caméras), à valider au premier lancement.
 - À faire : calibrer le rayon des roues au mètre (onglet Measure, `docs/SETUP.md`) ; compenser
   cette calibration en mode host (le host garde ses valeurs intégrées).

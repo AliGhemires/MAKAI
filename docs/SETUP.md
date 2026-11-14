@@ -9,7 +9,7 @@
 - Chaque roue tourne seule, et la conduite au clavier marche depuis la Pi.
 - **Bras** (moteurs 1 à 6) : pas encore monté. Tant qu'il manque, le host LeRobot refuse de
   démarrer (il exige les 9 moteurs) : utiliser le [mode filaire](#base-seule-le-mode-filaire).
-- **Caméra poignet** : pas encore branchée.
+- **Caméra poignet** : branchée, elle donne des images sur `/dev/video2` (14 nov., 21 h 45).
 - **Reste à vérifier au sol** : avancer va bien du côté de la caméra, aller à gauche va à
   gauche, tourner à gauche tourne dans le sens anti-horaire, et la vitesse réelle suit la
   commande (0,15 m/s pendant 4 s ≈ 60 cm).
@@ -294,7 +294,7 @@ Sur la Pi, avec notre host (`scripts/lekiwi_host.py`, copié sur la Pi sous
 conda activate lerobot && cd ~/lerobot
 python ~/makai_host.py --arm_acceleration=50 \
   --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 \
-  --robot.cameras='{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}}' \
+  --robot.cameras='{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}, wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}}' \
   --host.connection_time_s=36000
 ```
 
@@ -303,8 +303,13 @@ python ~/makai_host.py --arm_acceleration=50 \
   Wi-Fi, le bras saute. 30 = plus doux, 100 = plus vif ; les roues gardent 254.
 - `warmup_s: 3` : la webcam avant met 1,2 s à livrer sa première image, le défaut (1 s)
   fait échouer le démarrage.
-- Pour l'instant, seule la caméra avant est branchée. Une « Generic USB HD Camera » apparaît
-  dans `lsusb` sans `/dev/video` : câble ou alimentation de la caméra de poignet à vérifier.
+- **Les deux caméras** (`front` et `wrist`) sont dans la commande : l'enregistrement en a
+  besoin, et `scripts/collect.py` refuse de démarrer s'il en manque une. Les noms et les
+  tailles doivent être ceux de `robot.cameras` dans `configs/makai.yaml`. La commande à deux
+  caméras n'a pas encore été lancée telle quelle sur la Pi (14 nov., 23 h) : si le host
+  échoue sur la caméra de poignet, vérifier son câble, puis `ls /dev/video*`.
+- Fermer la page de contrôle (`scripts/drive.py`) avant de lancer le host : ils ne peuvent
+  pas tenir le port des moteurs en même temps.
 - Sans `--host.connection_time_s`, le host s'arrête au bout de 30 secondes. Le lancer dans
   `tmux` (installé sur la Pi le 14 au soir) pour qu'il survive à une coupure SSH.
 - Arrêter le host coupe le couple des moteurs : **tenir le bras**, il tombe.

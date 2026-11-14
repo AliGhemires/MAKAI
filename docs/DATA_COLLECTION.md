@@ -45,6 +45,16 @@ départ et même seconde immobile à la fin de chaque épisode.
 
 ## Enregistrer
 
+Une seule commande par objet. Elle contrôle le robot, enregistre, puis dépose un zip du
+dataset sur le Bureau :
+
+```bash
+uv run python scripts/collect.py sock --try     # d'abord : 2 épisodes d'essai, à regarder
+uv run python scripts/collect.py sock           # 30 épisodes (relancer pour 30 de plus)
+```
+
+Elle enchaîne `scripts/preflight.py` et `scripts/record.py`, qu'on peut aussi lancer seuls :
+
 ```bash
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
 ```
