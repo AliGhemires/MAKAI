@@ -105,5 +105,8 @@ class FloorBlobDetector:
                 margin = int(self.crop_margin * max(w, h))
                 crop = image_rgb[max(0, y - margin) : y + h + margin, max(0, x - margin) : x + w + margin]
                 category, confidence = self.classifier.classify(crop)
+                if category is Category.UNKNOWN:
+                    # Too far to tell what it is: report it anyway, so the robot comes closer.
+                    category, confidence = self.default_category, 0.0
             detections.append(Detection("object", category, confidence, (x, y, x + w, y + h)))
         return detections

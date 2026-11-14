@@ -93,6 +93,8 @@ class SimPerception:
         min_range_m: float = 0.12,
         max_range_m: float = 2.5,
         station_max_range_m: float = 3.0,
+        classify_range_m: float | None = None,  # beyond it the category is a guess, as on the robot
+        guess: Category = Category.CLOTHING,
         noise_m: float = 0.003,
         seed: int = 0,
     ):
@@ -100,6 +102,7 @@ class SimPerception:
         self.half_fov = math.radians(hfov_deg) / 2
         self.min_range, self.max_range, self.noise = min_range_m, max_range_m, noise_m
         self.station_max_range = station_max_range_m
+        self.classify_range, self.guess = classify_range_m, guess
         self.rng = random.Random(seed)
 
     def _see(self, wx: float, wy: float, max_range: float) -> tuple[float, float] | None:
@@ -113,7 +116,10 @@ class SimPerception:
         targets = []
         for obj in self.world.objects:
             if (pos := self._see(obj.x, obj.y, self.max_range)) is not None:
-                targets.append(Target(obj.category, obj.label, pos[0], pos[1]))
+                if self.classify_range is not None and math.hypot(*pos) > self.classify_range:
+                    targets.append(Target(self.guess, obj.label, pos[0], pos[1], confidence=0.0))
+                else:
+                    targets.append(Target(obj.category, obj.label, pos[0], pos[1]))
         stations = {}
         for category, (sx, sy) in self.world.stations.items():
             if (pos := self._see(sx, sy, self.station_max_range)) is not None:
