@@ -43,24 +43,45 @@ uv run python scripts/detect.py --image data/test_images/*.jpg --ignore-top 0.22
 décor. Sur le robot, c'est l'homographie qui écarte ce qui est trop loin ou trop grand
 (`perception.floor.min_size_m`, `max_size_m`, `perception.max_range_m`).
 
-### Tri linge / reste : pas encore résolu
+### Tri linge / reste : par l'aspect (depuis le 14 nov.)
 
-Pour l'instant `perception.classifier: none` : tout objet reçoit `floor.default_category`
-(`clothing`). C'est suffisant jusqu'au niveau L2 (un seul type d'objet).
+`perception.classifier: uniformity` (`UniformityClassifier`, `classify.py`) : un tissu est
+uni et mat, un emballage est imprimé et contrasté. Deux mesures sur l'objet découpé (part
+de pixels sur un contour, écart de luminosité), aucun modèle, aucun téléchargement.
 
-- Classer la zone découpée avec YOLOE : bonne catégorie 6 fois sur 7, scores très bas. Écarté.
-- `ClipClassifier` (`classify.py`, `perception.classifier: clip`) : écrit, **jamais exécuté**.
-  Les poids (340 Mo) n'ont pas pu être téléchargés sur le WiFi de la salle le 14 nov.
-- Aucun déchet n'a encore été photographié : rien n'est mesuré sur la classe « reste ».
+Mesuré le 14 nov. sur 12 photos au téléphone (7 d'une chaussette noire roulée, 5 d'une
+canette écrasée) :
+
+| Taille de l'objet dans l'image | Bien classé |
+|---|---|
+| 90 px et plus (de près) | 12 sur 12 |
+| 45 à 140 px (mi-distance, simulée) | 12 sur 12 |
+| 20 à 55 px (loin, simulée) | 10 sur 12 : deux chaussettes prises pour un déchet |
+
+D'où la règle : en dessous de 45 px (`uniformity.min_object_px`), le classifieur ne répond
+pas. L'objet est quand même signalé, avec la catégorie par défaut et une confiance de 0, pour
+que le robot s'approche ; la mission retient la dernière catégorie donnée avec confiance.
+
+Limites :
+- réglé sur **deux objets**. Tout nouvel objet doit être photographié et vérifié ;
+- un objet clair et uni (câble blanc, boule de papier lisse, chaussette blanche) sera
+  probablement lu comme du linge ; un tissu à motifs comme un déchet ;
+- seuils à revérifier avec la caméra du robot (`perception.uniformity` dans la config).
+
+Autres pistes, non retenues pour l'instant :
+- classer la zone découpée avec YOLOE : bonne catégorie 6 fois sur 7, scores très bas ;
+- `ClipClassifier` (`perception.classifier: clip`) : écrit, **jamais exécuté**. Le
+  téléchargement des poids (340 Mo) a échoué sur le WiFi de la salle (fichier corrompu).
 
 ## Tâches
 
 ### Samedi, avant 18:00
 - [x] Tester le détecteur à vocabulaire ouvert sur nos objets : insuffisant (3 sur 7)
 - [x] Détection par la couleur du sol, intégrée et testée sur photos (7 sur 7)
-- [ ] Photographier nos déchets (boule de papier, gobelet) et vérifier qu'ils sont trouvés
+- [x] Canette écrasée : trouvée 5 fois sur 5 et classée « déchet »
+- [x] Tri linge / reste par l'aspect, intégré (12 sur 12 de près)
+- [ ] Photographier les autres objets de la démo (boule de papier, gobelet, autre linge) et vérifier le tri
 - [ ] Vérifier les seuils de couleur sous l'éclairage du soir, et sur sol vide (aucune détection attendue)
-- [ ] Choisir comment trier linge / reste, une fois les déchets photographiés
 - [ ] Petit script de visualisation : image + boîtes + position au sol en mètres (Rerun)
 
 ### Samedi 18:00–22:00

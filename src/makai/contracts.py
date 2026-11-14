@@ -52,7 +52,7 @@ class Target:
     label: str
     x_m: float
     y_m: float
-    confidence: float = 1.0
+    confidence: float = 1.0  # 0.0 = the category is only a guess (too far to classify yet)
 
     @property
     def distance_m(self) -> float:

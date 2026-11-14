@@ -58,7 +58,9 @@ def main() -> None:
     source.add_argument("--image", nargs="+", help="image files to analyse")
     source.add_argument("--camera", type=int, help="webcam index for a live view in Rerun")
     parser.add_argument("--detector", choices=["floor", "open_vocab"], help="override perception.detector")
-    parser.add_argument("--classifier", choices=["none", "clip"], help="override perception.classifier")
+    parser.add_argument(
+        "--classifier", choices=["none", "uniformity", "clip"], help="override perception.classifier"
+    )
     parser.add_argument(
         "--ignore-top", type=float, help="floor detector: ignore this top fraction of the image"
     )

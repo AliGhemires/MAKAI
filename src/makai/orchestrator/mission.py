@@ -191,6 +191,9 @@ class Mission:
     def _on_approach(self, scene: Scene, now: float) -> None:
         match = self._match_track(scene)
         if match is not None:
+            if match.confidence <= 0.0 < self._track.confidence:
+                # A guess from far away must not overwrite what we already know it is.
+                match = replace(match, category=self._track.category, confidence=self._track.confidence)
             self._track, self._last_seen = match, now
         elif not self._in_blind_zone(now):
             self.robot.stop()
@@ -327,8 +330,12 @@ class Mission:
         """The sighting that is most likely the object we were already approaching."""
         assert self._track is not None
         track = self._track
-        same = [t for t in self._candidates(scene) if t.category is track.category]
-        best = min(same, key=lambda t: math.hypot(t.x_m - track.x_m, t.y_m - track.y_m), default=None)
+        # Matched by position only: the category may change as we get close enough to classify.
+        best = min(
+            self._candidates(scene),
+            key=lambda t: math.hypot(t.x_m - track.x_m, t.y_m - track.y_m),
+            default=None,
+        )
         if best is None or math.hypot(best.x_m - track.x_m, best.y_m - track.y_m) > self.cfg.track_gate_m:
             return None
         return best
