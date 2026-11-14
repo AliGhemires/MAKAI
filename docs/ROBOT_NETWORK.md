@@ -110,6 +110,13 @@ Puis `remote_ip` = IP de ton OS ci-dessus et `ssh kiwi@<cette IP>`.
 
 - **Une carte Wi-Fi qui sert deux réseaux** (client + hotspot) saute de canal : 1 ping sur
   3 à 130 ms mesuré. En option A, couper le hotspot du laptop.
+- **Les deux caméras pèsent environ 60 Mbit/s** (deux images JPEG 640×480 en qualité 90,
+  30 fois par seconde ; taille mesurée sur nos photos de sol). Quand le lien ne suit pas, les
+  images arrivent en retard : 2 s observées à 10 m avec des tables sur le trajet, presque
+  rien de près (14 nov., minuit). Pour la collecte et la démo : option A, laptop à moins de
+  5 m en vue directe, et **un seul programme connecté au host** (deux clients se partagent
+  les images, chacun en reçoit la moitié). Vérifier avec `scripts/net_check.py`, puis
+  `scripts/preflight.py` : chaque caméra doit livrer près de 30 nouvelles images par seconde.
 - La Pi a perdu son alimentation plusieurs fois : si elle disparaît, attendre 2 à 3 min
   (elle essaie les réseaux connus), puis débrancher et rebrancher son USB-C.
 - macOS : autoriser le Terminal dans Confidentialité → Surveillance de l'entrée et
