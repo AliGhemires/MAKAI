@@ -73,6 +73,32 @@ Autres pistes, non retenues pour l'instant :
 - `ClipClassifier` (`perception.classifier: clip`) : écrit, **jamais exécuté**. Le
   téléchargement des poids (340 Mo) a échoué sur le WiFi de la salle (fichier corrompu).
 
+### Robustesse à l'éclairage : insuffisante (mesurée le 14 nov.)
+
+`scripts/eval_lighting.py` ré-éclaire artificiellement chaque photo (sombre, clair, lumière
+chaude, froide, délavé, bruit) et vérifie que l'objet est retrouvé avec la bonne catégorie.
+
+```bash
+uv run python scripts/eval_lighting.py data/test_images/*.jpg
+```
+
+Détecteur par la couleur du sol + tri par l'aspect, 12 photos × 15 éclairages :
+
+| | Résultat |
+|---|---|
+| Objet retrouvé | 161 sur 180 (89 %) |
+| Bonne catégorie | 139 sur 180 (77 %) |
+| Fausses alertes | 53 |
+| Pire cas | lumière chaude : 5 sur 12 retrouvés |
+
+Causes : les seuils de couleur et de luminosité sont fixes ; une ombre profonde passe pour
+un objet sombre (faux positif visible sur `IMG_1373` en pleine résolution) ; le tri par
+l'aspect dépend de la luminosité absolue.
+
+Ce test est nécessaire mais pas suffisant : le ré-éclairage artificiel est uniforme sur
+l'image, pas l'éclairage réel. Des photos prises sous l'éclairage du soir restent le test
+qui compte. **Tout nouveau détecteur doit faire mieux que ces chiffres avant d'être adopté.**
+
 ## Tâches
 
 ### Samedi, avant 18:00
