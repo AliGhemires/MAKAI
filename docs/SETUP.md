@@ -51,40 +51,56 @@ chaque connexion SSH : `conda activate lerobot && cd ~/lerobot`.
 ### Réseau
 
 La Pi et les laptops doivent être sur le **même réseau**. L'IP de la Pi va dans
-`configs/local.yaml` → `robot.remote_ip` (propre à chaque laptop). La Pi connaît deux
-réseaux et prend le premier disponible par ordre de priorité :
+`configs/local.yaml` → `robot.remote_ip` (propre à chaque laptop). La Pi connaît trois
+réseaux (profils NetworkManager) :
 
-| Réseau | Rôle | IP de la Pi | État |
+| Option | Réseau | IP de la Pi | Mesuré (sam. 14, `scripts/net_check.py`) |
 |---|---|---|---|
-| Hotspot Windows du laptop « PC-08792 6521 », 5 GHz | principal (priorité 10, profil `makai-laptop`) | `192.168.137.50`, fixe | profil créé, **pas encore validé** |
-| Hotspot iPhone « Cyrine », 2,4 GHz | secours automatique (profil `netplan-wlan0-Cyrine`) | `172.20.10.3` en général (DHCP) | marche, mais lent |
+| **A, retenue** | la Pi est le point d'accès « makai-kiwi », 5 GHz canal 36 (profil `makai-ap`) | `10.42.0.1`, fixe | aller-retour 6 ms (p99 44), flux 29,9 images/s, **aucun trou > 100 ms** |
+| B | hotspot Windows du laptop « PC-08792 6521 » (profil `makai-laptop`, priorité 10) | `192.168.137.50`, fixe | aller-retour 51 ms (p99 211) |
+| secours | hotspot iPhone « Cyrine », 2,4 GHz (profil `netplan-wlan0-Cyrine`) | `172.20.10.3` en général | aller-retour 143 ms (p99 1,2 s), le bras saute |
 
-- **Hotspot iPhone, mesuré** : aller-retour médian 50 à 140 ms, pics jusqu'à 1,2 s ; le bras
-  avance par à-coups en téléop. Le trafic fait deux sauts Wi-Fi (Pi → iPhone → laptop) sur
-  une bande 2,4 GHz saturée pendant le hackathon.
-- **Hotspot du laptop** : un seul saut, en 5 GHz. Réglages Windows → Réseau → Point d'accès
-  mobile : bande 5 GHz, **économie d'énergie désactivée** (sinon Windows le coupe), et le
-  laptop ne doit pas se mettre en veille. Inconvénient : le robot dépend de ce laptop.
-- **Pas encore essayé** : la Pi comme point d'accès (tous les laptops s'y connectent, ne
-  dépend de personne : le plus robuste pour la démo) ; un câble Ethernet laptop ↔ Pi
-  (le plus rapide, mais robot attaché).
-- L'économie d'énergie Wi-Fi de la Pi est **désactivée**
-  (`/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf`) : elle provoquait des pics
-  de 1 s.
+**Option A** (mots de passe du réseau et de la Pi : chat d'équipe) :
 
-Changer de réseau à la main, sur la Pi (la session SSH coupe ; si le réseau visé échoue,
-la Pi revient seule sur l'autre) :
+- La Pi distribue des adresses `10.42.0.x` mais **pas de passerelle** : un laptop connecté à
+  « makai-kiwi » garde son accès Internet par une autre voie (partage USB du téléphone, ou
+  Ethernet). Sans autre voie, il n'a plus Internet tant qu'il est sur « makai-kiwi ».
+- Windows + iPhone : installer l'app « Apple Devices » (Microsoft Store), brancher l'iPhone
+  en USB, partage de connexion activé, « Faire confiance » : un adaptateur « Apple Mobile
+  Device Ethernet » apparaît. Le Wi-Fi est alors libre pour « makai-kiwi ».
+- **Couper tout autre usage du Wi-Fi du laptop** (point d'accès mobile Windows notamment) :
+  une carte Wi-Fi qui sert deux réseaux saute d'un canal à l'autre. Mesuré : 1 ping sur 3
+  à 130 ms avec le point d'accès Windows allumé, 4 ms de moyenne une fois éteint.
+- La Pi n'a pas Internet en mode point d'accès : pour `apt` ou `pip`, passer
+  temporairement sur un autre réseau (commandes ci-dessous).
+- Fichiers sur la Pi : `/etc/NetworkManager/system-connections/makai-ap.nmconnection`,
+  `/etc/NetworkManager/dnsmasq-shared.d/makai-no-gateway.conf`.
+
+**Option B** : réglages Windows → Réseau → Point d'accès mobile, bande « Toute bande
+disponible » si le laptop est déjà en Wi-Fi sur un autre réseau (une seule carte ne fait
+pas 2,4 et 5 GHz à la fois : le point d'accès semble allumé mais n'émet rien),
+**économie d'énergie désactivée**, pas de veille. Le robot dépend alors de ce laptop.
+
+L'économie d'énergie Wi-Fi de la Pi est **désactivée**
+(`/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf`) : elle provoquait des pics de 1 s.
+
+Changer de réseau, sur la Pi (la session SSH coupe ; se reconnecter à la nouvelle IP) :
 
 ```bash
-sudo nmcli connection up makai-laptop            # hotspot du laptop
+sudo nmcli connection up makai-ap                # A : la Pi devient le point d'accès
+sudo nmcli connection up makai-laptop            # B : hotspot du laptop
 sudo nmcli connection up netplan-wlan0-Cyrine    # hotspot iPhone
-nmcli -f NAME,AUTOCONNECT-PRIORITY connection show
+nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show
 ```
+
+Un profil créé avec `nmcli connection add` peut disparaître si la Pi perd son alimentation
+juste après (fichier vide au redémarrage) : écrire le fichier `.nmconnection` directement,
+puis `sync` et `sudo nmcli connection reload`.
 
 **Mesurer un réseau**, sans faire bouger le robot (téléop arrêtée) :
 
 ```bash
-uv run python scripts/net_check.py --ip 192.168.137.50   # ou 172.20.10.3
+uv run python scripts/net_check.py --ip 10.42.0.1        # A ; B : 192.168.137.50 ; iPhone : 172.20.10.3
 ```
 
 Il donne l'aller-retour vers la Pi et, si le host tourne, la régularité du flux
