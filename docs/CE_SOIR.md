@@ -29,13 +29,14 @@ version installée sur la Pi. Pas de conflit de version à craindre.
 À partir d'ici, plus personne ne touche aux caméras ni à la pose de départ.
 
 - [ ] Caméras serrées, photographiées sous deux angles (photos dans `assets/`), repères au marqueur
-- [ ] **Pose `home`** choisie, capturée (`p` pendant la téléop) et copiée dans `configs/arm_poses.yaml`.
-      Poser le leader sur un support fixe qui le remet toujours dans cette pose
+- [ ] **Pose `home`** choisie, capturée (`p` pendant la téléop) et copiée dans `configs/arm_poses.yaml`
+- [ ] **Un support fixe pour le leader** (cale en carton, ruban) qui le remet toujours dans cette
+      pose quand on le lâche. Indispensable : l'enregistrement démarre et s'arrête d'après cette pose
 - [ ] **Zone de pré-saisie** : un rectangle de ruban de 6 × 6 cm là où le bras saisit le mieux
 - [ ] **Gabarit en carton** qui s'appuie contre l'avant du robot et montre où est la zone : si le
       robot bouge, on retrouve la zone sans mesurer
-- [ ] Éclairage décidé. Une lampe fixée sur le robot, pointée vers la zone, rend la scène
-      identique ce soir et lundi midi : fortement recommandé
+- [ ] **Tapis de démo** posé et scotché à plat, si on en fait un (voir « Tenir dans une autre
+      salle » plus bas) : on enregistre dessus, on fait la démo dessus
 - [ ] 10 saisies d'essai par objet, non enregistrées. **Si la canette ne se saisit pas
       proprement 8 fois sur 10 à la main, on ne l'enregistre pas ce soir**
 
@@ -65,17 +66,32 @@ uv run python scripts/preflight.py                                              
 
 ## 2. Enregistrer
 
-Protocole complet : `docs/DATA_COLLECTION.md`. L'essentiel :
+L'enregistrement est **mains libres** : aucune touche pendant les épisodes.
 
-- un épisode = bras en `home` → descendre → saisir → remonter → revenir en `home` en tenant
-  l'objet, puis **rester immobile une seconde**. 8 à 12 secondes. Fin d'épisode : flèche droite ;
+1. Au lancement : leader posé sur son support, mains écartées, Entrée. Cette pose devient `home`.
+2. Le laptop dit « Ready » quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
+3. Dès que tu bouges le leader, l'épisode commence. Descendre, saisir, remonter, reposer le
+   leader sur son support en tenant l'objet.
+4. Après une seconde d'immobilité, l'épisode est sauvegardé et son numéro est annoncé.
+   Lâcher l'objet, le replacer ailleurs dans la zone, et recommencer.
+
+Chaque épisode part donc de la même pose, sans temps mort au début, et finit par la même
+seconde immobile, sans que personne ait à y penser.
+
+- **Flèche gauche** pendant un épisode : on le jette. Juste après une sauvegarde : il est marqué
+  mauvais, et la commande pour le supprimer s'affiche en fin de session.
+- Un épisode qui ne revient pas en `home` en 15 secondes est jeté tout seul (« Too long »).
+- Si « Ready » ne vient jamais : le bras ne se stabilise pas assez près de `home`. Relancer avec
+  `--home-tol 10`, ou revenir au mode classique avec `--manual` (flèche droite pour finir).
+
+Le reste du protocole (`docs/DATA_COLLECTION.md`) ne change pas :
+
 - un seul opérateur par objet, le même geste à chaque fois, sans hésitation ;
-- un épisode raté ou hésitant : flèche gauche, on le refait. On ne garde que du propre ;
 - l'objet change de place et d'orientation à chaque épisode, en **couvrant la zone
   régulièrement** : centre, quatre coins, quatre milieux de bord, et on recommence en tournant
   l'objet. Ni tout au centre, ni au hasard ;
-- **ne pas toucher w a s d z x r f q** : ces touches font rouler la base. Flèches et Échap seulement ;
-- les mains hors du champ des caméras pendant l'épisode.
+- **ne pas toucher w a s d z x r f q** : ces touches font rouler la base ;
+- les mains hors du champ des caméras dès que le leader bouge.
 
 ```bash
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
@@ -115,6 +131,38 @@ uv run python scripts/teleop.py --save-front data/robot_frames/empty    # et pou
 
 Le réentraînement lui-même attend demain matin (10 minutes sur un Mac).
 
+### Tenir dans une autre salle
+
+La démo de lundi a lieu dans une autre salle, et on n'a pas de lampe. Ce qui change, ce n'est
+pas seulement la lumière : **le sol et le décor aussi**, pour le détecteur comme pour la saisie.
+Par ordre d'efficacité :
+
+1. **Savoir ce soir** : quelle salle, quel sol, et quand on peut y entrer (dimanche ? lundi
+   matin ?). Demander aux organisateurs maintenant : toute la suite en dépend.
+2. **Enregistrer dans cette salle dès qu'on y a accès** : 20 à 30 épisodes par objet, ajoutés
+   aux mêmes datasets (la même commande), puis un réentraînement. Rien ne vaut des données du
+   lieu de la démo.
+3. **Emporter notre sol : un tapis de démo.** Des cartons dépliés, scotchés bord à bord et au
+   sol, environ 1,5 × 1,5 m, mats et sans plis (les roues doivent rouler dessus). On enregistre
+   dessus ce soir et on le pose dans la salle de démo : la caméra de poignet voit alors le même
+   sol partout. À défaut d'accès à la salle, c'est la parade la plus sûre.
+4. **Varier plutôt que répéter.** Sans tapis ni accès : enregistrer en deux endroits et sous deux
+   lumières (ce soir, puis dimanche matin près d'une fenêtre), 30 épisodes par condition. Un
+   modèle qui a vu plusieurs sols apprend à ne pas s'y fier.
+5. **Un modèle qui ne regarde que la caméra de poignet** (essai 6). La caméra avant voit les
+   murs et les gens, qui changeront ; celle du poignet ne voit presque que l'objet et la pince.
+   ```bash
+   scripts/wrist_only.sh pick_sock_v1        # crée le dataset pick_sock_v1_wrist
+   ```
+   puis l'entraîner comme les autres. Aucun changement côté robot.
+6. **La variante `AUGMENT=1`** : luminosité de ×0,5 à ×1,5, contraste et couleurs au hasard.
+7. **Réentraîner le détecteur dans la salle** : trois vidéos de 30 secondes avec la caméra du
+   robot (`teleop.py --save-front`), dix minutes d'entraînement. Prévu pour ça.
+8. **Répéter dans la salle** aussitôt que possible, à l'heure de la démo si on peut.
+
+Une lampe (frontale, lampe USB, vélo) fixée sur le robot aiderait encore : si une autre équipe
+ou les organisateurs en ont une, la prendre, et l'allumer pour toute la collecte.
+
 ## 3. Lancer l'entraînement avant de dormir
 
 Mesures du 14 nov. : sur un Mac M5, ACT avance à **2 secondes par pas** (batch 8). Un GPU
@@ -123,7 +171,7 @@ loué va environ 10 fois plus vite.
 ### Plan A · Sur un GPU distant (si la porte C est passée)
 
 Dans tous les cas le dataset doit d'abord être sur le Hub (`record.py` l'envoie en fin de
-session), et les checkpoints y reviennent tous les 5 000 pas. **Cinq essais, par ordre de
+session), et les checkpoints y reviennent tous les 5 000 pas. **Six essais, par ordre de
 priorité** ; le pourquoi de chacun est dans `docs/TRAINING.md`, section « Protocole ».
 
 Sur le **HPC de DTU**, depuis le dossier `MAKAI` d'un nœud de connexion :
@@ -135,6 +183,7 @@ DATASET=pick_can_v1  RUN=act_can_v1  bsub < scripts/hpc/train_act.lsf           
 AUGMENT=1 DATASET=pick_sock_v1 RUN=act_sock_v1_aug bsub < scripts/hpc/train_act.lsf      # 3
 AUGMENT=1 DATASET=pick_can_v1  RUN=act_can_v1_aug  bsub < scripts/hpc/train_act.lsf      # 4
 EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50" DATASET=pick_sock_v1 RUN=act_sock_v1_c50 bsub < scripts/hpc/train_act.lsf   # 5
+DATASET=pick_sock_v1_wrist RUN=act_sock_v1_wrist bsub < scripts/hpc/train_act.lsf        # 6 (après scripts/wrist_only.sh pick_sock_v1)
 bstat          # en attente ou en cours ?
 ```
 
@@ -150,6 +199,7 @@ scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large               
 AUGMENT=1 scripts/train.sh pick_sock_v1 act_sock_v1_aug --job.target=a10g-large          # 3
 AUGMENT=1 scripts/train.sh pick_can_v1  act_can_v1_aug  --job.target=a10g-large          # 4
 scripts/train.sh pick_sock_v1 act_sock_v1_c50 --job.target=a10g-large --policy.chunk_size=50 --policy.n_action_steps=50   # 5
+scripts/train.sh pick_sock_v1_wrist act_sock_v1_wrist --job.target=a10g-large            # 6 (après scripts/wrist_only.sh pick_sock_v1)
 ```
 
 Sur une **machine louée** : la même commande avec `--policy.device=cuda` à la place de `--job.target`.
