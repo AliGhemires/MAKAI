@@ -29,13 +29,14 @@ version installée sur la Pi. Pas de conflit de version à craindre.
 À partir d'ici, plus personne ne touche aux caméras ni à la pose de départ.
 
 - [ ] Caméras serrées, photographiées sous deux angles (photos dans `assets/`), repères au marqueur
-- [ ] **Pose `home`** choisie, capturée (`p` pendant la téléop) et copiée dans `configs/arm_poses.yaml`.
-      Poser le leader sur un support fixe qui le remet toujours dans cette pose
+- [ ] **Pose `home`** choisie, capturée (`p` pendant la téléop) et copiée dans `configs/arm_poses.yaml`
+- [ ] **Un support fixe pour le leader** (cale en carton, ruban) qui le remet toujours dans cette
+      pose quand on le lâche. Indispensable : l'enregistrement démarre et s'arrête d'après cette pose
 - [ ] **Zone de pré-saisie** : un rectangle de ruban de 6 × 6 cm là où le bras saisit le mieux
 - [ ] **Gabarit en carton** qui s'appuie contre l'avant du robot et montre où est la zone : si le
       robot bouge, on retrouve la zone sans mesurer
-- [ ] Éclairage décidé. Une lampe fixée sur le robot, pointée vers la zone, rend la scène
-      identique ce soir et lundi midi : fortement recommandé
+- [ ] **Éclairage décidé** (voir « Tenir quand la lumière change » plus bas). Une lampe fixée sur
+      le robot, pointée vers la zone, allumée pour toute la collecte et pour la démo
 - [ ] 10 saisies d'essai par objet, non enregistrées. **Si la canette ne se saisit pas
       proprement 8 fois sur 10 à la main, on ne l'enregistre pas ce soir**
 
@@ -65,17 +66,32 @@ uv run python scripts/preflight.py                                              
 
 ## 2. Enregistrer
 
-Protocole complet : `docs/DATA_COLLECTION.md`. L'essentiel :
+L'enregistrement est **mains libres** : aucune touche pendant les épisodes.
 
-- un épisode = bras en `home` → descendre → saisir → remonter → revenir en `home` en tenant
-  l'objet, puis **rester immobile une seconde**. 8 à 12 secondes. Fin d'épisode : flèche droite ;
+1. Au lancement : leader posé sur son support, mains écartées, Entrée. Cette pose devient `home`.
+2. Le laptop dit « Ready » quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
+3. Dès que tu bouges le leader, l'épisode commence. Descendre, saisir, remonter, reposer le
+   leader sur son support en tenant l'objet.
+4. Après une seconde d'immobilité, l'épisode est sauvegardé et son numéro est annoncé.
+   Lâcher l'objet, le replacer ailleurs dans la zone, et recommencer.
+
+Chaque épisode part donc de la même pose, sans temps mort au début, et finit par la même
+seconde immobile, sans que personne ait à y penser.
+
+- **Flèche gauche** pendant un épisode : on le jette. Juste après une sauvegarde : il est marqué
+  mauvais, et la commande pour le supprimer s'affiche en fin de session.
+- Un épisode qui ne revient pas en `home` en 15 secondes est jeté tout seul (« Too long »).
+- Si « Ready » ne vient jamais : le bras ne se stabilise pas assez près de `home`. Relancer avec
+  `--home-tol 10`, ou revenir au mode classique avec `--manual` (flèche droite pour finir).
+
+Le reste du protocole (`docs/DATA_COLLECTION.md`) ne change pas :
+
 - un seul opérateur par objet, le même geste à chaque fois, sans hésitation ;
-- un épisode raté ou hésitant : flèche gauche, on le refait. On ne garde que du propre ;
 - l'objet change de place et d'orientation à chaque épisode, en **couvrant la zone
   régulièrement** : centre, quatre coins, quatre milieux de bord, et on recommence en tournant
   l'objet. Ni tout au centre, ni au hasard ;
-- **ne pas toucher w a s d z x r f q** : ces touches font rouler la base. Flèches et Échap seulement ;
-- les mains hors du champ des caméras pendant l'épisode.
+- **ne pas toucher w a s d z x r f q** : ces touches font rouler la base ;
+- les mains hors du champ des caméras dès que le leader bouge.
 
 ```bash
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
@@ -114,6 +130,23 @@ uv run python scripts/teleop.py --save-front data/robot_frames/empty    # et pou
 ```
 
 Le réentraînement lui-même attend demain matin (10 minutes sur un Mac).
+
+### Tenir quand la lumière change
+
+On enregistre ce soir sous éclairage artificiel et la démo est lundi à 13 h. Quatre parades,
+de la plus efficace à la moins coûteuse ; elles s'additionnent.
+
+1. **Une lampe sur le robot**, pointée vers la zone de saisie, allumée pendant toute la collecte
+   et pendant la démo. La zone utile est alors éclairée de la même façon le soir et le jour.
+2. **Des épisodes sous l'autre lumière** : 20 à 30 par objet dimanche en fin de matinée, ajoutés
+   aux mêmes datasets (la même commande), puis un réentraînement dimanche après-midi. C'est ce
+   qui apprend vraiment au modèle que la lumière peut changer.
+3. **La variante `AUGMENT=1`** à l'entraînement : chaque image est assombrie ou éclaircie au
+   hasard (de ×0,5 à ×1,5), avec contraste et couleurs modifiés. Essais 3 et 4 de la nuit.
+4. **Une répétition dimanche à 13 h**, à l'endroit de la démo : c'est la lumière de lundi. Si le
+   modèle de la nuit y échoue, on le sait avec 24 heures d'avance.
+
+À éviter pour la démo : une zone traversée par une bande de soleil, ou à moitié à l'ombre.
 
 ## 3. Lancer l'entraînement avant de dormir
 
