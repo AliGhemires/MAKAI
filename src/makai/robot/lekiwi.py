@@ -49,6 +49,19 @@ ARM_MOTOR_IDS = {f"arm_{joint}": motor_id for motor_id, joint in enumerate(ARM_J
 BASE_KEYS = ("x.vel", "y.vel", "theta.vel")
 LINKS = ("host", "wired")
 STEPS_PER_DEG = 4096 / 360
+CURRENT_MA_PER_UNIT = 6.5  # STS3215 Present_Current
+STATUS_BITS = {1: "voltage", 2: "angle sensor", 4: "overheat", 8: "overcurrent", 32: "overload"}
+DETAIL_REGISTERS = (
+    "Present_Position",
+    "Present_Velocity",
+    "Present_Load",
+    "Present_Current",
+    "Present_Voltage",
+    "Present_Temperature",
+    "Torque_Enable",
+    "Status",
+    "Moving",
+)
 log = logging.getLogger(__name__)
 
 
@@ -276,11 +289,26 @@ class WiredBase:
             raw = self.bus.sync_read("Present_Voltage", self.wheels, normalize=False)
         return sum(raw.values()) / len(raw) / 10.0
 
-    def read_temperatures(self) -> dict[str, int]:
-        """Temperature of every servo on the bus, in degrees Celsius."""
+    def read_motor_details(self) -> dict[str, dict[str, Any]]:
+        """What every servo on the bus measures now, in physical units. Only reads."""
         with self._lock:
-            raw = self.bus.sync_read("Present_Temperature", normalize=False)
-        return {name: int(value) for name, value in raw.items()}
+            raw = {register: self.bus.sync_read(register, normalize=False) for register in DETAIL_REGISTERS}
+        details = {}
+        for name, motor in self.bus.motors.items():
+            status = int(raw["Status"][name])
+            details[name] = {
+                "id": motor.id,
+                "position": int(raw["Present_Position"][name]),  # encoder steps, 0 to 4095 per turn
+                "velocity": int(raw["Present_Velocity"][name]),  # steps/s
+                "load_pct": round(raw["Present_Load"][name] / 10.0, 1),  # % of max torque, signed
+                "current_ma": round(raw["Present_Current"][name] * CURRENT_MA_PER_UNIT),
+                "voltage_v": round(raw["Present_Voltage"][name] / 10.0, 1),
+                "temperature_c": int(raw["Present_Temperature"][name]),
+                "torque": bool(raw["Torque_Enable"][name]),
+                "moving": bool(raw["Moving"][name]),
+                "errors": [text for bit, text in STATUS_BITS.items() if status & bit],
+            }
+        return details
 
     def check_watchdog(self, now: float) -> bool:
         """Stop the wheels if the last motion command is older than `watchdog_s`. True if it did."""
@@ -354,9 +382,10 @@ class LeKiwiRobot:
         read = getattr(self.client, "read_voltage", None)
         return read() if read is not None else None
 
-    def motor_temperatures(self) -> dict[str, int] | None:
-        """Servo temperatures in Celsius (wired mode). None through the host."""
-        read = getattr(self.client, "read_temperatures", None)
+    def motor_details(self) -> dict[str, dict[str, Any]] | None:
+        """Every servo's measurements: position, speed, load, current, voltage, temperature,
+        torque, errors (wired mode). None through the host, which does not send them."""
+        read = getattr(self.client, "read_motor_details", None)
         return read() if read is not None else None
 
     def wheel_positions(self) -> dict[str, int] | None:

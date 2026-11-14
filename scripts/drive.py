@@ -55,7 +55,7 @@ def lan_address() -> str | None:
 def make_sim(scale: float):
     """Simulated base that really moves `scale` times what its wheels report (a wrong wheel
     radius, or slip). Returns the robot and where it really is, the "tape" of the simulation.
-    It also fakes an arm moving slowly, a battery and motor temperatures, to try the page."""
+    It also fakes an arm moving slowly, a battery and motor measurements, to try the page."""
     import math
 
     from makai.contracts import BaseVelocity, Observation
@@ -74,9 +74,26 @@ def make_sim(scale: float):
         def battery_voltage(self) -> float:
             return 12.3
 
-        def motor_temperatures(self) -> dict[str, int]:
-            names = ["base_left_wheel", "base_back_wheel", "base_right_wheel"]
-            return {**dict.fromkeys(names, 34), **{key.removesuffix(".pos"): 38 for key in ARM_KEYS}}
+        def motor_details(self) -> dict[str, dict]:
+            names = ["base_left_wheel", "base_back_wheel", "base_right_wheel"] + [
+                k.removesuffix(".pos") for k in ARM_KEYS
+            ]
+            t = self.world.time
+            return {
+                name: {
+                    "id": [7, 8, 9, 1, 2, 3, 4, 5, 6][i],
+                    "position": int(2048 + 600 * math.sin(0.3 * t + i)) % 4096,
+                    "velocity": int(self._vel.x * 4000) if i < 3 else 0,
+                    "load_pct": round(12 * math.sin(0.7 * t + i), 1),
+                    "current_ma": round(abs(80 * math.sin(0.7 * t + i))),
+                    "voltage_v": 12.3,
+                    "temperature_c": 34 if i < 3 else 38,
+                    "torque": i < 3,
+                    "moving": i < 3 and self._vel.x != 0,
+                    "errors": [],
+                }
+                for i, name in enumerate(names)
+            }
 
     robot = MiscalibratedSim(SimWorld(), dt=1 / SIM_HZ)
     return robot, lambda: (robot.world.x, robot.world.y, robot.world.yaw)

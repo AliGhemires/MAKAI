@@ -1,5 +1,6 @@
 import math
 import time
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -34,7 +35,8 @@ class FakeBus:
 
     def __init__(self, arm=False, arm_answers=True):
         self.calls = []
-        self.motors = dict.fromkeys([*GEOMETRY.names, *(lekiwi.ARM_MOTOR_IDS if arm else [])])
+        ids = {**GEOMETRY.motor_ids, **(lekiwi.ARM_MOTOR_IDS if arm else {})}
+        self.motors = {name: SimpleNamespace(id=motor_id) for name, motor_id in ids.items()}
         self.arm_answers = arm_answers
         self.present = dict(STOPPED)
         self.voltage = dict.fromkeys(GEOMETRY.names, 124)
@@ -62,10 +64,15 @@ class FakeBus:
     def sync_read(self, register, motors=None, normalize=True):
         names = list(motors or self.motors)
         values = {
-            "Present_Velocity": self.present,
-            "Present_Voltage": self.voltage,
+            "Present_Velocity": {**dict.fromkeys(self.motors, 0), **self.present},
+            "Present_Voltage": {**dict.fromkeys(self.motors, 123), **self.voltage},
             "Present_Temperature": dict.fromkeys(self.motors, 31),
             "Present_Position": {**dict.fromkeys(GEOMETRY.names, 2048), **ARM_ANGLES},
+            "Present_Load": dict.fromkeys(self.motors, -125),  # raw: 0.1 % of max torque
+            "Present_Current": dict.fromkeys(self.motors, 20),  # raw: 6.5 mA
+            "Torque_Enable": {name: int(name.startswith("base_")) for name in self.motors},
+            "Status": {name: 4 * (name == "arm_elbow_flex") for name in self.motors},  # bit 2: overheat
+            "Moving": dict.fromkeys(self.motors, 0),
         }[register]
         assert normalize == (register == "Present_Position" and all(n.startswith("arm_") for n in names)), (
             "raw for the wheels, degrees for the arm"
@@ -200,7 +207,22 @@ def test_the_arm_is_read_but_never_written_to():
     robot.drive(BaseVelocity(x=0.1))
     obs = robot.get_observation()
     assert obs.arm == {f"{name}.pos": value for name, value in ARM_ANGLES.items()}
-    assert robot.motor_temperatures() == dict.fromkeys(bus.motors, 31)
+    details = robot.motor_details()
+    assert sorted(details) == sorted(bus.motors)
+    assert details["arm_gripper"]["id"] == 6 and details["base_back_wheel"]["id"] == 8
+    assert details["base_left_wheel"] == {
+        "id": 7,
+        "position": 2048,
+        "velocity": 0,
+        "load_pct": -12.5,
+        "current_ma": 130,
+        "voltage_v": 12.4,
+        "temperature_c": 31,
+        "torque": True,
+        "moving": False,
+        "errors": [],
+    }
+    assert details["arm_elbow_flex"]["errors"] == ["overheat"] and not details["arm_elbow_flex"]["torque"]
     robot.disconnect()
     for call in bus.calls:  # torque, mode and goals: wheels only, and the arm keeps its torque
         text = str(call)
@@ -230,8 +252,8 @@ def test_wired_config_adds_the_arm_when_it_is_calibrated(monkeypatch):
     assert robot.client.fallback_bus is not None
 
 
-def test_temperatures_are_unknown_through_the_host():
+def test_motor_details_are_unknown_through_the_host():
     class Client:
         def send_action(self, action): ...
 
-    assert LeKiwiRobot(Client()).motor_temperatures() is None
+    assert LeKiwiRobot(Client()).motor_details() is None

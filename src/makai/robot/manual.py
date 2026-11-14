@@ -245,7 +245,7 @@ class DriveLoop:
         geometry: BaseGeometry | None = None,
         rate_hz: float = 50.0,
         telemetry_hz: float = 10.0,
-        voltage_period_s: float = 2.0,
+        voltage_period_s: float = 1.0,
         clock: Callable[[], float] = time.monotonic,
         trials: TrialLog | None = None,
         truth: Callable[[], Pose] | None = None,
@@ -273,7 +273,7 @@ class DriveLoop:
         self.commanded = BaseVelocity()
         self.measured: BaseVelocity | None = None
         self.voltage: float | None = None
-        self.temperatures: dict[str, int] | None = None
+        self.motors: dict[str, dict[str, Any]] | None = None  # each servo's measurements
         self.arm: dict[str, float] = {}
         self.errors: dict[str, str] = {}
         self._move: PreciseMove | None = None
@@ -304,7 +304,7 @@ class DriveLoop:
             self.commanded = velocity
         if now >= self._next_voltage and hasattr(self.robot, "battery_voltage"):
             self._next_voltage = now + self.voltage_period
-            self._attempt("battery", self._read_health)
+            self._attempt("motors", self._read_health)
 
     def reset_odometry(self) -> bool:
         """Start the path from here. Refused (False) during a precise move."""
@@ -364,7 +364,7 @@ class DriveLoop:
                 "odometry_epoch": self.odometry_epoch,
                 "odometry_source": {True: "wheel encoders", False: "measured speed"}.get(self._encoders),
                 "battery_v": None if self.voltage is None else round(self.voltage, 2),
-                "temperatures": self.temperatures,
+                "motors": self.motors,
                 # Joint angles in degrees, gripper 0 (closed) to 100 (open); {} when unknown.
                 "arm": {
                     key.removeprefix("arm_").removesuffix(".pos"): round(v, 1) for key, v in self.arm.items()
@@ -452,10 +452,10 @@ class DriveLoop:
 
     def _read_health(self) -> None:
         voltage = self.robot.battery_voltage()
-        read_temperatures = getattr(self.robot, "motor_temperatures", None)
-        temperatures = read_temperatures() if read_temperatures is not None else None
+        read_details = getattr(self.robot, "motor_details", None)
+        details = read_details() if read_details is not None else None
         with self._lock:
-            self.voltage, self.temperatures = voltage, temperatures
+            self.voltage, self.motors = voltage, details
 
     def _attempt(self, what: str, action: Callable[[], None]) -> None:
         try:
