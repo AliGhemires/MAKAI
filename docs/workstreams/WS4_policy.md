@@ -30,6 +30,7 @@ base bloquée), `ScriptedPick` et `ScriptedDrop` (séquences de poses).
 - [ ] 10 épisodes d'essai, les regarder dans le visualiseur, rejouer un épisode sur le robot (L0)
 
 ### Samedi 22:00 → dimanche matin
+- [ ] **Suivre `docs/CE_SOIR.md`** : quatre portes, puis collecte, puis entraînement de nuit
 - [ ] Collecte v1 (60 épisodes, un objet), 2 entraînements lancés pour la nuit
 - [ ] Dimanche 08:00 : évaluer les checkpoints (10 essais chacun), remplir le registre
 - [ ] Valider `PolicyPick` dans la mission ; valider `lerobot-rollout` avec `lekiwi_client`

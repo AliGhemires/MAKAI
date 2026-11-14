@@ -17,7 +17,7 @@ notre tâche unique.
 | **Hugging Face Jobs** | Un argument : `--job.target=a10g-large`. Facturé à la seconde | Par défaut. `hf jobs hardware` liste les GPU et les prix ; vérifier dès samedi que le compte y a accès |
 | GPU loué (RunPod, Lambda, Vast) | Louer une RTX 4090, installer `lerobot[training]`, lancer la même commande | Si HF Jobs n'est pas accessible |
 | Google Colab | Notebook ACT de la doc LeRobot | Dépannage |
-| DTU HPC | `scripts/hpc/train_act.lsf` (modèle à adapter) | Si on a déjà un accès qui marche depuis l'extérieur ; ne pas y passer plus de 30 minutes |
+| DTU HPC | `DATASET=... RUN=... HUB_NAMESPACE=... bsub < scripts/hpc/train_act.lsf` (installation décrite en tête du fichier) | Gratuit. Script non testé : vérifier dès le début de soirée la connexion depuis l'extérieur (VPN) et l'attente dans la file |
 | Mac (MPS) | `POLICY_DEVICE=mps` | Dernier recours : 6 à 14 heures |
 
 Ordres de grandeur donnés par la doc LeRobot pour 50 épisodes (~45 000 images), 5
@@ -31,13 +31,30 @@ sur le Hub, téléchargement, chargement). On ne veut pas découvrir un problèm
 
 ```bash
 # <dataset> et <run> sans le préfixe : le namespace Hub vient de la config
-scripts/train.sh pick_sock_v1 act_pick_v1 --job.target=a10g-large       # sur HF Jobs
-scripts/train.sh pick_sock_v1 act_pick_v1 --policy.device=cuda          # sur une machine avec GPU
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large       # sur HF Jobs
+scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=cuda          # sur une machine avec GPU
+STEPS=12000 SAVE_FREQ=2000 scripts/train.sh pick_sock_v1 act_sock_v1 --policy.device=mps   # sur un Mac, la nuit
 ```
 
 Le script appelle `lerobot-train` avec nos conventions : policy ACT, checkpoints envoyés
 sur le Hub au fur et à mesure, suivi Trackio. Variables : `STEPS` (30 000 par défaut),
 `BATCH` (16), `SAVE_FREQ` (5 000).
+
+Mesuré le 14 nov. sur un Mac M5 : **2 secondes par pas** en batch 8 (deux caméras 640×480),
+soit environ 7 heures pour 12 000 pas. Le script lit le dataset sur le laptop s'il y est,
+enveloppe l'entraînement dans `caffeinate` (sans quoi le Mac se met en veille et tout
+s'arrête), et fonctionne sans compte Hugging Face : le modèle reste alors dans `outputs/train/`.
+`AUGMENT=1` ajoute des variations aléatoires de luminosité et de couleur aux images.
+
+**Un dataset et un modèle par objet.** LeRobot 0.7.0 ne sait pas entraîner sur plusieurs
+datasets à la fois (malgré ce que dit l'aide de `--dataset.repo_id`). Pour un modèle commun,
+fusionner d'abord avec `lerobot-edit-dataset --operation.type merge`.
+
+Tester un modèle sur le robot, ou sans robot avec `--dry-run` :
+
+```bash
+uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
+```
 
 ### Combien de pas
 
