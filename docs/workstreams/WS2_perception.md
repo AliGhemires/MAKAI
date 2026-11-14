@@ -16,18 +16,53 @@ sans le dire dans le chat : les autres modules en dépendent.
 Déjà en place et testé : homographie du sol (`geometry.py`), calibration par feuille de
 marqueurs (`calibration.py`), stations ArUco (`stations.py`).
 
-### Détection : par la couleur du sol (depuis le 14 nov.)
+### Détection et tri : un détecteur appris (depuis le 14 nov. au soir)
 
-Le détecteur par défaut est `FloorBlobDetector` (`floor.py`) : il ne cherche pas l'objet, il
-cherche **tout ce qui n'a pas la couleur de la moquette**. Aucun modèle, aucun entraînement.
+Le détecteur par défaut est `LearnedDetector` (`perception.detector: learned`) : un petit
+modèle entraîné sur nos propres images, qui trouve l'objet et donne sa catégorie en une
+passe. Poids : `models/detector_v1.pt` (5 Mo, dans git).
 
-Mesuré le 14 nov. sur 7 photos au téléphone d'une chaussette noire roulée, vue basse, avec
-sacs, câbles et chaussures en arrière-plan :
+**v1 connaît deux objets : une chaussette noire et une canette écrasée, filmées au téléphone.**
 
-| Détecteur | Chaussette trouvée |
-|---|---|
-| Vocabulaire ouvert (YOLOE), seuil 0,15 | 3 sur 7 |
-| Couleur du sol | 7 sur 7, une seule boîte par photo |
+Mesures du 14 nov. (`scripts/eval_frames.py`, « ok » = une seule détection, bonne catégorie) :
+
+| Test | Détecteur appris v1 | Couleur du sol |
+|---|---|---|
+| 24 images du soir jamais vues à l'entraînement | 23 ok, 0 fausse alerte | — |
+| Les 122 images du soir (73 ont servi à l'entraînement) | 117 ok (96 %) | 18 ok (15 %) |
+| Test d'éclairage, 12 photos de jour × 18 éclairages (9 photos ont servi à l'entraînement) | 216 sur 216 retrouvés, bonne catégorie | 89 % retrouvés, 77 % bonne catégorie sur 15 éclairages |
+
+Comment il a été obtenu, sans aucune annotation manuelle :
+1. le détecteur par la couleur du sol, fiable en plein jour, a étiqueté 9 photos de jour ;
+2. un premier modèle entraîné sur ces photos, copiées sous des éclairages et des ombres
+   aléatoires, a trouvé l'objet dans 93 images du soir sur 122, sans fausse alerte ;
+3. ses boîtes (vérifiées à l'œil sur une cinquantaine d'images) ont étiqueté les images du
+   soir, et la v1 a été entraînée sur l'ensemble.
+
+**Réentraîner** (nouvel objet, et surtout images de la caméra du robot) : filmer 20 s autour
+de l'objet, extraire les images, puis
+
+```bash
+ffmpeg -i video.MOV -vf "fps=3,scale=-2:640" data/test_frames/<nom>/f_%03d.jpg
+uv run python scripts/train_detector.py --name v2 --clothing data/test_frames/<chaussette> --trash data/test_frames/<canette>
+uv run python scripts/eval_frames.py --clothing ... --trash ...
+```
+
+Environ 10 minutes sur un Mac. Mettre ensuite le chemin des poids dans
+`perception.learned.weights` et commiter le fichier.
+
+Limites :
+- **entraîné sur des images de téléphone** : à réentraîner avec la caméra du robot dès qu'elle
+  est montée, c'est une autre optique et une autre résolution ;
+- ne connaît que ces deux objets ; un autre objet sera ignoré ou mal classé ;
+- pas encore mesuré sur un sol vide (aucune vidéo de sol vide pour l'instant) ;
+- de très loin en vue rasante, la chaussette est encore ratée sur quelques images.
+
+### Repli : détection par la couleur du sol
+
+`perception.detector: floor` (`FloorBlobDetector`, `floor.py`) cherche tout ce qui n'a pas la
+couleur de la moquette. Aucun modèle, mais **ne tient pas quand l'éclairage change** (15 %
+sur les images du soir). Sert à étiqueter les toutes premières images de jour.
 
 Le détecteur à vocabulaire ouvert reste disponible (`perception.detector: open_vocab`). Il
 localise bien l'objet mais lui donne un score trop bas pour le séparer du bruit ; un modèle
@@ -43,7 +78,7 @@ uv run python scripts/detect.py --image data/test_images/*.jpg --ignore-top 0.22
 décor. Sur le robot, c'est l'homographie qui écarte ce qui est trop loin ou trop grand
 (`perception.floor.min_size_m`, `max_size_m`, `perception.max_range_m`).
 
-### Tri linge / reste : par l'aspect (depuis le 14 nov.)
+### Tri linge / reste par l'aspect (utilisé seulement avec le repli `floor`)
 
 `perception.classifier: uniformity` (`UniformityClassifier`, `classify.py`) : un tissu est
 uni et mat, un emballage est imprimé et contrasté. Deux mesures sur l'objet découpé (part
@@ -106,7 +141,10 @@ qui compte. **Tout nouveau détecteur doit faire mieux que ces chiffres avant d'
 - [x] Détection par la couleur du sol, intégrée et testée sur photos (7 sur 7)
 - [x] Canette écrasée : trouvée 5 fois sur 5 et classée « déchet »
 - [x] Tri linge / reste par l'aspect, intégré (12 sur 12 de près)
-- [ ] Photographier les autres objets de la démo (boule de papier, gobelet, autre linge) et vérifier le tri
+- [x] Détecteur appris v1 (chaussette noire, canette écrasée), robuste à l'éclairage du soir
+- [ ] Filmer le sol vide et mesurer les fausses alertes (`eval_frames.py --empty`)
+- [ ] **Réentraîner avec des images de la caméra du robot** dès qu'elle est montée
+- [ ] Suivi dans le temps : n'accepter un objet que s'il est vu sur plusieurs images de suite
 - [ ] Vérifier les seuils de couleur sous l'éclairage du soir, et sur sol vide (aucune détection attendue)
 - [ ] Petit script de visualisation : image + boîtes + position au sol en mètres (Rerun)
 

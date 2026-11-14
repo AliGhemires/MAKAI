@@ -54,7 +54,12 @@ class CameraPerception:
 
 def build_detector(p: dict) -> Detector:
     """The object detector chosen by `perception.detector` in the config."""
-    if p.get("detector", "floor") == "open_vocab":
+    if p.get("detector", "floor") == "learned":
+        from makai.perception.detector import LearnedDetector
+
+        learned = p["learned"]
+        return LearnedDetector(learned["weights"], learned["confidence"], p.get("device"))
+    if p["detector"] == "open_vocab":
         from makai.perception.detector import OpenVocabDetector
 
         return OpenVocabDetector(

@@ -118,11 +118,12 @@ def test_object_too_small_to_classify_is_reported_as_a_guess():
     assert (far_can[0].category, far_can[0].confidence) == (Category.CLOTHING, 0.0)
 
 
-def test_detector_is_built_from_the_shared_config():
+def test_floor_detector_is_built_from_the_shared_config():
     from makai.config import load_config
 
     perception = load_config()["perception"]
-    assert perception["detector"] == "floor" and perception["classifier"] == "uniformity"
+    perception["detector"] = "floor"  # the fallback detector, still built from the same config
+    assert perception["classifier"] == "uniformity"
     detector = build_detector(perception)
     assert isinstance(detector, FloorBlobDetector) and isinstance(detector.classifier, UniformityClassifier)
     assert detector.floor == FloorColor(**perception["floor"]["color"])

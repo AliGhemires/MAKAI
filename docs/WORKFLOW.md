@@ -37,7 +37,8 @@ pas à se contrôler. Personne n'a à approuver ce que tu merges.
 - **Se resynchroniser** souvent, au moins à chaque point d'équipe : `make sync`
   (`git pull --rebase origin main`).
 - **Jamais** de `git push --force` sur `main`, jamais de données, de modèles ni de secrets
-  dans git (le `.gitignore` les bloque ; ils vont sur le Hub Hugging Face).
+  dans git (le `.gitignore` les bloque ; ils vont sur le Hub Hugging Face). Seule exception :
+  les petits poids du détecteur, `models/detector_*.pt`.
 
 ```bash
 git switch -c ws3/station-approach     # nouvelle branche depuis main à jour

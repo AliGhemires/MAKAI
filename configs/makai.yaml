@@ -18,9 +18,13 @@ hub:
   namespace: CHANGE_ME      # Hugging Face user or org that owns datasets and models
 
 perception:
-  detector: floor           # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
-  classifier: uniformity    # uniformity = plain and matte is clothing, printed and contrasted is not
-                            # clip = compare with sentences (340 MB download) | none = floor.default_category
+  detector: learned         # learned = our own model, finds and classifies in one pass (robust to lighting)
+                            # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
+  learned:                  # detector: learned. Retrain with scripts/train_detector.py
+    weights: models/detector_v1.pt   # v1: black sock + crushed can, PHONE images. Retrain on robot images.
+    confidence: 0.2
+  classifier: uniformity    # only used by detector: floor.
+                            # uniformity = plain and matte is clothing | clip (340 MB download) | none
   device: null              # null = auto (mps on the Macs)
   max_range_m: 2.5
   floor:                    # detector: floor

@@ -30,7 +30,8 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   `configs/arm_poses.yaml`, `configs/ground_plane.yaml`, `docs/PLAN.md`, ce fichier. Tu peux
   les modifier quand la tâche le demande ; signale-le à la personne, qui l'annonce dans le chat.
 - **Jamais dans git** : données, vidéos, poids de modèles, tokens. Ils vont sur le Hub
-  Hugging Face. Les valeurs propres à un laptop vont dans `configs/local.yaml` (ignoré).
+  Hugging Face. Seule exception : les petits poids du détecteur, `models/detector_*.pt`
+  (quelques Mo). Les valeurs propres à un laptop vont dans `configs/local.yaml` (ignoré).
 - **En fin de session**, proposer de mettre à jour la fiche du workstream : tâches
   cochées, section « État » avec des chiffres, pièges rencontrés. Une décision qui engage
   les autres va dans `docs/DECISIONS.md`.
@@ -52,6 +53,9 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   en degrés et deg/s : la conversion est dans `src/makai/robot/lekiwi.py` uniquement.
 - La distance aux objets vient d'une homographie du sol (`perception/geometry.py`), pas
   d'un modèle de profondeur.
+- Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
+  `models/detector_v1.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
+  Mesures et limites : `docs/workstreams/WS2_perception.md`.
 - LeRobot 0.7.0 a beaucoup changé par rapport aux versions antérieures : **vérifier dans
   le code installé** (`.venv/lib/python3.12/site-packages/lerobot/`) ou avec `--help`
   avant d'écrire une commande ou un import. Points déjà vérifiés : `docs/ARCHITECTURE.md`,
