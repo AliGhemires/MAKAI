@@ -10,6 +10,59 @@ SmolVLA ou π0 ne sont à tenter qu'en bonus (niveau L5) : plus longs à entraî
 lents à l'inférence, et leur intérêt principal, les consignes en langage, ne sert pas à
 notre tâche unique.
 
+## Protocole : ce qui fait une bonne policy
+
+Par ordre d'effet sur le résultat. Les deux premiers points pèsent plus que tous les
+hyperparamètres réunis.
+
+1. **Les données.** Un geste unique et franc, la zone de saisie couverte de façon régulière,
+   60 épisodes propres par objet. Voir `docs/DATA_COLLECTION.md`.
+2. **Les mêmes conditions à l'entraînement et en démo** : caméras, pose de départ, cadence de
+   30 Hz, et surtout **la lumière**. Les démonstrations de samedi soir sont en lumière
+   artificielle, la démo de lundi est à 13 h. Parades : une lampe sur le robot, une variante
+   entraînée avec `AUGMENT=1`, et 20 à 30 épisodes de plus dimanche en lumière du jour.
+3. **Choisir le modèle sur le robot, jamais sur la perte.** Un checkpoint tous les 5 000 pas,
+   et le même test pour tous (voir « Évaluer »).
+4. **Entraîner assez longtemps.** ACT continue de progresser bien après que la perte semble
+   plate. 40 000 pas sur GPU ; on compare ensuite les checkpoints 10 000, 20 000, 30 000, 40 000.
+5. **Les hyperparamètres.** Les valeurs par défaut d'ACT sont bonnes ; on ne teste que ce qui
+   répond à une question précise (tableau ci-dessous).
+
+### Les essais à lancer, par priorité
+
+Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on peut dans la liste.
+
+| # | Essai | Commande (après `scripts/train.sh <dataset> <run>` ou les variables du job HPC) | Question |
+|---|---|---|---|
+| 1 | Chaussette, référence | `STEPS=40000` | Est-ce que ça marche, et à partir de combien de pas ? |
+| 2 | Canette, référence | `STEPS=40000` | Idem pour le second objet |
+| 3 | Chaussette, images augmentées | `STEPS=40000 AUGMENT=1` | Tient-elle mieux quand la lumière change ? |
+| 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
+| 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
+
+Sur des Mac seulement (2 s par pas) : les essais 1 et 2, un par Mac, `STEPS=12000`.
+
+Ce qu'on ne fait pas cette nuit, et pourquoi :
+- **changer d'architecture** (Diffusion Policy, SmolVLA, π0) : plus longs à entraîner, trop
+  lents à l'inférence sur un Mac, et un jour ne suffit pas à les fiabiliser. ACT est le bon
+  choix pour un geste court sur ce bras ;
+- **balayer le taux d'apprentissage, la taille du modèle, le poids KL** : gain faible devant
+  la qualité des données, et chaque essai coûte un test sur le robot demain ;
+- **un modèle commun aux deux objets** : possible plus tard (fusion des datasets), mais deux
+  modèles simples sont plus sûrs pour dimanche matin.
+
+### Deux réglages gratuits, à l'essai, sans réentraîner
+
+- **Le checkpoint** : `--policy outputs/train/<run>/checkpoints/020000/pretrained_model`, ou
+  `--revision 020000` pour un modèle sur le Hub.
+- **La réactivité** : ACT prédit 100 actions d'avance (3,3 s) et les joue toutes avant de
+  regarder à nouveau. `--n-action-steps 50` ou `25` le fait regarder plus souvent : plus
+  réactif si l'objet n'est pas exactement où il l'attend, au prix d'une courte pause à chaque
+  nouvelle prédiction (environ 100 ms sur un Mac).
+
+`try_pick.py` affiche le nombre de commandes par seconde réellement atteint : nettement sous
+30, le laptop ne suit pas et le geste sera plus lent que les démonstrations.
+
 ## Où entraîner
 
 | Option | Mise en route | Quand l'utiliser |
@@ -75,7 +128,9 @@ données ou deux réglages) : si l'un échoue, on ne perd pas la nuit.
 
 Un checkpoint n'est jugé que par un protocole fixe, toujours le même :
 
-- 10 essais, objet amené par l'approche autonome, positions variées ;
+- 10 essais sur une **grille fixe**, la même pour tous les modèles : 5 positions dans la zone
+  (centre et quatre coins) × 2 orientations de l'objet. Tant que l'approche autonome n'est pas
+  prête, l'objet est posé à la main avec le gabarit ;
 - succès = l'objet est tenu, bras revenu en pose `home` ;
 - noter aussi **comment** ça échoue (rate l'objet, le lâche, n'ose pas descendre...).
 

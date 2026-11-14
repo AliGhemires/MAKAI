@@ -12,6 +12,7 @@
 #
 # Each training, from the MAKAI folder on a login node:
 #   DATASET=pick_sock_v1 RUN=act_sock_v1 HUB_NAMESPACE=<hub namespace> bsub < scripts/hpc/train_act.lsf
+#   Variants: STEPS=40000, AUGMENT=1, EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50"
 #   bstat                    # is it waiting or running?
 #   bpeek <job id>           # live output
 #   bkill <job id>           # stop it
@@ -39,4 +40,5 @@ cd "${LS_SUBCWD:-$PWD}"          # the folder the job was submitted from: the MA
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
 # pyav ships its own video libraries; the default decoder needs a system FFmpeg the nodes may lack.
-scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda --dataset.video_backend=pyav --num_workers=4
+# shellcheck disable=SC2086  # EXTRA is a list of flags, split on purpose
+scripts/train.sh "$DATASET" "$RUN" --policy.device=cuda --dataset.video_backend=pyav --num_workers=4 ${EXTRA:-}

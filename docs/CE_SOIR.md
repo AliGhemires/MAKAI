@@ -68,10 +68,12 @@ uv run python scripts/preflight.py                                              
 Protocole complet : `docs/DATA_COLLECTION.md`. L'essentiel :
 
 - un épisode = bras en `home` → descendre → saisir → remonter → revenir en `home` en tenant
-  l'objet. **8 à 12 secondes.** Fin d'épisode : flèche droite ;
+  l'objet, puis **rester immobile une seconde**. 8 à 12 secondes. Fin d'épisode : flèche droite ;
 - un seul opérateur par objet, le même geste à chaque fois, sans hésitation ;
 - un épisode raté ou hésitant : flèche gauche, on le refait. On ne garde que du propre ;
-- l'objet change de place et d'orientation dans la zone à chaque épisode ;
+- l'objet change de place et d'orientation à chaque épisode, en **couvrant la zone
+  régulièrement** : centre, quatre coins, quatre milieux de bord, et on recommence en tournant
+  l'objet. Ni tout au centre, ni au hasard ;
 - **ne pas toucher w a s d z x r f q** : ces touches font rouler la base. Flèches et Échap seulement ;
 - les mains hors du champ des caméras pendant l'épisode.
 
@@ -121,14 +123,18 @@ loué va environ 10 fois plus vite.
 ### Plan A · Sur un GPU distant (si la porte C est passée)
 
 Dans tous les cas le dataset doit d'abord être sur le Hub (`record.py` l'envoie en fin de
-session), et les checkpoints y reviennent tous les 5 000 pas. 30 000 pas par modèle.
+session), et les checkpoints y reviennent tous les 5 000 pas. **Cinq essais, par ordre de
+priorité** ; le pourquoi de chacun est dans `docs/TRAINING.md`, section « Protocole ».
 
 Sur le **HPC de DTU**, depuis le dossier `MAKAI` d'un nœud de connexion :
 
 ```bash
-DATASET=pick_sock_v1 RUN=act_sock_v1 HUB_NAMESPACE=<namespace> bsub < scripts/hpc/train_act.lsf
-DATASET=pick_can_v1  RUN=act_can_v1  HUB_NAMESPACE=<namespace> bsub < scripts/hpc/train_act.lsf
-AUGMENT=1 DATASET=pick_sock_v1 RUN=act_sock_v1_aug HUB_NAMESPACE=<namespace> bsub < scripts/hpc/train_act.lsf
+export HUB_NAMESPACE=<namespace> STEPS=40000
+DATASET=pick_sock_v1 RUN=act_sock_v1 bsub < scripts/hpc/train_act.lsf                    # 1
+DATASET=pick_can_v1  RUN=act_can_v1  bsub < scripts/hpc/train_act.lsf                    # 2
+AUGMENT=1 DATASET=pick_sock_v1 RUN=act_sock_v1_aug bsub < scripts/hpc/train_act.lsf      # 3
+AUGMENT=1 DATASET=pick_can_v1  RUN=act_can_v1_aug  bsub < scripts/hpc/train_act.lsf      # 4
+EXTRA="--policy.chunk_size=50 --policy.n_action_steps=50" DATASET=pick_sock_v1 RUN=act_sock_v1_c50 bsub < scripts/hpc/train_act.lsf   # 5
 bstat          # en attente ou en cours ?
 ```
 
@@ -138,9 +144,12 @@ minutes ou échoue au démarrage, basculer sans insister sur l'une des deux autr
 Avec **Hugging Face Jobs**, depuis un laptop :
 
 ```bash
-scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large
-scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large
-AUGMENT=1 scripts/train.sh pick_sock_v1 act_sock_v1_aug --job.target=a10g-large    # variante robuste à la lumière
+export STEPS=40000
+scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                        # 1
+scripts/train.sh pick_can_v1  act_can_v1  --job.target=a10g-large                        # 2
+AUGMENT=1 scripts/train.sh pick_sock_v1 act_sock_v1_aug --job.target=a10g-large          # 3
+AUGMENT=1 scripts/train.sh pick_can_v1  act_can_v1_aug  --job.target=a10g-large          # 4
+scripts/train.sh pick_sock_v1 act_sock_v1_c50 --job.target=a10g-large --policy.chunk_size=50 --policy.n_action_steps=50   # 5
 ```
 
 Sur une **machine louée** : la même commande avec `--policy.device=cuda` à la place de `--job.target`.
@@ -170,8 +179,18 @@ script empêche le Mac de se mettre en veille ; **laisser le chargeur branché e
 uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
 ```
 
-(ou `--policy <namespace>/makai_act_sock_v1` pour un modèle sur le Hub.) Dix essais par
-modèle et par checkpoint intéressant, objet dans la zone, résultat dans `docs/REGISTRY.md`.
+(ou `--policy <namespace>/makai_act_sock_v1 --revision 020000` pour un checkpoint sur le Hub.)
+
+Ordre des essais, toujours sur la même grille de 10 positions (centre et quatre coins de la
+zone, deux orientations) :
+
+1. le modèle de référence de la chaussette, checkpoint final ;
+2. ses checkpoints 10 000 et 20 000 : parfois meilleurs que le dernier ;
+3. le meilleur des trois avec `--n-action-steps 50` puis `25` ;
+4. la variante augmentée, puis l'horizon court ;
+5. la canette, de la même façon.
+
+Chaque résultat dans `docs/REGISTRY.md`, avec la façon dont ça échoue.
 
 - 7 sur 10 ou plus : on intègre ce modèle dans la mission.
 - Entre 4 et 6 : 20 épisodes de plus sur les cas ratés, puis réentraînement.
