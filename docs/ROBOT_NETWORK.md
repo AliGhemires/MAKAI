@@ -18,6 +18,15 @@ La Pi n'est que sur **un réseau à la fois** : la personne qui la change prévi
 Choisir : l'iPhone pour commencer ; A si le bras saute (collecte, démo) ; B si on veut un
 réseau à soi et garder Internet en Wi-Fi sous Windows.
 
+**Pour la collecte avec les deux caméras, prendre A.** Mesuré le 15 nov. : en B (hotspot du
+laptop, carte Wi-Fi partagée avec l'iPhone), ~16 nouvelles images par seconde au lieu de 30
+(avertissement de `preflight.py`) et des images en retard dans Rerun, alors que le bras suit
+bien : les commandes sont petites, les images lourdes. En A, laptop à quelques mètres :
+30,0 images/s, jamais plus de 53 ms entre deux, aller-retour 6 ms ; le flux mesuré par
+`net_check.py` pesait 98 ko par pas (23,5 Mbit/s, scène du moment ; l'estimation de 60 Mbit/s
+plus bas vient de photos de sol plus chargées). Des images en retard décalent l'image et
+l'action dans le dataset : à régler avant d'enregistrer.
+
 Après tout changement : `robot.remote_ip` dans `configs/local.yaml` = IP de la Pi, puis
 `uv run python scripts/net_check.py` pour vérifier (téléop arrêtée).
 
