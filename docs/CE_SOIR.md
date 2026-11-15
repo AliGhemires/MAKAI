@@ -288,9 +288,10 @@ scripts/hpc/fetch_model.sh act_sock_v1 020000     # ou un pas précis
 La commande affiche ensuite la ligne `try_pick.py` à lancer. Si l'essai se fait sur un autre
 laptop, lui transmettre le dossier `outputs/train/<run>/checkpoints/<pas>/pretrained_model`.
 
-**Le budget est de 8 heures, pas un nombre de pas.** À 0,21 s par pas (mesuré sur des images
-de synthèse ; compter un peu plus avec de vraies images), 100 000 pas prennent 6 à 8 heures et
-40 000 pas 2 h 30 à 3 h 30. Les jobs sont coupés à 8 heures ; un checkpoint est gardé tous les
+**Le budget est de 8 heures, pas un nombre de pas.** Mesuré le 15 nov. sur `pick_sock_v1` :
+5,7 pas par seconde sur une V100, soit 100 000 pas en 4 h 50 et 40 000 pas en 2 heures. La
+file `gpuv100` peut être pleine (près de 1 000 jobs en attente dimanche à 3 h 40) : le premier
+essai a attendu 5 minutes, le deuxième 13. Les jobs sont coupés à 8 heures ; un checkpoint est gardé tous les
 5 000 pas, donc un entraînement coupé est simplement plus court.
 
 À savoir sur ce cluster :
@@ -336,6 +337,14 @@ uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints
 ```
 
 (ou `--policy <namespace>/makai_act_sock_v1 --revision 020000` pour un checkpoint sur le Hub.)
+
+À chaque essai, le bras ouvre la main puis va tout seul en `home` (la pose de départ des
+démonstrations) : s'écarter, poser l'objet, Entrée. Après l'essai, répondre y ou n : l'objet
+est-il tenu ? Le script affiche aussi la mesure de la pince en fin d'essai. Avec au moins un
+essai réussi et un raté, il donne la valeur à mettre dans `manipulation.pick.gripper_open_above`
+(`configs/makai.yaml`) : c'est ce réglage qui permet à la mission de voir une saisie vide et de
+recommencer. Dans `pick_sock_v1`, la pince mesure 2,3 à vide et 5,7 en médiane sur la
+chaussette (de 3 à 12) : l'écart est faible, à confirmer sur le robot.
 
 Ordre des essais, toujours sur la même grille de 10 positions (centre et quatre coins de la
 zone, deux orientations) :
