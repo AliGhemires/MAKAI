@@ -20,6 +20,10 @@ robot:
     base_radius_m: 0.125
     max_wheel_raw: 3000     # steps/s per wheel, about 0.23 m/s at the rim
     watchdog_s: 0.5         # wheels stop when no command came for this long
+  odometry:                 # through the host only: what the robot really does per measured unit of speed.
+    linear_scale: 0.978     # 15 Nov: 100 cm forward = 100.89 / 100.96 by odometry, 98.5 / 99.0 on the tape
+    angular_scale: 0.961    # 15 Nov: 4 quarter turns = 358.5 deg by odometry, 344.5 deg on the floor
+                            # (25 cm right of a tape line over 90 cm). Policies are not affected.
 
 teleop:
   leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)

@@ -46,6 +46,19 @@ def test_observation_is_converted_from_lerobot_units():
     assert set(obs.arm) == set(ARM_KEYS) and list(obs.images) == ["front"]
 
 
+def test_the_odometry_correction_leaves_what_the_policies_see_untouched():
+    robot = LeKiwiRobot(FakeClient(), ("front",), speed_scale=(0.978, 0.961))
+    obs = robot.get_observation()
+    assert obs.base_velocity.x == pytest.approx(0.1 * 0.978)  # the odometry is corrected...
+    assert obs.base_velocity.theta == pytest.approx(math.radians(90.0) * 0.961)
+    assert (
+        robot.raw_observation["x.vel"] == 0.1 and robot.raw_observation["theta.vel"] == 90.0
+    )  # ...not the raw
+    cfg = load_config()
+    measured = cfg["robot"]["odometry"]
+    assert 0.9 < measured["linear_scale"] <= 1.1 and 0.9 < measured["angular_scale"] <= 1.1
+
+
 def test_lekiwi_robot_always_sends_the_three_base_keys():
     client = FakeClient()
     robot = LeKiwiRobot(client)
