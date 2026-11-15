@@ -4,6 +4,12 @@ Pour une analyse logicielle et matérielle en profondeur. Écrit à partir des j
 d'Amine (Windows) et de la Pi, et des mesures faites au mètre par l'équipe le 15 nov. entre
 16 h et 17 h 40. Tous les fichiers cités sont dans `docs/logs/odometry/`.
 
+> **Mise à jour du 15 nov., 19 h 40 : résultats sur le robot à la section 11.** Avec les
+> codeurs de roues, la rotation est reproductible : une échelle stable de 0,947 (9 tours,
+> 0,944 à 0,953), corrigée dans `robot.odometry.angular_scale` ; après correction, 1° d'écart
+> par tour. Trouvé en route : la caméra du robot ne voit pas les bandes de scotch des
+> cartons (§11.3), ce qui touche la disposition « poubelle en face ».
+
 > **Mise à jour du 15 nov., 18 h : analyse en profondeur à la section 10.** Deux défauts du
 > logiciel trouvés et corrigés (odométrie comptée sur les codeurs de roues, saut de cap après
 > chaque saisie), `angular_scale` remis à 1.0, et un test automatique à la caméra
@@ -301,3 +307,96 @@ demi-tours de chaque dépose. Tracer la zone sans tourner. Mettre `recheck_after
   repos le suggèrent ; `odometry_report` le confirmera ou non sur un vrai tour.
 - La précision de `turn_check` dépend du modèle de la caméra avant et du fait que le robot
   tourne sur place ; à 1,5 m, 5 cm de déplacement de côté valent 2°.
+
+## 11. Résultats sur le robot (15 nov., 19 h 30 à 19 h 40)
+
+**Conditions.** Host d'Ali (#35, codeurs de roues et horloge du host) installé sur la Pi et
+relancé à 19 h 30 ; `turn_check` affiche « odometry from: wheel encoders, through the host ».
+Batterie à 10,8–10,9 V, sous les 11,5 V conseillés. Moquette du hackerspace. Robot à 1,20–1,24 m
+d'un carton, option A. Journal : `docs/logs/odometry/turn_check_20261115.csv`.
+
+**La cible.** Pas les bandes de scotch, que la caméra du robot ne trouve pas (§11.3), mais un
+motif imprimé prêté par un autre groupe, collé sur le carton : un carré sombre avec un U blanc.
+Ce n'est pas un code ArUco lisible (aucun dictionnaire ne le décode, son carré est aussi sombre
+que le scotch autour). Un petit détecteur écrit pour l'occasion (hors du dépôt) trouve le U
+blanc et a été branché sur `turn_check.py` à la place de `build_station_detector`. Robot à
+l'arrêt, il le voit sur 40 images sur 40, direction stable à 0,01° près.
+
+### 11.1 Rotations
+
+| Série | Sens, vitesse | `angular_scale` | Réel / odométrie, 3 tours de 360° | Moyenne |
+|---|---|---|---|---|
+| 1 | gauche, 0,6 rad/s | 1.0 | 0,948 · 0,944 · 0,944 | 0,945 |
+| 2 | gauche, 0,3 rad/s | 1.0 | 0,953 · 0,950 · 0,949 | 0,951 |
+| 3 | droite, 0,6 rad/s | 1.0 | 0,947 · 0,952 · 0,944 | 0,947 |
+| 4 | gauche, 0,6 rad/s | **0.947** | 1,006 · 1,002 · 1,003 | **1,004** |
+
+(Un premier essai, avant la série 1, avait donné 0,945 puis perdu le marqueur : défaut du script,
+§11.2.) En degrés : l'odométrie compte 358,8° (la cible moins la tolérance d'arrêt), le robot
+fait 338 à 342° avec l'échelle 1.0, et 359,5 à 360,8° avec 0.947.
+
+Ce qu'on en tire, d'après le tableau de la section 10.4 :
+
+- **Avec les codeurs, c'est une échelle**, pas un écart au hasard : 9 tours entre 0,944 et 0,953,
+  dans les deux sens. Les 10 à 32° qui variaient d'un essai à l'autre venaient des vitesses lues
+  par les servos (§10.1), pas des roues.
+- **Peu d'effet de la vitesse** : 0,951 à 0,3 rad/s contre 0,945 à 0,6. Pas de glissement
+  notable à l'accélération ; rien à changer à `GoToTuning`.
+- **Le robot tourne sur place** : distance au marqueur de 1,16 à 1,25 m avant et après chaque
+  tour, sans dérive qui s'accumule (série 4 : 1,20 m au début, 1,24 m à la fin). Une partie de
+  l'écart vient de ce que le marqueur est mesuré à des endroits différents de l'image.
+- **Cause probable de l'échelle** : H6, le rayon effectif de la base (centre aux points de
+  contact des roues) 5,6 % plus grand que dans `BaseGeometry`, ou un glissement régulier des
+  galets sur la moquette. L'échelle corrige les deux. Sur un autre sol, refaire `turn_check`.
+- **Corrigé** : `robot.odometry.angular_scale: 0.947` dans `configs/makai.yaml` (moyenne des
+  9 tours ; le script proposait 0,950 après la série 4, l'écart est dans le bruit). Valable
+  seulement avec le host à codeurs.
+
+À faire encore : `linear_scale` (0,978) a été mesuré avec les vitesses lues : refaire un
+100 cm au mètre avec les codeurs ; `odometry_report.py` après quelques déplacements à la
+console ; refaire `turn_check` batterie chargée pour confirmer.
+
+### 11.2 Défaut corrigé dans `turn_check.py`
+
+Après un tour où il avait fallu chercher le marqueur, le script se retournait vers lui dans le
+mauvais sens (`nominal - moved` au lieu de `nominal + moved`) : l'écart doublait, le marqueur
+sortait du champ et l'essai suivant s'arrêtait sur « Marker lost before the turn ». C'est ce
+qui avait interrompu les deux premiers lancements. Corrigé.
+
+### 11.3 La caméra du robot ne trouve pas les bandes de scotch des cartons
+
+À voir avant de compter sur la disposition « poubelle en face » ou sur le recalage au
+marqueur. Deux images de la caméra avant, prises à l'arrêt, détecteur de #39 :
+
+- `docs/figures/stations_robot_camera_09m.jpg`, cartons à ~0,9 m, les deux bandes entières dans
+  l'image : **rien n'est détecté**. Avant #39, le détecteur prenait l'ombre sous le rabat du
+  carton de droite pour une bande horizontale à 4,6 m.
+- `docs/figures/stations_robot_camera_12m.jpg`, cartons à ~1,2 m : bande horizontale vue à
+  2,5 m au lieu de 1,2 m. Ici le motif de l'autre groupe en cache une partie et fausse sa
+  longueur, donc cette image compte moins.
+
+Pourquoi, mesuré sur la première image (espace Lab, médianes) :
+
+| Zone | Clarté L | Chroma |
+|---|---|---|
+| bande horizontale (carton de gauche) | 76 | 5 |
+| bande verticale (carton de droite) | 88 | 8 |
+| carton de gauche, à l'ombre | 117 | **12** |
+| carton de droite | 148 | 23 |
+| sol (moquette) | 157 | 15 |
+| ombre sous le rabat du carton de droite | 60 | 17,5 |
+
+- **Carton de gauche** : la caméra du robot délave les couleurs, et ce carton est à l'ombre. Son
+  chroma (12) est sous le seuil du carton (`min_flank_chroma` 19) et, pour la moitié de ses
+  pixels, sous celui du scotch (`grey_chroma` 12) : tout le carton passe pour du gris, la bande
+  ne s'en détache pas.
+- **Carton de droite** : son carton va bien, mais l'ombre sous son rabat coupe la bande
+  verticale à ~8 cm du sol, donc à la hauteur de l'objectif, où que soit le robot. Les deux
+  morceaux s'arrêtent à la ligne d'horizon, et la règle « une bande verticale traverse
+  l'horizon » les rejette.
+
+Pistes : côté scène, cartons éclairés, rabats fermés ou scotchés à plat pour que la bande
+verticale court sur du carton uni ; côté code, définir le carton par rapport au scotch (plus
+clair d'un écart donné) plutôt que par un chroma absolu, et régler les seuils sur des images de
+la caméra du robot, pas d'un téléphone. À défaut, un motif imprimé sur fond blanc (marqueur
+ArUco, si une imprimante se trouve) se détecte sans ambiguïté.

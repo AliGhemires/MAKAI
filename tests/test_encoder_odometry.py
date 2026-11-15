@@ -4,6 +4,7 @@ import importlib.util
 import math
 import random
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -11,6 +12,7 @@ import yaml
 from makai.config import CONFIG_DIR
 from makai.contracts import BaseVelocity
 from makai.navigation.odometry import MAX_GAP_S, Odometry
+from makai.robot import lekiwi
 from makai.robot.lekiwi import BaseGeometry, EncoderMotion, LeKiwiRobot, keep_host_extras
 from makai.robot.trace import FIELDS, OdometryTrace
 
@@ -79,7 +81,11 @@ class HostClient:
         self.sent = action
 
 
-def test_through_the_host_the_robot_counts_encoders_when_they_come():
+def test_through_the_host_the_robot_counts_encoders_when_they_come(monkeypatch):
+    # One observation every 1/30 s, as the host sends them. Without it, on Windows (a clock that
+    # ticks every 15.6 ms) the whole loop runs within one tick and no time passes at all.
+    ticks = iter(range(100_000))
+    monkeypatch.setattr(lekiwi, "time", SimpleNamespace(monotonic=lambda: next(ticks) / 30.0))
     client = HostClient(with_encoders=True)
     keep_host_extras(client)
     robot, odometry = LeKiwiRobot(client, ("front",), geometry=GEOMETRY), Odometry()

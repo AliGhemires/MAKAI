@@ -91,13 +91,16 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   pour le host et la téléop ; état dans `docs/workstreams/WS1_robot_data.md`. Mots de
   passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
   `scripts/net_check.py` avant d'accuser le code.
-- **Odométrie du robot réel** : lignes droites bonnes, **rotations non reproductibles** (10 à
-  32° d'erreur sur 360° selon l'essai, 15 nov.). Avant de toucher à la navigation ou aux
-  facteurs `robot.odometry`, lire `docs/DEBUG_ODOMETRY.md` (essais, journaux, hypothèses ;
-  analyse et marche à suivre en section 10). Par le host, l'odométrie compte les codeurs de
-  roues quand le host les envoie (`scripts/lekiwi_host.py` à jour sur la Pi) ; les vitesses
-  lues par les servos ne valent qu'à 50 pas/s près et lisent du bruit à l'arrêt. Mesurer une
-  rotation : `scripts/turn_check.py` (caméra sur un marqueur), jamais au mètre.
+- **Odométrie du robot réel** : lignes droites bonnes. Rotations : **avec les codeurs de roues,
+  une échelle stable** (15 nov., 19 h 40, 9 tours mesurés à la caméra : réel / odométrie entre
+  0,944 et 0,953, à gauche, à droite, lent ou rapide ; `angular_scale: 0.947` donne 1,004, soit
+  ~1° par tour). Avec les vitesses lues par les servos, elles étaient non reproductibles (10 à
+  32° sur 360°). Avant de toucher à la navigation ou aux facteurs `robot.odometry`, lire
+  `docs/DEBUG_ODOMETRY.md` (section 11 : ces mesures ; section 10 : l'analyse). Par le host,
+  l'odométrie compte les codeurs de roues quand le host les envoie (`scripts/lekiwi_host.py` à
+  jour sur la Pi : c'est le cas depuis le 15 au soir) ; `angular_scale: 0.947` ne vaut qu'avec
+  ce host. Mesurer une rotation : `scripts/turn_check.py` (caméra sur un marqueur), jamais au
+  mètre. `linear_scale` date d'avant les codeurs : à revérifier.
 - Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
   qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
   installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
@@ -107,17 +110,18 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.py`
-(`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
-`src/makai/app.py`.
+Jamais exécuté sur le matériel : `scripts/preflight.py`, `build_real` dans
+`src/makai/app.py`. `LeKiwiRobot` (`src/makai/robot/lekiwi.py`) a tourné le 15 au soir pour la
+base seulement (`scripts/turn_check.py` : conduite, images, odométrie par les codeurs), pas
+pour le bras.
 
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
 mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), ses deux usages
 (Vacuum en rangées : la base n'a jamais glissé de côté sur une longue distance ; Scan : elle
 n'a jamais avancé en faisant osciller son cap), la correction de l'odométrie par la caméra
 sur le marqueur et la disposition « poubelle en face », la détection des cartons par leur
-bande de scotch (essayée sur une seule photo de téléphone et sur des scènes synthétiques, jamais
-sur une image de la caméra du robot), le tracé de la
+bande de scotch (essayée le 15 au soir sur deux images de la caméra du robot : **elle ne trouve
+pas les bandes**, voir `docs/DEBUG_ODOMETRY.md` section 11.3), le tracé de la
 zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet

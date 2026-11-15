@@ -22,11 +22,11 @@ robot:
     watchdog_s: 0.5         # wheels stop when no command came for this long
   odometry:                 # through the host only: what the robot really does per measured unit of speed.
     linear_scale: 0.978     # 15 Nov: 100 cm forward = 100.89 / 100.96 by odometry, 98.5 / 99.0 on the tape
-    angular_scale: 1.0      # NOT calibrated. The tape tests of 15 Nov contradict each other whatever the
-                            # side (docs/DEBUG_ODOMETRY.md, section 10): 1.039 was not validated. Measure it
-                            # with the camera, signed and repeated: uv run python scripts/turn_check.py
-                            # NOT VALIDATED: later runs give 1.07 to 1.13; the error varies from run to
-                            # run, so it is not only a scale. Analysis: docs/DEBUG_ODOMETRY.md.
+                            # (measured with the speed readings, before the wheel encoders: to check again)
+    angular_scale: 0.947    # 15 Nov evening, wheel encoders through the host, scripts/turn_check.py on the
+                            # camera: 9 full turns, left and right, 0.6 and 0.3 rad/s, all between 0.944 and
+                            # 0.953 (battery 10.8 V). A steady scale: the encoders count 359 deg for 339 real.
+                            # Only valid with the encoder host (scripts/lekiwi_host.py of #35 on the Pi).
 
 teleop:
   leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)

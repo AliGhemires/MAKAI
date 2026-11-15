@@ -159,7 +159,8 @@ def main() -> None:
                   f"ratio {ratio:.3f}; marker at {before[1]:.2f} m before, {after[1]:.2f} m after")  # fmt: skip
             rows.append([trial, counted, real, ratio, before[1], after[1]])
             if offset:
-                rig.turn_to(nominal - math.radians(moved), GoToTuning(max_ang_rad_s=0.25))  # face it again
+                # The robot turned `moved` less than counted: turning that much more faces the marker again.
+                rig.turn_to(nominal + math.radians(moved), GoToTuning(max_ang_rad_s=0.25))
     except KeyboardInterrupt:
         print("stopped")
     finally:
