@@ -186,12 +186,16 @@ class SimDrop:
         _wait(robot, self.duration_s)
         if self.world.carrying is None:
             return False
+        # The object falls into the nearest station within reach in front of the robot.
+        within = []
         for station_category, (sx, sy) in self.world.stations.items():
             bx, by = self.world.to_base(sx, sy)
             if bx > 0 and math.hypot(bx, by) <= self.reach:
-                self.world.delivered.append((self.world.carrying, station_category))
-                self.world.carrying = None
-                return True
+                within.append((math.hypot(bx, by), station_category))
+        if within:
+            self.world.delivered.append((self.world.carrying, min(within)[1]))
+            self.world.carrying = None
+            return True
         return False
 
 

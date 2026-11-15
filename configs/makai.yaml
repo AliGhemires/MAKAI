@@ -42,7 +42,8 @@ perception:
   detector: learned         # learned = our own model, finds and classifies in one pass (robust to lighting)
                             # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
   learned:                  # detector: learned. Retrain with scripts/train_detector.py
-    weights: models/detector_v1.pt   # v1: black sock + crushed can, PHONE images. Retrain on robot images.
+    weights: models/detector_v2.pt   # v2 (15 Nov): v1's phone images + the robot's own camera, close views of the sock and the can.
+                                     # Not yet tried at sweeping distance. Retrain in a new room: docs/NAVIGATION.md, section 5.
     confidence: 0.2
   classifier: uniformity    # only used by detector: floor.
                             # uniformity = plain and matte is clothing | clip (340 MB download) | none

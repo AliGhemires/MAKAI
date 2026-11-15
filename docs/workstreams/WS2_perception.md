@@ -20,7 +20,7 @@ marqueurs (`calibration.py`), stations ArUco (`stations.py`).
 
 Le détecteur par défaut est `LearnedDetector` (`perception.detector: learned`) : un petit
 modèle entraîné sur nos propres images, qui trouve l'objet et donne sa catégorie en une
-passe. Poids : `models/detector_v1.pt` (5 Mo, dans git).
+passe. Poids : `models/detector_v2.pt` (5 Mo, dans git) depuis le 15 nov. ; le v1 reste à côté.
 
 **v1 connaît deux objets : une chaussette noire et une canette écrasée, filmées au téléphone.**
 
@@ -214,3 +214,21 @@ catégorie est juste à plus de 90 %, la position est juste à ±2 cm en dessous
 ## État
 
 _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
+
+**Dim. 15, 7 h : détecteur v2, sur la caméra du robot.** Le v1 (photos de téléphone) ne
+transférait pas : sur des images de la caméra du robot jamais vues, il trouvait la canette
+dans 4 sur 14 et la chaussette dans 3 sur 12. Le v2 ajoute aux images du v1 celles de nos
+épisodes de saisie, annotées toutes seules par différence entre la première image (objet au
+sol) et la dernière (objet ramassé), `perception/autolabel.py`.
+
+| Images jamais vues à l'entraînement | v1 | v2 |
+|---|---|---|
+| Caméra du robot, canette | 4 sur 14 | **14 sur 14** |
+| Caméra du robot, chaussette | 3 sur 12 | **10 sur 12** |
+| Caméra du robot, sol vide (aucune détection attendue) | 14 sur 14 | 14 sur 14 |
+
+Sur les vidéos de téléphone du soir, le v2 fait 61 sur 64 (canette) et 58 sur 58
+(chaussette), mais les trois quarts de ces images ont servi à son entraînement.
+**Limite :** les images du robot sont toutes prises de près (objet à la distance de saisie).
+Le v2 n'a pas été essayé à la distance du balayage (0,5 à 1,5 m), ni sur un autre sol. Dans
+la salle de démo : `docs/NAVIGATION.md`, section 5 (dix minutes).

@@ -11,6 +11,8 @@ from makai.perception.detector import Detector
 from makai.perception.geometry import CameraModel, GroundPlane
 from makai.perception.stations import StationDetector
 
+CUT_MARGIN_PX = 3  # a box ending this close to the bottom row is cut by the image
+
 
 class CameraPerception:
     def __init__(
@@ -35,6 +37,11 @@ class CameraPerception:
         self.detections = self.detector.detect(image)
         targets = []
         for det in self.detections:
+            # A box cut by the bottom of the image shows an object that goes on below it: its
+            # lowest visible point is not where it touches the floor, and the distance read
+            # there would be too long. The mission finishes such an approach on odometry.
+            if det.bbox_xyxy[3] >= image.shape[0] - CUT_MARGIN_PX:
+                continue
             x, y = self.ground.pixel_to_ground(*det.ground_pixel)
             # Points above the horizon project behind the robot or very far: drop them.
             if x > 0 and math.hypot(x, y) <= self.max_range_m and self._plausible_size(det):

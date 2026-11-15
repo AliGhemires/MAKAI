@@ -53,4 +53,20 @@ depuis 1,5 m.
 
 ## État
 
-_Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
+**Dim. 15, 8 h. En simulation uniquement, rien sur le robot.** Mode d'emploi complet :
+`docs/NAVIGATION.md`.
+
+- Mission qui balaie en serpentin, quitte sa route pour un objet, le dépose, revient où elle
+  était : 4 objets sur 4 en simulation, sol vu à 100 %, retour à 1 cm de l'origine.
+- Glissement simulé (4 %, cap 1,7° par mètre) : le recalage sur le marqueur corrige 14 à
+  23 cm par visite ; retour à 3 cm de l'origine. Sans voir les marqueurs, la même mission
+  échoue après 2 déposes et finit à 90 cm de l'origine.
+- Carte de couverture, objets suivis par leur état, objets hors zone ignorés, objet
+  abandonné jamais réapproché.
+- Console à onglets (`scripts/drive.py`) : mission pilotée depuis la page, arrêt d'urgence
+  testé en pleine mission.
+- Fait dans la liste ci-dessus : glissement dans le simulateur, tracé de la trajectoire (la
+  carte de la console), petit parcours de recherche, position des stations mémorisée.
+
+À faire sur le robot, dans l'ordre : signes et unités (onglet Drive, Measure), calibration du
+sol, une approche réelle, une visite au marqueur, puis une mission avec un seul objet.

@@ -16,9 +16,21 @@ Vérifier un modèle sans robot : `uv run python scripts/replay_check.py --polic
 | **Notre détecteur appris** (YOLO11n, annoté automatiquement, images rééclairées) | **117 images sur 122**, 23 sur 24 sur des images du soir jamais vues, aucune fausse alerte, 10 ms par image |
 
 Conclusion : un petit détecteur entraîné sur nos propres images, sans annotation manuelle,
-bat les deux approches « sans entraînement ». Limite : il a appris sur des photos de
-téléphone ; il faut le réentraîner sur les images de la caméra du robot.
-Source : `docs/workstreams/WS2_perception.md`.
+bat les deux approches « sans entraînement ».
+
+**Puis sur la caméra du robot.** Ce détecteur, appris sur des photos de téléphone, ne
+transférait pas. Le robot s'est annoté tout seul : dans chaque épisode de saisie, l'objet est
+au sol sur la première image et n'y est plus sur la dernière ; la différence des deux donne
+la boîte, sans personne pour la dessiner (58 épisodes de canette sur 68 annotés ainsi).
+
+| Images de la caméra du robot, jamais vues | Détecteur v1 (téléphone) | Détecteur v2 (+ caméra du robot) |
+|---|---|---|
+| Canette | 4 sur 14 | **14 sur 14** |
+| Chaussette | 3 sur 12 | **10 sur 12** |
+| Sol vide, aucune détection attendue | 14 sur 14 | 14 sur 14 |
+
+Limite : ces images sont prises de près ; le v2 n'a pas été essayé à la distance du balayage
+ni sur un autre sol. Source : `docs/workstreams/WS2_perception.md`.
 
 ## 2. Où entraîner : le laptop ou le cluster
 
@@ -168,6 +180,27 @@ Leur modèle à 110 démonstrations et batch 128 a fait bien pire, faute d'avoir
 d'apprentissage. Leur code ne contient aucun réglage fin. Leçon : ils ont gagné avec une
 réussite d'une fois sur quatre ; une boucle complète et un pitch clair comptent plus.
 Sources : github.com/Encrux/robohack26, boesch.dev/posts/robohack.
+
+## 9. Naviguer et cartographier sans capteur de distance
+
+Le robot n'a que deux caméras et ses roues. Il balaie la pièce en serpentin, quitte sa route
+pour un objet, le dépose à la poubelle et revient où il était. Sa carte : l'odométrie, plus
+l'empreinte au sol de la caméra avant. Le marqueur de la poubelle est son seul point fixe : à
+chaque visite, il y relit sa position et son cap.
+
+Mesures en simulation, avec la machine à états et la navigation réelles, pièce de
+2,4 × 1,8 m, 4 objets, 2 stations (`make sim`) :
+
+| Roues simulées | Avec les marqueurs | Marqueurs jamais vus |
+|---|---|---|
+| Parfaites | 4 déposés sur 4, sol vu à 100 %, retour à 1 cm de l'origine, 3 min 50 | — |
+| Glissent de 4 %, cap qui dérive de 1,7° par mètre | **4 sur 4**, retour à **3 cm** ; chaque visite corrige 14 à 23 cm | 2 sur 4 puis échec, fin à 90 cm de l'origine |
+| Glissent de 8 %, cap qui dérive de 3,4° par mètre | 4 sur 4, retour à 6 cm | 2 sur 4 puis échec, fin à 1 m de l'origine |
+
+Conclusion : sans point fixe, l'odométrie seule ne tient pas une mission ; un marqueur
+imprimé sur la poubelle suffit. Limite : aucun obstacle n'est vu, et rien de cela n'a encore
+tourné sur le robot. Image : `figures/console_mission.png` (la console pendant une mission
+simulée). Source : `docs/NAVIGATION.md`.
 
 ## Ce qui reste à mesurer
 

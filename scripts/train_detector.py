@@ -11,6 +11,11 @@ How the boxes are obtained (`--labeller`):
 - a previous version of the detector (default: the one in configs/makai.yaml). Images where it
   does not find exactly one object of the expected category are left out, never guessed;
 - `floor`: the floor-colour detector, for the very first model, on daylight images only.
+- no model at all, for an image that comes with its empty twin: next to `name.jpg`, a file
+  `name_empty.jpg` taken from the same place with the object removed. The box is what differs
+  between the two (`makai.perception.autolabel`), and the empty image is used as an example of
+  a floor with nothing on it. The recorded pick episodes give such pairs for free: first image
+  of the front camera (object on the floor), last image (object picked up).
 Check a sample of the boxes by eye before trusting a model trained on them.
 
 Each training image is also copied under random lightings and shadows, which is what makes the
@@ -34,6 +39,7 @@ import yaml
 
 from makai.config import REPO_ROOT, load_config
 from makai.contracts import Category
+from makai.perception.autolabel import box_by_difference
 from makai.perception.lighting import random_relight
 from makai.perception.pipeline import build_detector
 
@@ -89,14 +95,31 @@ def main() -> None:
     folders = [(f, Category.CLOTHING) for f in args.clothing] + [(f, Category.TRASH) for f in args.trash]
     folders += [(f, None) for f in args.empty]
     for folder, truth in folders:
-        files = [f for f in sorted(Path(folder).iterdir()) if f.suffix.lower() in IMAGES]
+        files = [
+            f
+            for f in sorted(Path(folder).iterdir())
+            if f.suffix.lower() in IMAGES and not f.stem.endswith("_empty")
+        ]
         for index, path in enumerate(files):
             image = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
             split = "val" if (index // 6) % 4 == 3 else "train"
             if split == "val":
                 held_out.append((path, truth))
             boxes = []
-            if truth is not None:
+            twin = path.with_name(f"{path.stem}_empty{path.suffix}")
+            stem = f"{Path(folder).name}_{path.stem}"
+            if truth is not None and twin.exists():  # labelled by what changed since the floor was empty
+                empty = cv2.cvtColor(cv2.imread(str(twin)), cv2.COLOR_BGR2RGB)
+                box = box_by_difference(image, empty, min_area_px=int(0.02 * image.shape[0] * image.shape[1]))
+                if box is None:
+                    stats["left out (the two images do not differ by one object)"] += 1
+                    continue
+                boxes = [(box, CLASSES[truth])]
+                stats["labelled by difference"] += 1
+                write_example(root, split, f"{stem}_empty", empty, [])
+                if split == "val":
+                    held_out.append((twin, None))
+            elif truth is not None:
                 found = labeller.detect(image)
                 if args.labeller == "floor":  # no classifier: keep the biggest blob
                     found = sorted(
@@ -109,7 +132,6 @@ def main() -> None:
                     stats["left out (no single confident box)"] += 1
                     continue
                 boxes = [(found[0].bbox_xyxy, CLASSES[truth])]
-            stem = f"{Path(folder).name}_{path.stem}"
             write_example(root, split, stem, image, boxes)
             stats[split] += 1
             if split == "train":
