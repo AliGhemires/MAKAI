@@ -73,6 +73,27 @@ simulé a maintenant ce retard. Source : `docs/CE_SOIR.md`, « Le guide du pilot
 
 L'épisode raté a été retiré avant l'entraînement (59 épisodes, 22 408 images). Vu aussi : la
 chaussette tenue pend devant la caméra avant en fin d'épisode.
+
+**Que voient les caméras au départ ?** Première image de chacun des 59 épisodes :
+
+| À la première image | Épisodes |
+|---|---|
+| Chaussette visible par les deux caméras | 47 |
+| Par la caméra avant seulement | 10 |
+| Par la caméra de poignet seulement | 2 |
+| Par aucune | 0 |
+| Chaussette entière dans l'image | 9 pour la caméra avant, 11 pour le poignet |
+
+La chaussette est donc toujours vue par au moins une caméra, mais presque toujours coupée
+par un bord de l'image : la zone de saisie est au bord du champ des deux caméras. La caméra
+de poignet la voit en moins d'une seconde dans 95 % des épisodes, en 1,9 s au plus tard.
+Conséquence : au départ, le modèle « caméra de poignet seule » ne voit rien une fois sur six,
+et un plan de 100 actions l'engage pour 3,3 s. Raccourcir le plan à l'essai
+(`--n-action-steps 30`) le fait regarder de nouveau chaque seconde, sans réentraîner.
+
+Images : `figures/sock_v1_first_images_front.jpg`, `figures/sock_v1_first_images_wrist.jpg`
+(première image de chaque épisode), `figures/sock_v1_last_images_wrist.jpg` (dernière image
+des 60 épisodes d'origine : l'épisode 31 est le seul où la pince est vide).
 Source : `docs/REGISTRY.md`.
 
 ## 6. Quatre entraînements au lieu d'un
