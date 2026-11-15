@@ -114,13 +114,15 @@ depuis les codeurs. Vue de dessus, le robot regarde vers le haut :
             |  à gauche puis retour : x = 0 ; 0,27 ;   |   robot va jusqu'aux bords
             |  0,54, y de 0 à 2,04                     |
   x = 0     +-------------------------------------( R )+   départ : coin arrière droit
-                                    [LINGE]     [ BIN ]    faces avant à 35 cm derrière la ligne
-                                    y = 0,70    y = 0      de départ ; linge 70 cm à gauche
+                                       [LINGE] [ BIN ]     faces avant alignées, 35 cm derrière
+                                       y = 0,48  y = 0     la ligne de départ ; linge 48 cm à gauche
 ```
 
 - **Deux poubelles** (`configs/zone_demo.yaml`, `stations`) : déchets derrière le départ (le
-  carton au U), linge 70 cm à sa gauche, du côté de la zone, même recul de 35 cm. Pour le linge,
-  le robot s'arrête sur la ligne de départ à 70 cm à gauche du départ, se tourne vers le carton
+  carton au U), linge centré 48 cm à sa gauche (mesuré en y conduisant le robot), **faces
+  alignées** à 35 cm derrière la ligne de départ : le geste de dépose est enregistré à cette
+  distance, plus près le bras taperait le carton. Pour le linge, le robot s'arrête sur la ligne
+  de départ à 48 cm à gauche du départ, se tourne vers le carton
   et joue la même dépose. Le carton du linge n'a pas de marque lisible par le robot : il y
   dépose à l'odométrie (rotations justes depuis les codeurs).
 

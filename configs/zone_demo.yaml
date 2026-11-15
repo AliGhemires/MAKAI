@@ -12,4 +12,4 @@ room:
 # The two bins behind the start line, faces 35 cm behind it; the robot docks on the line, facing them.
 stations:
   trash: {x: -0.35, y: 0.0, dock_x: 0.0, dock_y: 0.0}       # behind the start pose: cans, marked with the U
-  clothing: {x: -0.35, y: 0.7, dock_x: 0.0, dock_y: 0.7}    # 70 cm to the left of it (the zone's side): socks
+  clothing: {x: -0.35, y: 0.48, dock_x: 0.0, dock_y: 0.48}  # 48 cm to the left of it (driven there, 15 Nov), faces in line: socks
