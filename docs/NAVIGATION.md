@@ -59,7 +59,8 @@ L'origine de la carte est la pose de départ du robot : **devant la poubelle, do
 poubelle, face à la pièce**. `x` va vers la pièce, `y` vers la gauche.
 
 - [ ] **La poubelle** : contre un bord de la zone, marqueur ArUco n° 1 collé verticalement
-      sur sa face avant, à hauteur de la caméra (`make markers` pour les imprimer). Un panier
+      sur sa face avant, **au ras du sol** : plus haut, il sort de l'image quand le robot
+      s'approche (`docs/ARCHITECTURE.md`) (`make markers` pour les imprimer). Un panier
       à linge prend le marqueur n° 0.
 - [ ] **Le robot** : centre de la base à 35 cm du marqueur, dans son axe, dos à la poubelle.
 - [ ] **La zone à balayer** : un rectangle devant le robot. Mesurer sa longueur (dans l'axe
@@ -77,7 +78,8 @@ navigation:
       la poubelle. C'est la première rangée, et la seule que la caméra n'a pas vue avant d'y
       passer. Les deux coins de la zone de ce côté-là ne sont jamais vus : ne rien y poser.
 - [ ] **La caméra avant calibrée** sur le sol : `make calibrate-ground`
-      (`docs/ARCHITECTURE.md`, « Estimer la distance avec une seule caméra »).
+      (`docs/ARCHITECTURE.md`, « Estimer la distance avec une seule caméra »), ou, sans
+      imprimante, une feuille à carreaux et cinq croix de tape (ci-dessous).
 - [ ] **Le détecteur réentraîné sur des images de cette salle**, prises par la caméra du
       robot (section 5).
 - [ ] **Les poses du bras** `drop_reach` et `drop_open` relevées dans
@@ -86,6 +88,55 @@ navigation:
 - [ ] **Le modèle** : `manipulation.pick.policy_path` dans `configs/local.yaml`. Avec un seul
       type d'objet, un seul modèle suffit, et une erreur de classement du détecteur ne change
       rien. Avec deux : `manipulation.pick.policies` (un modèle par catégorie).
+
+### Calibrer la caméra avant sans imprimante
+
+Une feuille mesure le champ de vision, la hauteur et l'inclinaison de la caméra ; cinq croix
+mesurées au mètre vérifient le résultat et fixent l'origine. Une seule photo, une vingtaine de
+minutes. Testé sur une caméra simulée (0,4 à 0,7 cm d'erreur restante de 30 cm à 1,2 m) ;
+pas encore sur le robot (15 nov.).
+
+1. Robot à sa place, bras en `home` hors du champ : ne plus toucher au robot ni à la caméra
+   jusqu'à la photo.
+2. **La feuille** : un rectangle tracé au stylo sur les lignes d'une feuille à petits
+   carreaux, 52 × 36 carreaux = 26 × 18 cm (vérifier au mètre que 20 carreaux font 10 cm).
+   Scotchée bien à plat (le tape hors du rectangle), en bas de l'image, grand côté vers l'avant.
+3. **Les croix** : un carré de tape gris, une croix au stylo dessus, son centre pile sur la
+   mesure. Mesurées depuis le point du sol **sous l'objectif** (le bout du mètre pendu à
+   l'objectif) : 30, 50, 80 et 120 cm dans l'axe, et 50 cm devant / 20 cm à gauche.
+4. **La photo** : console lancée (`drive.py --link host`), puis
+   `http://localhost:8000/api/camera/front.jpg?download=1`.
+5. **Dans Paint** (la position du pixel s'affiche en bas à gauche) : les 4 coins du rectangle,
+   dans l'ordre proche-gauche, proche-droite, loin-droite, loin-gauche (proche = bas de
+   l'image) ; le centre de chaque croix dans un fichier CSV, `u` et `v` laissés vides pour une
+   croix hors de l'image :
+
+```text
+u,v,x_m,y_m,name
+,,0.30,0.00,A
+,,0.50,0.00,B
+,,0.80,0.00,C
+,,1.20,0.00,D
+,,0.50,0.20,E
+```
+
+6. **Le calcul** :
+
+```bash
+uv run python scripts/camera_from_sheet.py front.jpg "u,v u,v u,v u,v" --size 0.26,0.18 \
+    --check data/ground_calib/marks.csv --from-camera
+```
+
+Il affiche l'erreur sur chaque croix (viser moins de 2 cm après correction de l'origine) et
+le bloc `perception.camera_model` à mettre dans `configs/makai.yaml` : à commiter, c'est une
+propriété du robot. `--from-camera 0.07` si l'on a mesuré la distance de l'objectif au centre
+de la base (ligne des deux roues avant au sol, plus 6 cm) ; sans valeur, le `x_offset_m`
+actuel (5 cm). Pas de `configs/ground_plane.yaml` : il remplacerait ce modèle. Le même modèle
+donne aussi la distance des marqueurs des stations.
+
+Ensuite, la cible de l'approche : mesurer depuis le même point la zone de saisie (là où était
+l'objet pendant l'enregistrement), ajouter la distance objectif → centre de la base, et
+l'écrire dans `navigation.approach.goal_x_m` et `goal_y_m`.
 
 ## 3. Lancer
 

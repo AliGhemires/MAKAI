@@ -123,6 +123,7 @@ uv run python scripts/drive.py --link host  # la console sur le vrai robot (host
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
+uv run python scripts/camera_from_sheet.py front.jpg "u,v u,v u,v u,v" --size 0.26,0.18 --check marks.csv --from-camera   # sans imprimante : une feuille + 5 croix (docs/NAVIGATION.md)
 uv run python scripts/collect.py sock                   # LA commande de collecte : contrôle, enregistre, zippe
 uv run python scripts/preflight.py                      # avant d'enregistrer (--dry-run sans robot)
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30    # relancer = ajouter
