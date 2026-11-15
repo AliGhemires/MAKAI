@@ -115,9 +115,13 @@ manipulation:
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
     n_action_steps: null      # actions played before looking at the cameras again (null = as trained; 30 = every second)
     # One model per kind of object. When set, `policy_path` above is only used for other kinds.
-    # policies:
-    #   clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/last/pretrained_model}
-    #   trash: {policy_path: outputs/train/act_can_v1/checkpoints/last/pretrained_model}
+    # The two reference models of 15 Nov (docs/REGISTRY.md), to replace by the best ones once
+    # scripts/try_pick.py has scored them on the robot. The folders are not in git: unpack
+    # makai_models_sock.zip and makai_models_can.zip at the root of the repo, or fetch them
+    # with scripts/hpc/fetch_model.sh.
+    policies:
+      clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/100000/pretrained_model}
+      trash: {policy_path: outputs/train/act_can_v1/checkpoints/100000/pretrained_model}
     steps: [pick_above, [pick_down, 1.0], [pick_close, 0.8], home]   # used when kind: scripted
   drop:                       # scripted, per category
     clothing: [drop_reach, [drop_open, 0.6], home]

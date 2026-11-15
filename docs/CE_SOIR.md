@@ -285,8 +285,20 @@ scripts/hpc/fetch_model.sh act_sock_v1            # le dernier (200 Mo, moins d'
 scripts/hpc/fetch_model.sh act_sock_v1 020000     # ou un pas précis
 ```
 
-La commande affiche ensuite la ligne `try_pick.py` à lancer. Si l'essai se fait sur un autre
-laptop, lui transmettre le dossier `outputs/train/<run>/checkpoints/<pas>/pretrained_model`.
+La commande affiche ensuite la ligne `try_pick.py` à lancer.
+
+**Sur un laptop sans accès au cluster.** Les modèles ne sont pas dans git (200 Mo chacun).
+Les six modèles finaux du 15 nov. sont dans deux zips, à transmettre comme les datasets :
+`makai_models_can.zip` (2 modèles, 390 Mo) et `makai_models_sock.zip` (4 modèles, 780 Mo).
+Sur le laptop qui les reçoit, après un `git pull`, à la racine du dépôt (Windows, macOS) :
+
+```bash
+tar -xf chemin/vers/makai_models_can.zip
+tar -xf chemin/vers/makai_models_sock.zip
+```
+
+Les dossiers arrivent sous `outputs/train/`, là où la configuration et les commandes les
+attendent. Vérifier avant d'aller sur le robot : `uv run python scripts/mission_check.py`.
 
 **Le budget est de 8 heures, pas un nombre de pas.** Mesuré le 15 nov. sur `pick_sock_v1` :
 5,7 pas par seconde sur une V100, soit 100 000 pas en 4 h 50 et 40 000 pas en 2 heures. La
