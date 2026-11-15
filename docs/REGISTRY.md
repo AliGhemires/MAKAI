@@ -7,7 +7,7 @@ de la démo et fournit les chiffres du pitch. Se pousse directement sur `main`.
 
 | Nom sur le Hub | Date, heure | Objets | Épisodes | Opérateur | Remarques (lumière, incidents) |
 |---|---|---|---|---|---|
-| | | | | | |
+| `local/makai_pick_sock_v1` (pas sur le Hub : zip, [TransferNow](https://www.transfernow.net/dl/20261115eDTzT6zc)) | dim. 15, 02:00–03:08 | chaussette noire roulée | 60 (22 780 images, 12,7 min, 30 fps) | Amine (laptop Windows, option A) | 2 sessions de 30 ; épisodes de 7,8 à 18,2 s (médiane 13,2 puis 11,6) ; caméras avant et poignet décodées sur chaque épisode ; pose de départ à ±9° ; pince fermée dans chaque épisode ; base immobile ; 0 épisode marqué mauvais. Zip 627 Mo ; le lien TransferNow expire |
 
 ## Modèles
 
