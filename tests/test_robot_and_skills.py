@@ -92,6 +92,33 @@ def test_scripted_skills_play_their_poses():
         ScriptedSequence(poses, ["missing"])
 
 
+def test_a_recorded_path_is_played_through_without_going_back_or_stopping():
+    """15 Nov: a path recorded by hand, 82 points 0.2 s apart, made the arm dance. Each step
+    started from the arm's reading, which lags the commands, and stopped smoothly."""
+    from types import SimpleNamespace
+
+    class LaggingArm:
+        def __init__(self):
+            self.sent = [{"arm_elbow_flex.pos": 0.0}]
+
+        def stop(self): ...
+
+        def get_observation(self):  # the arm is where it was sent 6 ticks ago
+            return SimpleNamespace(arm=self.sent[max(0, len(self.sent) - 7)])
+
+        def move_arm(self, pose):
+            self.sent.append(dict(pose))
+
+    poses = {f"p{i}": {"arm_elbow_flex.pos": 10.0 * i} for i in range(1, 11)}
+    robot = LaggingArm()
+    ScriptedSequence(poses, [(f"p{i}", 0.2) for i in range(1, 11)], sleep=lambda _: None).play(robot)
+    elbow = [pose["arm_elbow_flex.pos"] for pose in robot.sent]
+    steps = [b - a for a, b in zip(elbow, elbow[1:], strict=False)]
+    assert elbow[-1] == pytest.approx(100.0)
+    assert min(steps) > 0.0  # never sent back
+    assert max(steps) == pytest.approx(min(steps), rel=0.3)  # constant speed: no stop at each point
+
+
 def test_shared_config_is_consistent():
     cfg = load_config()
     poses = load_poses(
