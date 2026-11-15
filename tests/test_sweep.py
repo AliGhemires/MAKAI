@@ -292,6 +292,37 @@ def test_a_grasp_that_left_the_object_on_the_floor_is_seen_and_tried_again():
     assert [o.label for o, _ in world.delivered] == ["can"] and mission.stats.picked == 1
 
 
+def test_backing_away_from_an_object_near_the_start_line_stops_before_the_bins():
+    """15 Nov: backing away 25 cm from an object near the start line, to check a grasp or try
+    again, would take the robot past the line and into the bins behind it."""
+    # Seen from the start line (42 cm), grasped from 15 cm past it: backing to 50 cm from it
+    # would end 8 cm behind the line.
+    world = SimWorld(
+        objects=[SimObject(0.42, 0.6, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    room = Room(length_m=1.04, width_m=2.04, margin_m=0.0, y_offset_m=1.02)
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=room)
+    mission.perception.min_range = 0.40  # nearly as blind up close as the robot's camera
+    grab, tries, behind = mission.pick.run, [], []
+
+    def pick(robot, target):
+        tries.append(target)
+        return len(tries) > 1 and grab(robot, target)  # misses once: it backs away to try again
+
+    mission.pick.run = pick
+    step = mission.step
+
+    def watched_step():
+        if mission.state is State.APPROACH:
+            behind.append(world.x)
+        return step()
+
+    mission.step = watched_step
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert len(tries) == 2 and len(world.delivered) == 1
+    assert min(behind) > -0.03  # never past the start line while backing away: the bins are 35 cm behind it
+
+
 def test_every_delivery_checks_the_position_on_the_bins_marker_then_goes_straight_in():
     """The demo arena of 15 Nov: the bin behind the start, marked; the basket 48 cm to its left,
     not marked. Wheels that slip: the odometry drifts. Each delivery stops on the bin's marker
