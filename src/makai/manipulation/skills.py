@@ -70,7 +70,16 @@ class BackHome:
 
 
 class ScriptedSequence:
-    """Play poses in order. Each step is a pose name or (pose name, seconds)."""
+    """Play poses in order. Each step is a pose name or (pose name, seconds).
+
+    Each step starts where the previous one was sent, not where the arm is read: the arm lags its
+    commands, and starting from the reading sent it back a little at every step. A step shorter
+    than `PATH_STEP_S` is a point of a path recorded by hand (`drop_path_*`): the arm goes
+    through it at constant speed. A longer one starts and stops smoothly. (15 Nov: a recorded
+    path of 82 points, each started from the reading and stopped smoothly, made the arm dance.)
+    """
+
+    PATH_STEP_S = 0.5
 
     def __init__(
         self,
@@ -87,8 +96,17 @@ class ScriptedSequence:
 
     def play(self, robot: Robot) -> None:
         robot.stop()
+        sent = dict(robot.get_observation().arm)
         for name, duration in self.steps:
-            move_to(robot, self.poses[name], duration, self.rate_hz, self.sleep)
+            pose = self.poses[name]
+            start = {key: sent.get(key, goal) for key, goal in pose.items()}
+            steps = max(1, int(round(duration * self.rate_hz)))
+            for i in range(1, steps + 1):
+                s = i / steps
+                blend = s if duration < self.PATH_STEP_S else s * s * (3 - 2 * s)  # through, or smoothstep
+                robot.move_arm({key: start[key] + (goal - start[key]) * blend for key, goal in pose.items()})
+                self.sleep(1.0 / self.rate_hz)
+            sent.update(pose)
 
 
 class ScriptedPick:
