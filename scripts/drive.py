@@ -229,8 +229,21 @@ def real_runner(loop, driver, cfg):
             for_use(plan["sweep"], use),
         )
 
+    def arm_home(robot) -> None:
+        """Every demonstration starts and ends in the home pose, and the arm must stay tucked in
+        while the base drives: put it there before the robot moves (2 s, smooth)."""
+        from makai.config import CONFIG_DIR
+        from makai.manipulation.skills import load_poses, move_to
+
+        move_to(robot, load_poses(CONFIG_DIR / cfg["manipulation"]["poses_file"])["home"], duration_s=2.0)
+
     return MissionRunner(
-        loop, driver, build, lambda: plan_of(plan["sweep"], load_zone() is not None), use_zone=use_zone
+        loop,
+        driver,
+        build,
+        lambda: plan_of(plan["sweep"], load_zone() is not None),
+        use_zone=use_zone,
+        prepare=arm_home,
     )
 
 

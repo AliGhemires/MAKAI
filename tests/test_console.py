@@ -96,6 +96,22 @@ def test_the_page_sees_what_the_mission_sees_and_commands():
     assert any(loop.snapshot()["cmd"][axis] != 0 for axis in ("x", "y", "theta_deg"))  # sliding along a row
 
 
+def test_the_arm_is_put_home_once_before_the_mission_moves():
+    _, loop, _, runner = make()
+    calls = []
+    runner._prepare = lambda robot: calls.append((robot, loop.commanded.is_zero()))
+    started(runner, loop)
+    ticks(loop, 60)
+    assert len(calls) == 1  # once per mission, on the first tick
+    assert calls[0][1]  # before the base was given any speed
+    assert calls[0][0] is runner._tap  # with the mission's robot, so that stop and e-stop apply
+    runner.stop()
+    ticks(loop, 5)
+    started(runner, loop)
+    ticks(loop, 5)
+    assert len(calls) == 2  # and again for the next mission
+
+
 def test_emergency_stop_ends_the_mission_at_once():
     world, loop, driver, runner = make()
     started(runner, loop)

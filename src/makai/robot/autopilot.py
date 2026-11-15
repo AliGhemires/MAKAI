@@ -82,8 +82,12 @@ class MissionRunner:
         reset: Callable[[], None] | None = None,
         simulated: bool = False,
         use_zone: Callable[[dict[str, float] | None], None] | None = None,
+        prepare: Callable[[Any], None] | None = None,
     ):
         self.loop, self.driver, self._build, self._preview, self._reset = loop, driver, build, preview, reset
+        # Played once on the loop's thread before the first step of each mission, with the
+        # mission's robot: the console puts the arm in its home pose there (scripts/drive.py).
+        self._prepare, self._prepare_pending, self._tap = prepare, False, None
         self.simulated = simulated
         self.use = USES[0]  # the use of the last mission started, and of the next by default
         self._use_zone = use_zone
@@ -231,6 +235,9 @@ class MissionRunner:
     def step(self) -> None:
         mission = self.mission
         try:
+            if self._prepare_pending:  # before the robot moves: the stop and the e-stop still apply
+                self._prepare_pending = False
+                self._prepare(self._tap)
             state = mission.step()
         except MissionAborted:
             self._finish("stopped", "emergency stop" if self.driver.estopped else self._why or "stopped")
@@ -260,6 +267,7 @@ class MissionRunner:
             if self._stop.is_set():  # stopped while loading
                 return
             self.mission, self._shot = mission, mission.snapshot()
+            self._tap, self._prepare_pending = robot, self._prepare is not None
             self.status, self.message = "running", ""
             self.runs += 1
         self.loop.autopilot = self.step
