@@ -65,6 +65,10 @@
   .mini.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .mini:disabled { opacity: .45; cursor: default; }
   .zone-note { color: var(--muted); font-size: 12.5px; }
+  .moves-bar { flex-wrap: wrap; gap: 8px; padding-top: 0; }
+  .bar-label { color: var(--muted); font-size: 12px; font-weight: 650; }
+  .moves-bar .bar-label:not(:first-child) { margin-left: 10px; }
+  #move-cm { width: 64px; }
   #map { flex: 1; min-height: 0; width: 100%; display: block; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px 12px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
@@ -175,6 +179,21 @@
         <button class="mini" id="zone-forget" hidden title="Go back to the room of the config">Forget traced zone</button>
         <span class="zone-note num" id="zone-note"></span>
         <span class="where num" id="where"></span>
+      </div>
+      <div class="map-head moves-bar">
+        <span class="bar-label">Bases</span>
+        <button class="mini" id="base-set-1" title="Remember where the robot is now, heading included">Set base 1</button>
+        <button class="mini" id="base-go-1" disabled title="Drive back to base 1 on odometry. Mark the floor when setting it: the gap on arrival is the odometry error">Go base 1</button>
+        <button class="mini" id="base-set-2" title="Remember where the robot is now, heading included">Set base 2</button>
+        <button class="mini" id="base-go-2" disabled title="Drive back to base 2 on odometry. Mark the floor when setting it: the gap on arrival is the odometry error">Go base 2</button>
+        <span class="bar-label">Precise move</span>
+        <input class="mini num" id="move-cm" type="number" min="1" max="300" step="1" value="50" aria-label="Distance in centimetres"><span class="bar-label">cm</span>
+        <button class="mini" data-move="x,1" title="Forward, on odometry">↑ Forward</button>
+        <button class="mini" data-move="x,-1" title="Back, on odometry">↓ Back</button>
+        <button class="mini" data-move="y,1" title="Sideways to the left, on odometry">← Left</button>
+        <button class="mini" data-move="y,-1" title="Sideways to the right, on odometry">→ Right</button>
+        <button class="mini" id="move-cancel" hidden>Cancel move</button>
+        <span class="zone-note num" id="bases-note"></span>
       </div>
       <canvas id="map" aria-label="Map of the room: covered floor, path of the robot, objects and stations"></canvas>
       <div class="legend">
@@ -617,9 +636,48 @@ async function pollMission() {
 pollMission();
 
 // ---- Robot state: link, battery, emergency stop -----------------------------------------------
+// ---- Bases and precise moves: drive back to a saved pose, or a set distance, on odometry ----
+let robotState = null;       // latest GET /api/state
+function renderBases() {
+  const s = robotState;
+  if (!s) return;
+  const running = !!mission && (mission.status === "running" || mission.status === "loading");
+  const moving = !!(s.goto || s.move);
+  for (const n of ["1", "2"]) {
+    const b = s.bases && s.bases[n];
+    $(`#base-set-${n}`).disabled = running || moving;
+    $(`#base-go-${n}`).disabled = !b || !b.valid || running || moving;
+    $(`#base-go-${n}`).title = b ? `Base ${n}: x ${b.x.toFixed(2)} m, y ${b.y.toFixed(2)} m, heading ${b.yaw_deg.toFixed(0)}°`
+      + (b.valid ? "" : " (odometry reset since: set it again)") : `Base ${n} is not set`;
+  }
+  for (const b of document.querySelectorAll("[data-move]")) b.disabled = running || moving;
+  $("#move-cancel").hidden = !moving;
+  const g = s.goto, last = s.last_goto;
+  $("#bases-note").textContent = g ? `to base ${g.base}: ${g.left_cm} cm, ${g.left_deg}° left`
+    : last ? `base ${last.base}: ${last.status}, odometry says ${last.left_cm} cm / ${last.left_deg}° left. Check the floor mark.` : "";
+}
+async function robotAct(path, body) {
+  try { notice = null; robotState = await api("POST", path, { client: CLIENT, ...body }); renderBases(); }
+  catch (error) { notice = { text: error.message, until: performance.now() + 7000 }; renderText(); }
+}
+for (const n of ["1", "2"]) {
+  $(`#base-set-${n}`).addEventListener("click", () => robotAct("/api/base/set", { base: n }));
+  $(`#base-go-${n}`).addEventListener("click", () => robotAct("/api/base/go", { base: n }));
+}
+for (const b of document.querySelectorAll("[data-move]")) {
+  b.addEventListener("click", () => {
+    const [axis, sign] = b.dataset.move.split(",");
+    const cm = Math.min(300, Math.max(1, Number($("#move-cm").value) || 0));
+    robotAct("/api/move", { axis, target: Number(sign) * cm / 100, speed: 0.12, label: "console: precise move" });
+  });
+}
+$("#move-cancel").addEventListener("click", () => robotAct("/api/move/cancel", {}));
+
 async function pollRobot() {
+  let soon = false;
   try {
     const s = await api("GET", "/api/state");
+    robotState = s; renderBases(); soon = !!(s.goto || s.move);
     $("#dot-link").className = "dot " + (s.error ? "warn" : "ok");
     $("#txt-link").textContent = s.error ? s.error.slice(0, 60) : (window.INFO ? INFO.link : "connected");
     $("#chip-batt").hidden = s.battery_v === null;
@@ -632,7 +690,7 @@ async function pollRobot() {
   } catch (_) {
     $("#dot-link").className = "dot bad"; $("#txt-link").textContent = "no answer from the robot's page";
   }
-  setTimeout(pollRobot, 1000);
+  setTimeout(pollRobot, soon ? 250 : 1000);  // faster while the robot moves on its own
 }
 api("GET", "/api/info").then((info) => { window.INFO = info; }).catch(() => {}).finally(pollRobot);
 

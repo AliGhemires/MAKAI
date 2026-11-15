@@ -12,7 +12,9 @@ Endpoints, all JSON:
 - `POST /api/stop`, `POST /api/release`: emergency stop and release, from any page;
 - `POST /api/reset_odometry`;
 - `POST /api/move` {client, axis, target, speed}: precise move (m or rad, m/s or rad/s),
-  `POST /api/move/cancel`;
+  `POST /api/move/cancel` (also stops a go-to-base);
+- `POST /api/base/set` {base: "1"|"2"}: remember where the robot is, heading included;
+  `POST /api/base/go` {client, base}: drive back there on odometry;
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
   `GET /api/camera/<name>.jpg` (`?download=1` to save it): the latest image;
 - `GET /api/mission`: the sweeping mission (status, map, events) and its plan;
@@ -50,6 +52,7 @@ PAGE = Path(__file__).with_name("drive_page.html")
 CONSOLE = Path(__file__).with_name("console_page.html")
 FIGURES = Path(__file__).resolve().parents[3] / "docs" / "figures"
 MAX_BODY_BYTES = 4096
+BASE_NAMES = ("1", "2")  # saved poses to drive back to
 CAMERA_PATH = re.compile(r"^/api/camera/([A-Za-z0-9_-]+)\.(mjpg|jpg)$")
 FIGURE_PATH = re.compile(r"^/figures/([A-Za-z0-9_-]+\.(png|jpg|csv))$")
 FIGURE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "csv": "text/csv; charset=utf-8"}
@@ -218,6 +221,22 @@ class DriveHandler(BaseHTTPRequestHandler):
                 return
         elif path == "/api/move/cancel":
             self.server.loop.cancel_move()
+        elif path in ("/api/base/set", "/api/base/go"):
+            name = str(body.get("base", ""))
+            if name not in BASE_NAMES:
+                self._error(HTTPStatus.BAD_REQUEST, f"base must be one of {', '.join(BASE_NAMES)}")
+                return
+            if path == "/api/base/set":
+                self.server.loop.define_base(name)
+            else:
+                if client is None:
+                    self._error(HTTPStatus.BAD_REQUEST, "missing client id")
+                    return
+                try:
+                    self.server.loop.go_base(client, name, time.monotonic())
+                except ValueError as exc:
+                    self._error(HTTPStatus.CONFLICT, str(exc))
+                    return
         elif path == "/api/trials/measure":
             try:
                 tape = body.get("tape")

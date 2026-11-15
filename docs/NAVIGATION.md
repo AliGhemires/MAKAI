@@ -101,6 +101,18 @@ navigation:
    **Use this zone**.
 5. Remettre le robot à la pose de départ avant **Start mission**.
 
+**Bases et déplacements précis** (onglet Mission, sous la carte) :
+
+- **Set base 1 / 2** retient où est le robot, cap compris ; **Go base 1 / 2** l'y ramène sur
+  l'odométrie, en ligne droite en tournant en même temps (base omnidirectionnelle), à 1 cm
+  et 1,5° près selon l'odométrie. Un reset de l'odométrie (nouveau tracé) invalide les bases.
+- **Vérifier l'odométrie** : scotch au sol sous un repère du robot, Set base 1, rouler où l'on
+  veut (virages compris), Go base 1, mesurer l'écart entre le repère et le scotch. La console
+  affiche ce que l'odométrie croit qu'il reste : la différence avec le mètre est l'erreur.
+- **Déplacement précis** : distance en cm, puis ↑ ↓ ← → (sur l'odométrie). Avec le mètre, c'est
+  le test « 50 cm demandés, combien parcourus ? ». L'onglet Measure de la page de conduite
+  garde ces essais et en tire les statistiques.
+
 La zone est le rectangle qui contient tout le chemin parcouru, à partir de la ligne de
 départ. Le robot pourra aller jusqu'à ses bords (pas de marge, puisqu'il y est déjà passé).
 Elle est gardée dans `configs/zone.yaml` (hors git) et remplace la zone de la configuration
