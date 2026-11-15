@@ -362,26 +362,46 @@ class DriveLoop:
 
     def go_base(self, client: str, name: str, now: float) -> None:
         """Drive back to base `name` on odometry. ValueError, with the reason, if it cannot."""
-        if self.driver.estopped:
-            raise ValueError("Emergency stop is on: resume first.")
-        if self.autopilot is not None:
-            raise ValueError("A mission is running: stop it first.")
         with self._lock:
             if name not in self.bases:
                 raise ValueError(f"Base {name} is not set: press Set base {name} first.")
             goal, epoch = self.bases[name]
             if epoch != self.odometry_epoch:
                 raise ValueError(f"The odometry was reset since base {name} was set: set it again.")
+        self._start_goto(client, name, lambda _pose: goal, now, f"go to base {name}")
+
+    def go_relative(self, client: str, dx: float, dy: float, dyaw: float, now: float) -> None:
+        """Move by (dx ahead, dy to the left, dyaw counter-clockwise) from where the robot is,
+        closed on odometry in both directions: unlike a precise move, an overshoot is driven
+        back, so it does not add up from one move to the next."""
+
+        def goal(pose: Pose) -> Pose:
+            x, y, yaw = pose
+            return (
+                x + math.cos(yaw) * dx - math.sin(yaw) * dy,
+                y + math.sin(yaw) * dx + math.cos(yaw) * dy,
+                yaw + dyaw,
+            )
+
+        self._start_goto(client, "move", goal, now, "exact move")
+
+    def _start_goto(self, client: str, name: str, goal_from, now: float, label: str) -> None:
+        if self.driver.estopped:
+            raise ValueError("Emergency stop is on: resume first.")
+        if self.autopilot is not None:
+            raise ValueError("A mission is running: stop it first.")
+        with self._lock:
             if self._move is not None or self._goto is not None:
                 raise ValueError("A move is already running.")
             if not self.commanded.is_zero():
                 raise ValueError("The robot is still moving: let it stop first.")
-        if not self.driver.claim(client, now, f"go to base {name}"):
+        if not self.driver.claim(client, now, label):
             raise ValueError("Another device is driving: take over first.")
         self.driver.reset_motion()
         with self._lock:
             self._cancel = None
-            self._goto = GoTo(name, goal, self._pose(), now)
+            pose = self._pose()
+            self._goto = GoTo(name, goal_from(pose), pose, now)
 
     def snapshot(self) -> dict[str, Any]:
         """What the page shows, as JSON-ready values."""

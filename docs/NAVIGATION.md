@@ -109,9 +109,15 @@ navigation:
 - **Vérifier l'odométrie** : scotch au sol sous un repère du robot, Set base 1, rouler où l'on
   veut (virages compris), Go base 1, mesurer l'écart entre le repère et le scotch. La console
   affiche ce que l'odométrie croit qu'il reste : la différence avec le mètre est l'erreur.
-- **Déplacement précis** : distance en cm, puis ↑ ↓ ← → (sur l'odométrie). Avec le mètre, c'est
-  le test « 50 cm demandés, combien parcourus ? ». L'onglet Measure de la page de conduite
-  garde ces essais et en tire les statistiques.
+- **Déplacement précis** : distance en cm, puis ↑ ↓ ← →. Comme Go base et les quarts de tour,
+  il est **fermé dans les deux sens** sur l'odométrie : un dépassement est rattrapé (1 cm,
+  1,5°). C'est ce qu'il faut pour tracer une zone.
+- **L'onglet Measure** de la page de conduite, lui, ne recule jamais, exprès : il mesure.
+  Utilisé pour tracer une zone de 1 × 2 m le 15 nov., chaque virage a dépassé de 2,6° en
+  moyenne (+10,5° sur la boucle, mêmes écarts en rapide et en moyen), et la boucle a fini à
+  22,5 cm devant et 12,5 cm à côté du départ, dont 19 et 9 cm venaient de ces dépassements
+  (`data/move_trials.csv`). L'odométrie seule : ~0,6 % sur 6 m. Avec les déplacements fermés,
+  la même boucle en simulation, robot qui répond en retard : 1,8 cm et 1,1°.
 
 La zone est le rectangle qui contient tout le chemin parcouru, à partir de la ligne de
 départ. Le robot pourra aller jusqu'à ses bords (pas de marge, puisqu'il y est déjà passé).

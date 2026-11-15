@@ -19,22 +19,32 @@ DT = 0.02
 
 class SpeedRobot:
     """Through the host: no encoders, the odometry integrates the measured speed. `scale`: how
-    far the robot really goes compared with what it measures (slip)."""
+    far the robot really goes compared with what it measures (slip). `lag`: motor response time
+    constant (s); `delay`: ticks before a measured speed reaches the laptop (the network)."""
 
-    def __init__(self, scale=1.0):
-        self.scale, self.t, self.v = scale, 0.0, BaseVelocity()
+    def __init__(self, scale=1.0, lag=0.0, delay=0):
+        self.scale, self.lag, self.t = scale, lag, 0.0
+        self.v = BaseVelocity()
+        self.seen = [BaseVelocity()] * (delay + 1)
         self.true = [0.0, 0.0, 0.0]
 
     def drive(self, cmd):
-        self.v = cmd
+        a = 1.0 if self.lag == 0 else 1 - math.exp(-DT / self.lag)
+        self.v = BaseVelocity(
+            *(
+                v + a * (c - v)
+                for v, c in zip((self.v.x, self.v.y, self.v.theta), (cmd.x, cmd.y, cmd.theta), strict=True)
+            )
+        )
         c, s = math.cos(self.true[2]), math.sin(self.true[2])
-        self.true[0] += self.scale * (c * cmd.x - s * cmd.y) * DT
-        self.true[1] += self.scale * (s * cmd.x + c * cmd.y) * DT
-        self.true[2] += self.scale * cmd.theta * DT
+        self.true[0] += self.scale * (c * self.v.x - s * self.v.y) * DT
+        self.true[1] += self.scale * (s * self.v.x + c * self.v.y) * DT
+        self.true[2] += self.scale * self.v.theta * DT
         self.t += DT
+        self.seen = self.seen[1:] + [self.v]
 
     def get_observation(self):
-        return Observation(stamp=self.t, base_velocity=self.v)
+        return Observation(stamp=self.t, base_velocity=self.seen[0])
 
     def stop(self):
         self.v = BaseVelocity()
@@ -118,6 +128,30 @@ def test_cancel_and_emergency_stop_end_it_at_once():
     t += DT
     loop.tick(t)
     assert loop.snapshot()["last_goto"]["status"] == "stopped" and loop.commanded.is_zero()
+
+
+def test_an_exact_rectangle_closes_on_itself():
+    """The 1 x 2 m zone of 15 Nov, driven with exact moves and quarter turns onto 0/90/180/270
+    deg. With precise moves, every turn overshot by ~2.6 deg and the loop missed its start by
+    19 cm ahead and 9 cm sideways (data/move_trials.csv). Here the robot answers late (motor lag,
+    measured speed 60 ms late) and the moves still close the loop."""
+    robot = SpeedRobot(lag=0.08, delay=3)
+    loop = DriveLoop(robot, ManualDriver(LIMITS), GEOMETRY, telemetry_hz=50.0)
+    t = 0.0
+    loop.tick(t)
+    quarter = math.pi / 2
+    for leg, k in ((1.0, 1), (2.0, 2), (1.0, 3), (2.0, 4)):
+        for dx, dyaw in ((leg, 0.0), (0.0, None)):
+            if dyaw is None:  # onto the next quarter of the start heading, as the console does
+                dyaw = k * quarter - loop.snapshot()["pose"]["yaw_deg"] * math.pi / 180
+            for _ in range(20):  # let the base stop, as a pilot waits between two presses
+                t += DT
+                loop.tick(t)
+            loop.go_relative("pilot", dx, 0.0, dyaw, t)
+            t = run(loop, t, "goto")
+            assert loop.snapshot()["last_goto"]["status"] == "done"
+    assert math.hypot(robot.true[0], robot.true[1]) < 0.03  # back where it started
+    assert abs(math.degrees(wrap_angle(robot.true[2]))) < 2.0
 
 
 def test_goto_turns_the_short_way_and_times_out():
