@@ -85,7 +85,18 @@ perception:
     x_offset_m: 0.064       # marks at 0.46-0.97 m: within 1-2 cm along x, ~3 cm to the side (camera off-centre)
   ground_plane_file: ground_plane.yaml   # written by `makai-calibrate-ground`; used when present
   stations:
-    marker_size_m: 0.10
+    kind: tape              # tape: a strip of grey tape on each cardboard box | aruco: a printed marker
+    tape:                   # our two boxes (docs/figures/stations_tape.jpg): the strip's direction tells which box
+      horizontal: clothing  # the box with the strip lying across its front  <- CONFIRM which box takes what
+      vertical: trash       # the box with the strip standing upright
+      width_m: 0.048        # width of the tape roll
+      # Sizes of the strips as stuck on the boxes, read on a photo: MEASURE THEM with a ruler.
+      # The distance of a box is read from the length of its strip (from its width once the
+      # strip no longer fits in the image, close to the box).
+      horizontal_length_m: 0.41
+      horizontal_width_m: 0.030   # that strip is crumpled: it shows 3 cm, not 4.8. Stick it flat, then delete this line.
+      vertical_length_m: 0.21
+    marker_size_m: 0.10     # aruco
     marker_ids: {0: clothing, 1: trash}
 
 navigation:

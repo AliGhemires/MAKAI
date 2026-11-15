@@ -239,16 +239,13 @@ def real_runner(loop, driver, cfg):
         """The station markers in the front camera's latest images, where most of them agree."""
         import statistics
 
-        from makai.contracts import Category, StationSighting
+        from makai.contracts import StationSighting
         from makai.perception.geometry import CameraModel
-        from makai.perception.stations import StationDetector
+        from makai.perception.stations import build_station_detector
 
         if "markers" not in parts:
             p = cfg["perception"]
-            ids = {int(marker): Category(name) for marker, name in p["stations"]["marker_ids"].items()}
-            parts["markers"] = StationDetector(
-                CameraModel(**p["camera_model"]), ids, p["stations"]["marker_size_m"]
-            )
+            parts["markers"] = build_station_detector(p, CameraModel(**p["camera_model"]))
         seen: dict = {}
         for _ in range(7):  # a third of a second of images
             image = loop.robot.raw_observation.get("front")

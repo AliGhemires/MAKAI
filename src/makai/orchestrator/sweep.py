@@ -114,6 +114,7 @@ class SweepConfig:
     # heading is then left to the reading made at the dock, where the marker's own tilt shows.
     marker_fix_heading_from_m: float = 0.8
     camera_range_m: float = 1.5  # how far the camera is trusted, for the coverage map
+    camera_hfov_deg: float = 55.0  # its horizontal field of view, for the coverage map
 
 
 # The states in which the robot has left its route and will come back to it.
@@ -166,7 +167,9 @@ class SweepMission(Mission):
         self.sweep = sweep or SweepConfig()
         self.state = State.SWEEP
         self.waypoints = sweep_waypoints(self.sweep)
-        self.map = RoomMap(self.sweep.room, max_range_m=self.sweep.camera_range_m)
+        self.map = RoomMap(
+            self.sweep.room, hfov_deg=self.sweep.camera_hfov_deg, max_range_m=self.sweep.camera_range_m
+        )
         self.last_correction_m: float | None = None  # how far the last visit to a station moved the pose
         self._waypoint = 0
         self._nav = ApproachController(
@@ -294,8 +297,15 @@ class SweepMission(Mission):
             self._go(State.DONE, now, "room swept, back in front of the bin")
 
     def _on_dock(self, scene: Scene, now: float) -> None:
-        """Drive to the station's dock on odometry, face the station, then look for its marker."""
+        """Go to the station. As soon as the camera sees it, steer on what the camera sees.
+        Until then: drive to its dock on odometry, face the station, look for its marker."""
         station = self.sweep.stations[self._station_key]
+        if not self._anchored and self._station_key in scene.stations:
+            # In sight, from wherever the robot is: no need to trust the odometry up to the dock.
+            self._station_ctrl.reset()
+            self._last_seen = now
+            self._go(State.GO_TO_STATION, now, "station in sight")
+            return
         if not self._arrived:
             self._arrived = self._travel(station.dock_x, station.dock_y, exact=True, heading=station.heading)
             if not self._arrived and now - self._entered > self.sweep.travel_timeout_s:

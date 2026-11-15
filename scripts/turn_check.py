@@ -1,7 +1,8 @@
 """How much does the robot REALLY turn when the odometry says 360 degrees? Measured with the
 front camera on an ArUco marker: signed, repeated, no tape. Through the host.
 
-Put the robot 1.2 to 2 m in front of a station marker (the bin's), facing it, on the floor of
+Put the robot 1.2 to 2 m in front of a station (a box with its strip of tape, or an ArUco
+marker, as `perception.stations.kind` says), facing it, on the floor of
 the demo. Close the console first: both read the same stream. Ctrl+C stops the robot.
 
     uv run python scripts/turn_check.py                 # 3 full turns to the left, by quarter turns
@@ -33,10 +34,9 @@ import statistics
 import time
 
 from makai.config import REPO_ROOT, load_config
-from makai.contracts import Category
 from makai.navigation.odometry import Odometry
 from makai.perception.geometry import CameraModel
-from makai.perception.stations import StationDetector
+from makai.perception.stations import build_station_detector
 from makai.robot.lekiwi import LeKiwiRobot
 from makai.robot.moves import GoTo, GoToTuning, wrap_angle
 
@@ -46,7 +46,7 @@ SEARCH_DEG = (15, -15, 30, -30, 45, -45, 60, -60)  # where to look when the mark
 class Rig:
     """The robot, its odometry (as the console's) and the marker detector."""
 
-    def __init__(self, robot: LeKiwiRobot, detector: StationDetector, camera: str):
+    def __init__(self, robot: LeKiwiRobot, detector, camera: str):
         self.robot, self.detector, self.camera = robot, detector, camera
         self.odometry = Odometry()
 
@@ -106,11 +106,7 @@ def main() -> None:
 
     cfg = load_config()
     p = cfg["perception"]
-    detector = StationDetector(
-        CameraModel(**p["camera_model"]),
-        {int(marker): Category(category) for marker, category in p["stations"]["marker_ids"].items()},
-        p["stations"]["marker_size_m"],
-    )
+    detector = build_station_detector(p, CameraModel(**p["camera_model"]))
     scale = float((cfg["robot"].get("odometry") or {}).get("angular_scale", 1.0))
     tuning = GoToTuning(max_ang_rad_s=args.speed)
     sign = -1.0 if args.right else 1.0

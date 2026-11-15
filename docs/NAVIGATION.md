@@ -30,10 +30,10 @@ SWEEP ──pièce balayée──► RETURN_HOME ──► DONE
 | État | Ce qui se passe | Sur quoi le robot s'appuie |
 |---|---|---|
 | SWEEP | suit son parcours : glisse le long des rangées (Vacuum), ou avance en balayant du regard (Scan) | odométrie |
-| APPROACH | se place devant l'objet, à la distance de saisie | caméra avant : détecteur, puis projection au sol ; les 45 derniers centimètres à l'odométrie |
+| APPROACH | se place devant l'objet, à la distance de saisie | caméra avant : l'objet est remesuré à chaque image et le robot se dirige sur cette mesure, pas sur une position de la carte ; l'odométrie ne sert qu'aux derniers centimètres, quand l'objet passe sous le champ de la caméra, et quand il sort un instant de l'image |
 | PICK | le modèle de l'objet pilote le bras, jusqu'à 3 essais | caméras avant et de poignet |
-| DOCK | retourne au point d'arrêt devant la station | odométrie |
-| GO_TO_STATION | finit sur le marqueur de la station | caméra avant : marqueur ArUco |
+| DOCK | va vers la station ; dès qu'il la voit, passe à l'état suivant | odométrie, corrigée par la caméra, tant que la station n'est pas en vue |
+| GO_TO_STATION | se dirige sur la station vue par la caméra, jusqu'à 35 cm devant elle | caméra avant : bande de scotch du carton (ou marqueur ArUco) |
 | DROP, BACK_OFF | dépose, puis recule | poses du bras |
 | RESUME | revient où il avait quitté son parcours, dans le bon sens | odométrie, recalée |
 | RETURN_HOME | pièce balayée : revient devant la poubelle | odométrie, puis marqueur |
@@ -55,6 +55,10 @@ partir, puis tout le long, son cap oscille de 60° à gauche et à droite de sa 
 que la base continue tout droit : la caméra couvre ainsi une bande large. Chaque coup d'œil
 à gauche est suivi du même à droite, donc ce que les roues glissent en tournant s'annule au
 lieu de s'ajouter. Il avance lentement (8 cm/s) pour avoir le temps de regarder des deux côtés.
+
+**Le principe : l'odométrie est mauvaise, la caméra décide.** Tout ce que le robot peut voir,
+il le rejoint en le regardant : un objet, une station. L'odométrie ne sert qu'à suivre le
+parcours entre deux repères, et la caméra la corrige dès qu'une station est dans l'image.
 
 **La carte.** Le robot n'a pas de capteur de distance. Sa carte est faite de deux choses :
 l'odométrie (où il est) et l'empreinte au sol de la caméra avant (ce qu'il voit de là). Une
@@ -95,9 +99,23 @@ Les rotations sont ce que le robot fait le moins bien : la première disposition
 et garde le repère sous les yeux de la caméra. La seconde reste possible, rien ne change pour
 elle.
 
-- [ ] **La poubelle** : marqueur ArUco n° 1 collé verticalement sur sa face avant, à hauteur
-      de la caméra (`make markers` pour les imprimer). Un panier à linge prend le marqueur
-      n° 0.
+- [ ] **Les deux stations** : deux cartons, chacun avec une bande de scotch gris sur sa
+      face avant. Bande **horizontale** : le linge. Bande **verticale** : les déchets (à
+      confirmer, et à changer dans `perception.stations.tape` si c'est l'inverse). La direction
+      de la bande dit quel carton c'est ; sa taille dans l'image dit à quelle distance il est
+      (`docs/figures/stations_tape.jpg`).
+    - Coller les bandes **à plat**, droites, sur du carton nu (du carton au-dessus et
+      au-dessous, ou à gauche et à droite : c'est à cela que le robot reconnaît une bande).
+    - **Mesurer à la règle** la longueur de chaque bande et l'écrire dans
+      `perception.stations.tape` (`horizontal_length_m`, `vertical_length_m`). Les valeurs
+      actuelles (41 et 21 cm) sont lues sur une photo.
+    - La bande horizontale doit être à peu près à la hauteur de la caméra (7 à 10 cm du sol),
+      la verticale doit monter du bas du carton jusqu'au-dessus de cette hauteur.
+    - Une bande ne dit pas dans quel sens le carton est tourné : le cap n'est pas relu de
+      près, seulement corrigé à distance par la direction de la bande. Poser les cartons bien
+      face au robot.
+    - Avec des marqueurs ArUco imprimés à la place : `perception.stations.kind: aruco`
+      (`make markers`, n° 0 pour le linge, n° 1 pour les déchets).
 - [ ] **Le robot** : à la pose de départ de la disposition choisie.
 - [ ] **Poubelle en face : bouton Zone from marker** (console, onglet Mission), robot à la
       pose de départ. La caméra lit où est le marqueur : la poubelle est placée dans la
@@ -331,7 +349,8 @@ et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, p
 | La base glisse mal de côté (à-coups, forte dérive) | roues ou sol peu adaptés au déplacement latéral | `pattern: lanes` : l'ancien parcours, où le robot avance et tourne |
 | En Scan, il passe à côté d'objets | regard trop rapide (images floues), ou objets trop loin pour le détecteur | augmenter `scan_period_s`, réduire `scan_speed` ; réduire `scan_swath_m` pour passer plus près |
 | En Vacuum, il part chercher un objet trop loin, ou trop tard | `pickup_range_m` | le réduire ou l'augmenter ; rester au-dessus de l'écart entre deux rangées |
-| « No station marker in view across the zone » | le marqueur n'est pas vu, ou la poubelle est à moins de 0,9 m | robot face à la poubelle, à 1,3 m ou plus ; onglet Cameras pour vérifier que le marqueur est dans l'image |
+| « No station marker in view across the zone » | la bande n'est pas vue, ou le carton est à moins de 0,9 m | robot face aux cartons, à 1,3 m ou plus ; onglet Cameras pour vérifier que la bande est dans l'image, entière, sur du carton nu ; bande froissée ou à l'ombre : la recoller à plat |
+| Un carton est pris pour l'autre, ou une distance est fausse | bande de travers, ou longueur mal réglée | bande bien horizontale ou verticale ; mesurer sa longueur et l'écrire dans `perception.stations.tape` |
 | La tuile « Drift fixed » ne dit jamais « marker in view » | marqueur trop loin, trop petit ou hors de l'image | rapprocher la poubelle, agrandir le marqueur (`perception.stations.marker_size_m`) |
 | Il heurte un bord | zone déclarée trop grande | retracer la zone ; ou réduire `room`, augmenter `margin_m` |
 | La zone tracée est fausse | odométrie qui a dérivé pendant le tracé | retracer plus lentement, sans tourner ; ou **Forget traced zone** et écrire les dimensions dans `configs/local.yaml` |

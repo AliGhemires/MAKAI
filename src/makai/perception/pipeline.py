@@ -9,7 +9,7 @@ from makai.config import CONFIG_DIR
 from makai.contracts import Category, Detection, Observation, Scene, Target
 from makai.perception.detector import Detector
 from makai.perception.geometry import CameraModel, GroundPlane
-from makai.perception.stations import StationDetector
+from makai.perception.stations import StationDetector, TapeStationDetector, build_station_detector
 
 CUT_MARGIN_PX = 3  # a box ending this close to the bottom row is cut by the image
 
@@ -19,7 +19,7 @@ class CameraPerception:
         self,
         detector: Detector,
         ground: GroundPlane,
-        stations: StationDetector | None = None,
+        stations: StationDetector | TapeStationDetector | None = None,
         camera: str = "front",
         max_range_m: float = 2.5,
         min_size_m: float | None = None,
@@ -101,11 +101,7 @@ def build_perception(cfg: dict) -> CameraPerception:
     ground_file = Path(CONFIG_DIR) / p["ground_plane_file"]
     # Calibrated homography if it exists, otherwise the approximate camera model.
     ground = GroundPlane.load(ground_file) if ground_file.exists() else camera.ground_plane()
-    stations = StationDetector(
-        camera,
-        {int(marker_id): Category(category) for marker_id, category in p["stations"]["marker_ids"].items()},
-        p["stations"]["marker_size_m"],
-    )
+    stations = build_station_detector(p, camera)  # tape strips or ArUco markers
     return CameraPerception(
         build_detector(p),
         ground,
