@@ -1,0 +1,11 @@
+# THE DEMO ARENA (docs/DECISIONS.md D30), traced in the console on 15 Nov at 19:56 by driving the
+# robot around it; the run that followed found, approached and picked the can. A copy kept in git:
+# the console reads configs/zone.yaml (not in git). Before the demo, on the demo laptop:
+#     cp configs/zone_demo.yaml configs/zone.yaml        (PowerShell: Copy-Item, same arguments)
+# Map frame: origin = the robot's centre at the start, x ahead, y to the left. The zone runs from
+# the start line 1.04 m ahead, and 2.04 m to the LEFT of the robot: it starts at the back-right corner.
+room:
+  length_m: 1.04
+  width_m: 2.04
+  margin_m: 0.0
+  y_offset_m: 1.02

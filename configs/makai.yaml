@@ -96,6 +96,12 @@ perception:
       horizontal_length_m: 0.41
       horizontal_width_m: 0.030   # that strip is crumpled: it shows 3 cm, not 4.8. Stick it flat, then delete this line.
       vertical_length_m: 0.21
+    pattern:                # kind: pattern - one station marked with a white U in a dark square (the
+      category: trash       # pattern lent by another team, 15 Nov; one can be made with black tape and paper).
+      u_width_m: 0.044      # outer width of the white U, from the floor distance at 1.21 m: MEASURE it.
+                            # Seen by the robot's camera (40/40 frames), where the tape is not. Stick it on
+                            # the bin's face, its centre about 10 cm above the floor: higher, it leaves the
+                            # image at the dock (35 cm).
     marker_size_m: 0.10     # aruco
     marker_ids: {0: clothing, 1: trash}
 

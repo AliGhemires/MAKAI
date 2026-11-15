@@ -5,6 +5,9 @@ Two ways to mark a station, chosen by `perception.stations.kind`:
 - `tape` (`TapeStationDetector`): a strip of grey tape on the front of a cardboard box,
   horizontal on one box, vertical on the other. No printer needed. The strip tells which box
   it is by its direction, and how far it is by its size in the image.
+- `pattern` (`UPatternDetector`): one station only, marked with a white U in a dark square
+  (the pattern lent by another team on 15 Nov, or one made by hand). Seen by the robot's
+  camera, where the tape strips are not (docs/DEBUG_ODOMETRY.md, 11.3).
 - `aruco` (`StationDetector`): a printed ArUco marker taped vertically on the front of each
   station. `solvePnP` gives its position and its orientation, which tells which way the
   station faces. Print markers with:  uv run python scripts/make_markers.py
@@ -324,9 +327,78 @@ class TapeStationDetector:
         return sightings
 
 
+class UPatternDetector:
+    """One station marked with a white U inside a dark square, stuck on its front face.
+
+    The pattern lent by another team on 15 Nov; one can be made by hand: a white U (paper, or
+    the paper left bare) in a square of black or dark grey tape. Its "black" may be as dark as
+    the tape around it: what stands out is the U. What makes it, in the image: a bright U shape,
+    10 to 220 px wide, dark all around, with a dark notch in its top middle. How far it is: from
+    the width of the U, as for a strip of tape. It does not tell which way the station faces.
+
+    On the robot's front camera (15 Nov, at 0.9 and 1.2 m): found in 40 frames out of 40,
+    direction steady to 0.01 degree.
+    """
+
+    def __init__(self, camera: CameraModel, category: Category, u_width_m: float = 0.044):
+        self.camera, self.category, self.u_width_m = camera, category, u_width_m
+
+    def find(self, image_rgb: np.ndarray) -> list[tuple[float, float, float, float]]:
+        """Candidates in the image: (u, v, width_px, contrast), best first."""
+        gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+        light = float(np.median(gray))
+        bright = (gray > max(165.0, 1.1 * light)).astype(np.uint8)
+        count, _, stats, _ = cv2.connectedComponentsWithStats(bright, connectivity=8)
+        rows, columns = gray.shape
+        found = []
+        for label in range(1, count):
+            x, y, w, h, area = (int(v) for v in stats[label])
+            if not (10 <= w <= 220 and 10 <= h <= 220 and 0.7 <= w / h <= 1.45):
+                continue
+            if not 0.3 <= area / (w * h) <= 0.7:  # a U, not a filled patch nor a thin line
+                continue
+            m = max(2, w // 6)  # a ring around it: dark (the square, the tape)
+            if x - m < 0 or y - m < 0 or x + w + m > columns or y + h + m > rows:
+                continue
+            ring = np.concatenate(
+                [
+                    gray[y - m : y, x : x + w].ravel(),
+                    gray[y : y + h, x - m : x].ravel(),
+                    gray[y : y + h, x + w : x + w + m].ravel(),
+                ]
+            )
+            notch = gray[y : y + int(0.55 * h), x + int(0.35 * w) : x + int(0.65 * w)]
+            if notch.size == 0 or np.median(ring) > 0.7 * light or notch.mean() > 0.7 * light:
+                continue
+            found.append((x + w / 2.0, y + h / 2.0, float(w), light - float(np.median(ring))))
+        return sorted(found, key=lambda c: -c[3])
+
+    def detect(self, image_rgb: np.ndarray) -> dict[Category, StationSighting]:
+        found = self.find(image_rgb)
+        if not found:
+            return {}
+        u, v, width, _ = found[0]
+        scale = image_rgb.shape[1] / self.camera.width
+        u, v, width = u / scale, v / scale, width / scale
+        f = self.camera.focal_px
+        depth = f * self.u_width_m / width
+        point = self.camera.camera_to_base(
+            np.array(
+                [(u - self.camera.width / 2.0) * depth / f, (v - self.camera.height / 2.0) * depth / f, depth]
+            )
+        )
+        return {self.category: StationSighting(self.category, float(point[0]), float(point[1]))}
+
+
 def build_station_detector(perception_cfg: Mapping, camera: CameraModel):
-    """The station detector of `perception.stations` in the config: tape strips, or ArUco markers."""
+    """The station detector of `perception.stations` in the config: tape strips, a U pattern,
+    or ArUco markers."""
     cfg = perception_cfg["stations"]
+    if cfg.get("kind", "aruco") == "pattern":
+        pattern = cfg.get("pattern", {})
+        return UPatternDetector(
+            camera, Category(pattern.get("category", "trash")), float(pattern.get("u_width_m", 0.044))
+        )
     if cfg.get("kind", "aruco") == "tape":
         tape = cfg.get("tape", {})
         kinds = {kind: Category(tape[kind]) for kind in ("horizontal", "vertical") if tape.get(kind)}
