@@ -4,6 +4,13 @@
 **Speakers:** M = Mohamed (slides 1–4, 7–9). S2 = [second speaker] (slides 5–6). F = fixer, at the robot, never touches the leader arm.
 Say "our robot" (no product name). The 60 socks are **human demonstrations**, never autonomous grasps.
 
+## The through-line (read this first)
+- **One question opens and closes the pitch:** "What do sixty socks teach a robot?" → last slide: "To bend down, so cleaners don't have to."
+- **Each slide answers the question the last one raised.** Say the bridge out loud when you click:
+  why it matters ("every stay ends with a cleaner bending down") → why now ("and it's growing") → does it work ("let me show you") → how ("the hardest moment is the grasp, so only that is learned") → how does it see ("it labels its own data") → how did it learn ("those sixty socks trained six models") → does it hold on the robot ("so does it hold?") → how far can it go ("a new object costs an hour of demos") → how big is it ("Mohamed, how big is this?": up to ~CHF 10M a year on checkout cleans in Leukerbad alone) → who pays (aparthotels and hostels; CHF 100 per robot per month, tested in a 3-month pilot with 10 Leukerbad flats) → who are we → the answer.
+- **One image comes back throughout:** the cleaner who bends down. The robot takes the bending down; the cleaner keeps the job.
+- Word-for-word version: FULL_script_word_for_word (.md / _v2.pdf).
+
 ---
 
 **1 · Hook** | 0:00–0:15 | M
@@ -35,9 +42,9 @@ Say "our robot" (no product name). The 60 socks are **human demonstrations**, ne
 > "Sixty socks are enough to learn one grasp, not a whole room. So only the grasp is learned. The rest is geometry we can test."
 
 **6 · What we measured, including what fails** | 2:55–3:20 | S2
-- **(a) Measured:** "On the real robot, the grasp worked [x] out of [N] on [socks/cans], autonomous, 1× speed. Every attempt counted."
-- **(b) Not yet:** "We have no on-robot grasp rate yet, so we show none. We measured detection on new images, navigation in simulation, and replay within 1.5 degrees."
-- Both: no obstacle avoidance · two object types · small, light items · one model per object · navigation [not yet validated on the real floor].
+- **(a) Measured (team trials, 15 Nov): limit tests 8/10 sock, 7/10 can; normal placements [__/10].** Earlier template: "On the real robot, the grasp worked [x] out of [N] on [socks/cans], autonomous, 1× speed. Every attempt counted."
+- **(b) Not yet scored:** "Our first grasp trials on the robot held almost every time. The scored ten-in-a-row is the number we're still measuring." Then: one camera reads a can at 57.5 cm as 57.3 cm; in simulation both modes deliver 4/4 with slipping wheels.
+- Both: no obstacle avoidance · two object types · small, light items · one model per object · on the real robot, images lag up to 2.5 s (being fixed).
 - Same calm voice, no apology.
 
 **7 · A checkout clean is already priced at CHF 80–100. We take the bending-down part.** | 3:20–3:40 | M
@@ -113,3 +120,9 @@ Say "our robot" (no product name). The 60 socks are **human demonstrations**, ne
 | 13 | Close | 4:32–4:45 | "We are MAKAI. Give us three months…" (15 s buffer) |
 
 **For the 4-minute round 1:** keep all slides but only flash 6 (Perception) and 8 (Compute) with one sentence each, cut the demo narration to the essentials, and shorten Why now to the Airbnb line.
+
+
+## Market and price (added Sun 15, evening)
+- **Market (slide 11):** Leukerbad alone: up to ~106,000 holiday-flat checkouts a year (349,056 nights ÷ 3.3-night average stay) × CHF 80–100 = CHF 8.5–10.6M a year spent on checkout cleans. An upper bound, and cleaning spend, not our revenue. Switzerland: 7.4M nights in managed holiday flats and 43.9M hotel nights in 2025 (BFS).
+- **Price:** CHF 100 per robot per month, a hypothesis the pilot tests. Parts (≈ USD 500–950) pay back in about 5–9 months.
+- **Pilot:** 3 months; EIII lab, then 10 Leukerbad units, measuring minutes saved per checkout. No host has agreed yet: say "we want to run".
