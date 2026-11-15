@@ -355,8 +355,15 @@ démonstrations) : s'écarter, poser l'objet, Entrée. Après l'essai, répondre
 est-il tenu ? Le script affiche aussi la mesure de la pince en fin d'essai. Avec au moins un
 essai réussi et un raté, il donne la valeur à mettre dans `manipulation.pick.gripper_open_above`
 (`configs/makai.yaml`) : c'est ce réglage qui permet à la mission de voir une saisie vide et de
-recommencer. Dans `pick_sock_v1`, la pince mesure 2,3 à vide et 5,7 en médiane sur la
-chaussette (de 3 à 12) : l'écart est faible, à confirmer sur le robot.
+recommencer. Deux valeurs de départ, tirées des épisodes enregistrés, sont déjà dans la
+configuration (15 nov.) : 3,0 pour la chaussette (à vide : 2,0 à 2,6 ; chaussette tenue : 3,3
+à 12,2) et 4,3 pour la canette (à vide : 2,0 à 3,5 ; canette tenue : 5,2 à 8,5). La marge de
+la chaussette est mince : à confirmer sur le robot.
+
+Un essai se termine dès que le bras est revenu en `home` et y reste une seconde, comme dans
+les démonstrations, et au plus tard après `manipulation.pick.duration_s` (20 s). Avant le
+15 nov. à midi, il était coupé à 12 s : 36 saisies de chaussette sur 59 et 13 de canette sur
+68 durent plus longtemps.
 
 Ordre des essais, toujours sur la même grille de 10 positions (centre et quatre coins de la
 zone, deux orientations) :

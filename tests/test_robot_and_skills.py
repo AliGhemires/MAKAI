@@ -119,3 +119,29 @@ def test_each_kind_of_object_gets_its_own_pick_skill():
     for category in (Category.TRASH, Category.CLOTHING, Category.UNKNOWN):
         assert skill.run(None, Target(category, "thing", 0.22, 0.0))
     assert used == ["can model", "sock model", "default"]
+
+
+def test_a_pick_is_over_when_the_arm_is_back_home():
+    from makai.manipulation.skills import BackHome
+
+    home, away = [0.0, -100.0, 95.0, 74.0, -3.0], [40.0, -20.0, 30.0, 10.0, -3.0]
+    back = BackHome(tol_deg=10.0, hold_s=1.0, fps=30)
+    assert not any(back.update(home) for _ in range(90))  # waiting at home before moving is not the end
+    assert not any(back.update(away) for _ in range(120))  # away, picking
+    near = [h + 4.0 for h in home]  # back within the tolerance, not exactly on the pose
+    results = [back.update(near) for _ in range(30)]
+    assert results[:29] == [False] * 29 and results[29]  # one full second back home
+
+
+def test_coming_home_briefly_does_not_end_the_pick():
+    from makai.manipulation.skills import BackHome
+
+    home, away = [0.0, -100.0, 95.0, 74.0, -3.0], [40.0, -20.0, 30.0, 10.0, -3.0]
+    back = BackHome(fps=30)
+    back.update(home)  # the pose it starts from is home
+    for _ in range(30):
+        back.update(away)
+    assert not any(back.update(home) for _ in range(20))  # passes through home...
+    assert not any(back.update(away) for _ in range(30))  # ...and leaves again: the count restarts
+    assert not any(back.update(home) for _ in range(29))
+    assert back.update(home)

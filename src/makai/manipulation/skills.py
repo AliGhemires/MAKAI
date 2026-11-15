@@ -42,6 +42,31 @@ def move_to(
         sleep(1.0 / rate_hz)
 
 
+class BackHome:
+    """Has the arm left the pose it started from, and come back to it for good?
+
+    Every demonstration ends that way: the arm returns to its home pose and holds it for one
+    second. A pick is therefore over as soon as this is true, not after a fixed time: the
+    recorded picks last from 8 to 18 seconds.
+    """
+
+    def __init__(self, tol_deg: float = 10.0, hold_s: float = 1.0, fps: float = 30.0):
+        self.tol, self.needed = tol_deg, round(hold_s * fps)
+        self._start: list[float] | None = None
+        self._left, self._held = False, 0
+
+    def update(self, arm: Sequence[float]) -> bool:
+        """Feed the arm joints (not the gripper) of one tick. True once the arm is back home."""
+        if self._start is None:
+            self._start = list(arm)
+        gap = max(abs(a - b) for a, b in zip(arm, self._start, strict=True))
+        if gap > self.tol:
+            self._left, self._held = True, 0
+        elif self._left:
+            self._held += 1
+        return self._left and self._held >= self.needed
+
+
 class ScriptedSequence:
     """Play poses in order. Each step is a pose name or (pose name, seconds)."""
 
@@ -85,7 +110,8 @@ class ScriptedDrop:
 
 
 class PolicyPick:
-    """Run a LeRobot policy on the arm for a fixed time, base frozen, then go to the carry pose.
+    """Run a LeRobot policy on the arm until it is back home (at most `duration_s`), base frozen,
+    then go to the carry pose.
 
     Follows lerobot 0.7.0 `examples/lekiwi/evaluate.py`. Needs the real `LeKiwiRobot`.
     """
@@ -143,6 +169,8 @@ class PolicyPick:
                 **hw_to_dataset_features(client.observation_features, OBS_STR),
             }
         stop = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+        joints = [key for key in client.action_features if key.endswith(".pos") and key != GRIPPER]
+        back_home = BackHome(fps=self.fps)
 
         def next_action() -> dict:
             robot.get_observation()
@@ -174,6 +202,10 @@ class PolicyPick:
             tick = time.perf_counter()
             client.send_action(next_action())
             ticks += 1
+            # Over as soon as the arm is back home, as in the demonstrations; `duration_s` is
+            # only the longest a pick may take.
+            if back_home.update([float(robot.raw_observation[key]) for key in joints]):
+                break
             # time.sleep overshoots by several ms: at 30 Hz that costs 10 % of the rate.
             precise_sleep(max(0.0, 1.0 / self.fps - (time.perf_counter() - tick)))
         # Commands per second actually achieved. Well below `fps`, the motion is slower than
@@ -215,7 +247,7 @@ def build_pick_skill(cfg: dict):
             pick["policy_type"],
             entry["policy_path"],
             entry.get("task", pick["task"]),
-            pick["duration_s"],
+            entry.get("duration_s", pick["duration_s"]),
             cfg["robot"]["fps"],
             pick.get("device"),
             after,
