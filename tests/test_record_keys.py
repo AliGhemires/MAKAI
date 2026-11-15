@@ -110,3 +110,13 @@ def test_one_home_pose_per_dataset(tmp_path, capsys):
 
     record.check_home(first, 40.0, tmp_path, 6.0, say)  # a leader that rests open
     assert "Careful: the gripper is open on the rest" in capsys.readouterr().out
+
+
+def test_the_recorder_confirms_the_mission_home(tmp_path, capsys):
+    from makai.config import CONFIG_DIR, load_config
+    from makai.manipulation.skills import load_poses
+
+    home = load_poses(CONFIG_DIR / load_config()["manipulation"]["poses_file"])["home"]
+    measured = {key: home[key] + 2.0 for key in record.ARM}  # the leader is back on the same rest
+    record.check_home(measured, 1.4, tmp_path, 10.0, lambda *a, **k: None)
+    assert "Same home pose as the mission's" in capsys.readouterr().out
