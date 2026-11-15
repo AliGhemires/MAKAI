@@ -129,3 +129,27 @@ def test_floor_detector_is_built_from_the_shared_config():
     assert detector.floor == FloorColor(**perception["floor"]["color"])
     assert detector.detect(with_object(carpet(), axes=(60, 34)))[0].category is Category.CLOTHING
     assert detector.detect(printed(carpet()))[0].category is Category.TRASH
+
+
+def test_an_object_cut_by_the_bottom_of_the_image_is_not_located():
+    """Too close, the object runs out of the picture: the distance read at its lowest visible
+    row would be wrong, so it gives no target at all (the mission ends the approach blind)."""
+    from makai.contracts import Category, Detection, Observation
+
+    class OneBox:
+        def __init__(self, box):
+            self.box = box
+
+        def detect(self, image):
+            return [Detection("can", Category.TRASH, 0.9, self.box)]
+
+    ground = CameraModel().ground_plane()
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    whole = CameraPerception(OneBox((280.0, 300.0, 360.0, 380.0)), ground).perceive(
+        Observation(0.0, {"front": image})
+    )
+    cut = CameraPerception(OneBox((280.0, 400.0, 360.0, 479.0)), ground).perceive(
+        Observation(0.0, {"front": image})
+    )
+    assert len(whole.targets) == 1 and whole.targets[0].label == "can"
+    assert cut.targets == ()

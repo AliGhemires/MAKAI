@@ -1,4 +1,5 @@
-"""The robot's control page: drive the base, see the cameras and the arm, measure moves.
+"""The robot's console: run the sweeping mission and watch its map, drive the base, see the
+cameras and the arm, measure moves, look at the training results.
 Open it on a phone, a tablet or a laptop of the same network.
 
 On the Pi, without the host (motor board and cameras on the Pi), in the `lerobot` conda env:
@@ -14,7 +15,10 @@ host's observations. Not at the same time as teleop.py or record.py (they share 
 
     uv run python scripts/drive.py --link host        # then http://localhost:8000
 
-Without a robot, to try the page:
+This is where the mission runs (the policies need the laptop): the page is then the console,
+with the Mission, Drive, Cameras and Data tabs; the driving page alone stays at /drive.
+
+Without a robot, to try the console and watch a simulated mission:
 
     uv run python scripts/drive.py --sim
     uv run python scripts/drive.py --sim --sim-scale 0.96   # a robot whose wheels are 4 % off
@@ -71,7 +75,7 @@ def make_sim(scale: float):
 
     from makai.contracts import BaseVelocity, Observation
     from makai.robot.lekiwi import ARM_KEYS
-    from makai.sim.world import SimRobot, SimWorld
+    from makai.sim.world import SimRobot, sweep_world
 
     class MiscalibratedSim(SimRobot):
         def get_observation(self) -> Observation:
@@ -106,8 +110,95 @@ def make_sim(scale: float):
                 for i, name in enumerate(names)
             }
 
-    robot = MiscalibratedSim(SimWorld(), dt=1 / SIM_HZ)
+    robot = MiscalibratedSim(sweep_world(), dt=1 / SIM_HZ)  # a room with a bin, a basket and things to pick
     return robot, lambda: (robot.world.x, robot.world.y, robot.world.yaw)
+
+
+def sim_things(world) -> list:
+    """What the simulated cameras draw on the floor: the objects, and the two stations."""
+    colours = {"clothing": (214, 120, 42), "trash": (52, 104, 235)}  # BGR, as on the map
+    things = [(o.x, o.y, colours.get(o.category.value, (200, 200, 200)), 0.05) for o in world.objects]
+    return things + [(sx, sy, (230, 230, 230), 0.14) for sx, sy in world.stations.values()]
+
+
+def plan_of(sweep) -> dict:
+    """The room, the lanes and the stations, for the map of the console."""
+    from makai.navigation.coverage import snake_waypoints
+
+    return {
+        "room": {
+            "length_m": sweep.room.length_m,
+            "width_m": sweep.room.width_m,
+            "margin_m": sweep.room.margin_m,
+        },
+        "waypoints": snake_waypoints(sweep.room, sweep.lane_spacing_m),
+        "stations": {
+            key.value: {"x": s.x, "y": s.y, "dock_x": s.dock_x, "dock_y": s.dock_y}
+            for key, s in sweep.stations.items()
+        },
+    }
+
+
+def sim_runner(loop, driver, robot, cfg):
+    """The sweeping mission on the simulated robot of the page: same code as on the real one."""
+    from makai.app import mission_config
+    from makai.contracts import Category
+    from makai.navigation.coverage import Room
+    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+    from makai.robot.autopilot import MissionRunner
+    from makai.sim.world import SimDrop, SimPerception, SimPick, sweep_world
+
+    world = robot.world
+    mission_cfg = mission_config(cfg)
+    stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
+    sweep = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
+
+    def build(tap):
+        # A mission always starts in front of the bin, facing the room: put the simulated robot there.
+        world.x, world.y, world.yaw = 0.0, 0.0, 0.0
+        return SweepMission(
+            tap,
+            SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+            SimPick(world, goal_xy=goal, success_rate=0.85, duration_s=2.5, seed=runner.runs),
+            SimDrop(world, duration_s=1.5),
+            mission_cfg,
+            sweep,
+        )
+
+    def reset() -> None:
+        fresh = sweep_world()
+        world.objects[:] = fresh.objects
+        world.delivered.clear()
+        world.carrying, world.x, world.y, world.yaw = None, 0.0, 0.0, 0.0
+        loop.reset_odometry()
+
+    runner = MissionRunner(loop, driver, build, lambda: plan_of(sweep), reset, simulated=True)
+    return runner
+
+
+def real_runner(loop, driver, cfg):
+    """The sweeping mission on the real robot, through the host. The detector and the policies
+    are loaded at the first start and kept."""
+    from makai.app import mission_config, sweep_config
+    from makai.robot.autopilot import MissionRunner
+
+    sweep, parts = sweep_config(cfg), {}
+
+    def build(tap):
+        from makai.manipulation.skills import build_drop_skill, build_pick_skill
+        from makai.orchestrator.sweep import SweepMission
+        from makai.perception.pipeline import build_perception
+
+        if not parts:
+            parts.update(
+                perception=build_perception(cfg), pick=build_pick_skill(cfg), drop=build_drop_skill(cfg)
+            )
+        return SweepMission(
+            tap, parts["perception"], parts["pick"], parts["drop"], mission_config(cfg), sweep
+        )
+
+    return MissionRunner(loop, driver, build, lambda: plan_of(sweep))
 
 
 def _interrupt(signum, frame) -> None:
@@ -153,7 +244,10 @@ def main() -> None:
     captures: list = []
     camera_cfg = cfg["robot"].get("cameras", {})
     if args.sim:
-        captures = [SimCamera(cameras, name, truth, args.camera_fps) for name in ("front", "wrist")]
+        captures = [
+            SimCamera(cameras, name, truth, args.camera_fps, things=lambda: sim_things(robot.world))
+            for name in ("front", "wrist")
+        ]
     elif link == "wired" and not args.no_cameras:
         captures = [
             CameraCapture(
@@ -190,9 +284,15 @@ def main() -> None:
         "cameras": cameras.names,
         "camera_fps": args.camera_fps,
     }
+    runner = None  # in wired mode (on the Pi) there is no mission: the policies need the laptop
+    if args.sim:
+        runner = sim_runner(loop, driver, robot, cfg)
+    elif link == "host":
+        runner = real_runner(loop, driver, cfg)
+    info["mission"] = runner is not None
     http_port = args.http_port or int(drive_cfg.get("http_port", 8000))
     try:  # before touching the robot: a busy port should not leave the wheels armed
-        server = DriveServer((args.bind, http_port), loop, driver, info, cameras)
+        server = DriveServer((args.bind, http_port), loop, driver, info, cameras, runner)
     except OSError as exc:
         parser.exit(1, f"cannot listen on port {http_port} ({exc}). Already running? Try --http-port.\n")
 

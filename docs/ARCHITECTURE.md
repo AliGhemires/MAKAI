@@ -99,6 +99,25 @@ Comportements à connaître :
 Limite assumée : il n'y a **pas d'évitement d'obstacles**. La scène de démo est disposée
 pour que le robot n'ait pas à contourner quoi que ce soit.
 
+### La mission qui balaie (`makai-mission --sweep`)
+
+`orchestrator/sweep.py` hérite de la machine ci-dessus et ne remplace que deux choses : la
+recherche (un parcours en serpentin, `navigation/coverage.py`, au lieu de tourner sur place)
+et le trajet vers les stations (par la carte, puis sur le marqueur, au lieu de les chercher
+du regard). Trois états en plus : `SWEEP`, `DOCK`, `RESUME`. L'approche, la saisie, les
+essais répétés et l'abandon sont ceux de la mission de base, inchangés.
+
+- **Repère de la carte** : celui de l'odométrie. Origine = pose de départ, devant la
+  poubelle, face à la pièce (D21).
+- **Carte** (`navigation/mapping.py`) : grille de 5 cm des cases vues par la caméra, chemin
+  parcouru, objets et leur état. Pas de capteur de distance, donc pas d'obstacles.
+- **Recalage** : `StationSighting.facing_rad` (orientation du marqueur, lue par `solvePnP`)
+  et la position connue de la station donnent la vraie pose du robot à chaque visite.
+- **Depuis la console** : `robot/autopilot.py` fait tourner la mission sur le fil de la
+  boucle de conduite (`DriveLoop.autopilot`), qui reste seule à parler au robot.
+
+Mode d'emploi, réglages et mesures : `docs/NAVIGATION.md`.
+
 ## Estimer la distance avec une seule caméra
 
 Un objet posé au sol, vu par une caméra fixée au robot : le pixel du bas de sa boîte

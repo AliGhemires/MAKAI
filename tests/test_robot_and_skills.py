@@ -97,3 +97,25 @@ def test_shared_config_is_consistent():
         Category.TRASH,
     }
     assert all(set(pose) == set(ARM_KEYS) for pose in poses.values())
+
+
+def test_each_kind_of_object_gets_its_own_pick_skill():
+    from makai.contracts import Target
+    from makai.manipulation.skills import PickByCategory
+
+    used = []
+
+    class Named:
+        def __init__(self, name):
+            self.name = name
+
+        def run(self, robot, target):
+            used.append(self.name)
+            return True
+
+    skill = PickByCategory(
+        {Category.CLOTHING: Named("sock model"), Category.TRASH: Named("can model")}, Named("default")
+    )
+    for category in (Category.TRASH, Category.CLOTHING, Category.UNKNOWN):
+        assert skill.run(None, Target(category, "thing", 0.22, 0.0))
+    assert used == ["can model", "sock model", "default"]

@@ -34,6 +34,9 @@ log = logging.getLogger("makai.mission")
 
 class State(StrEnum):
     SEARCH = "search"
+    SWEEP = "sweep"  # the three states of the sweeping mission (orchestrator/sweep.py)
+    DOCK = "dock"
+    RESUME = "resume"
     APPROACH = "approach"
     PICK = "pick"
     FIND_STATION = "find_station"

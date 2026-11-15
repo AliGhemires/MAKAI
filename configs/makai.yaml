@@ -42,7 +42,8 @@ perception:
   detector: learned         # learned = our own model, finds and classifies in one pass (robust to lighting)
                             # floor = anything that is not carpet-coloured (no model) | open_vocab = YOLOE
   learned:                  # detector: learned. Retrain with scripts/train_detector.py
-    weights: models/detector_v1.pt   # v1: black sock + crushed can, PHONE images. Retrain on robot images.
+    weights: models/detector_v2.pt   # v2 (15 Nov): v1's phone images + the robot's own camera, close views of the sock and the can.
+                                     # Not yet tried at sweeping distance. Retrain in a new room: docs/NAVIGATION.md, section 5.
     confidence: 0.2
   classifier: uniformity    # only used by detector: floor.
                             # uniformity = plain and matte is clothing | clip (340 MB download) | none
@@ -90,6 +91,16 @@ navigation:
   mission:
     station_standoff_m: 0.35
     search_speed: 0.6
+  sweep:                    # the mission that sweeps the room in lanes (makai-mission --sweep)
+    # The map: its origin is where the robot starts, IN FRONT OF THE BIN, FACING THE ROOM.
+    # x goes into the room, y to the left. The room's walls are x = 0 .. length, y = +-width/2.
+    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}   # margin: the robot's centre stays this far from the walls
+    lane_spacing_m: 0.5     # distance between two lanes of the snake path
+    sweep_speed: 0.15       # m/s along the lanes
+    recheck_after_m: 0.0    # drive back to the bin's marker after this many metres without one (0 = only when delivering)
+    stations:               # where each station stands, and where the robot stops in front of it (its dock)
+      trash: {x: -0.35, y: 0.0, dock_x: 0.0, dock_y: 0.0}   # the bin, just behind the start pose
+      # clothing: {x: -0.35, y: 0.7, dock_x: 0.0, dock_y: 0.7}   # a basket beside it; without it, everything goes in the bin
 
 manipulation:
   poses_file: arm_poses.yaml   # named arm poses, captured with scripts/teleop.py (key `p`)
@@ -102,6 +113,11 @@ manipulation:
     device: null              # null = as trained; "mps" on the Macs
     after: [home]             # poses played once the policy is done (carry pose)
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
+    n_action_steps: null      # actions played before looking at the cameras again (null = as trained; 30 = every second)
+    # One model per kind of object. When set, `policy_path` above is only used for other kinds.
+    # policies:
+    #   clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/last/pretrained_model}
+    #   trash: {policy_path: outputs/train/act_can_v1/checkpoints/last/pretrained_model}
     steps: [pick_above, [pick_down, 1.0], [pick_close, 0.8], home]   # used when kind: scripted
   drop:                       # scripted, per category
     clothing: [drop_reach, [drop_open, 0.6], home]

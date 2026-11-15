@@ -24,6 +24,9 @@ et la fiche de ton workstream dans [`docs/workstreams/`](docs/workstreams/).
 Collecter des démonstrations, robot allumé : `uv run python scripts/collect.py sock` (détail
 dans [docs/CE_SOIR.md](docs/CE_SOIR.md)).
 
+La console (mission, conduite, caméras, données), sans robot : `uv run python scripts/drive.py --sim`,
+puis http://localhost:8000. Mode d'emploi de la navigation : [docs/NAVIGATION.md](docs/NAVIGATION.md).
+
 ## L'équipe
 
 | Workstream | Responsable | Fiche |

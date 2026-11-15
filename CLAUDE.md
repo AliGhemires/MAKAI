@@ -53,8 +53,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   en degrés et deg/s : la conversion est dans `src/makai/robot/lekiwi.py` uniquement.
 - La distance aux objets vient d'une homographie du sol (`perception/geometry.py`), pas
   d'un modèle de profondeur.
+- Mission qui balaie : le repère de la carte est celui de l'odométrie, origine à la pose de
+  départ, **devant la poubelle, dos à elle, face à la pièce** ; les stations sont placées
+  dans ce repère (`navigation.sweep.stations`). Détail : `docs/NAVIGATION.md`.
 - Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
-  `models/detector_v1.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
+  `models/detector_v2.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
   Mesures et limites : `docs/workstreams/WS2_perception.md`.
 - LeRobot 0.7.0 a beaucoup changé par rapport aux versions antérieures : **vérifier dans
   le code installé** (`.venv/lib/python3.12/site-packages/lerobot/`) ou avec `--help`
@@ -81,6 +84,12 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 (`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
 `src/makai/app.py`.
 
+Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
+mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), la mission lancée
+depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
+le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
+(`PickByCategory`), le détecteur v2 pendant un balayage. Mode d'emploi : `docs/NAVIGATION.md`.
+
 Validé sur le robot le 14 novembre au soir, en mode filaire sur la Pi (`WiredBase`,
 `robot.link: wired`) : la page de contrôle `scripts/drive.py` (conduite, caméras avant et
 poignet, lecture du bras avec la calibration de la Pi, mesures des 9 moteurs). Pas encore sur
@@ -102,7 +111,10 @@ cette liste une fois validé.
 ```bash
 make setup | setup-lite     # installer tout | le cœur seulement
 make check                  # lint + tests (ce que fait la CI)
-make sim                    # mission complète simulée
+make sim                    # les deux missions simulées : recherche sur place, puis balayage en serpentin
+uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
+uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
+uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
 uv run python scripts/collect.py sock                   # LA commande de collecte : contrôle, enregistre, zippe
