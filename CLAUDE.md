@@ -166,6 +166,7 @@ make sim                    # les missions simulées : recherche sur place, Vacu
 uv run python scripts/drive.py --sim --sim-ahead   # la console simulée avec la poubelle en face
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
+powershell -ExecutionPolicy Bypass -File scripts\demo.ps1   # jour de démo, Windows : option A, host, config, contrôle, console (-Battery, -Status)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?
 uv run python scripts/turn_check.py         # de combien le robot tourne vraiment pour 360° d'odométrie (caméra + marqueur)
 uv run python scripts/odometry_report.py    # après des déplacements : vitesses lues, codeurs, roue par roue
