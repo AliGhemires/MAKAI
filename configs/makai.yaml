@@ -109,7 +109,7 @@ manipulation:
     policy_type: act
     policy_path: CHANGE_ME/makai_act_pick_v1   # Hub repo or local checkpoint dir
     task: "Pick up the object from the floor"  # must be the task string used when recording
-    duration_s: 12.0
+    duration_s: 20.0          # the longest a pick may take; it ends as soon as the arm is back home (demos: 8 to 18 s)
     device: null              # null = as trained; "mps" on the Macs
     after: [home]             # poses played once the policy is done (carry pose)
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
@@ -120,8 +120,11 @@ manipulation:
     # makai_models_sock.zip and makai_models_can.zip at the root of the repo, or fetch them
     # with scripts/hpc/fetch_model.sh.
     policies:
-      clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/100000/pretrained_model}
-      trash: {policy_path: outputs/train/act_can_v1/checkpoints/100000/pretrained_model}
+      # gripper_open_above: the hand closed on nothing reads less, closed on the object more.
+      # From the recorded episodes (empty: 2.0 to 2.6 before a sock, 2.0 to 3.5 before a can;
+      # holding a sock: 3.3 to 12.2; holding a can: 5.2 to 8.5). Confirm with scripts/try_pick.py.
+      clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/100000/pretrained_model, gripper_open_above: 3.0}
+      trash: {policy_path: outputs/train/act_can_v1/checkpoints/100000/pretrained_model, gripper_open_above: 4.3}
     steps: [pick_above, [pick_down, 1.0], [pick_close, 0.8], home]   # used when kind: scripted
   drop:                       # scripted, per category
     clothing: [drop_reach, [drop_open, 0.6], home]
