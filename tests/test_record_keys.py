@@ -14,38 +14,61 @@ spec.loader.exec_module(record)
 
 
 def decide(state: str, manual: bool = False, **now) -> str:
-    quiet = dict(right=False, left=False, settled=False, moved=False, back_home=False, elapsed=0.0)
-    return record.decide(state, manual=manual, min_episode=3.0, max_episode=15.0, **{**quiet, **now})
+    quiet = dict(right=False, left=False, moved=False, back_home=False, elapsed=0.0)
+    return record.decide(state, manual=manual, min_episode=3.0, max_episode=30.0, **{**quiet, **now})
 
 
-def test_automatic_mode_starts_on_motion_and_saves_back_home():
-    assert decide("reset") == ""  # not on its rest yet
-    assert decide("reset", settled=True) == "ready"
+def test_nothing_starts_without_the_right_arrow():
+    assert decide("idle") == ""
+    assert decide("idle", moved=True) == ""  # the leader's rest is a few degrees off: no episode
+    assert decide("idle", back_home=True) == ""
+    assert decide("idle", right=True) == "arm"
+
+
+def test_an_armed_episode_starts_when_the_leader_moves():
     assert decide("armed") == ""
     assert decide("armed", moved=True) == "start"
+    assert decide("armed", right=True) == "start"  # start now
+    assert decide("armed", left=True) == "cancel"
+
+
+def test_an_episode_is_saved_back_home_or_by_the_key():
     assert decide("recording", elapsed=5.0) == ""
     assert decide("recording", elapsed=5.0, back_home=True) == "save"
     assert decide("recording", elapsed=1.0, back_home=True) == "False start"
-    assert decide("recording", elapsed=16.0) == "Too long"
+    assert decide("recording", elapsed=31.0) == "Too long"
+    assert decide("recording", elapsed=4.0, right=True) == "save"
+    assert decide("recording", elapsed=0.3, right=True) == "Too short"  # a double press
+    assert decide("recording", elapsed=4.0, left=True) == "Dropped"
+    assert decide("recording", elapsed=4.0, left=True, right=True) == "Dropped"
 
 
 def test_manual_mode_only_obeys_the_keys():
-    assert decide("reset", manual=True) == "ready"  # no need to be on the rest
-    assert decide("armed", manual=True, moved=True) == ""
-    assert decide("armed", manual=True, right=True) == "start"
+    assert decide("idle", manual=True, right=True) == "start"  # recording starts at the key
     assert decide("recording", manual=True, elapsed=5.0, back_home=True) == ""
     assert decide("recording", manual=True, elapsed=5.0, right=True) == "save"
-    assert decide("recording", manual=True, elapsed=16.0) == "Too long"
+    assert decide("recording", manual=True, elapsed=31.0) == "Too long"
+    assert decide("recording", manual=True, elapsed=5.0, left=True) == "Dropped"
 
 
-@pytest.mark.parametrize("manual", [False, True])
-def test_the_keys_work_in_both_modes(manual):
-    assert decide("reset", manual, right=True) == "start"  # start anyway, even if not settled
-    assert decide("armed", manual, right=True) == "start"
-    assert decide("recording", manual, elapsed=4.0, right=True) == "save"
-    assert decide("recording", manual, elapsed=0.3, right=True) == "Too short"  # a double press
-    assert decide("recording", manual, elapsed=4.0, left=True) == "Dropped"
-    assert decide("recording", manual, elapsed=4.0, left=True, right=True) == "Dropped"
+def test_the_status_tells_the_pilot_where_the_arm_is():
+    assert record.status("idle", manual=False)[0] == "PRESS RIGHT ARROW"
+    lost = record.status("idle", manual=False, at_home=False, far="wrist_roll is 14 degrees away")
+    assert lost == (
+        "PUT THE LEADER ON ITS REST",
+        "wrist_roll is 14 degrees away from home   [RIGHT ARROW = start anyway]",
+    )
+    assert record.status("armed", manual=False) == (
+        "GO",
+        "recording starts when you move the leader   [LEFT ARROW = cancel]",
+    )
+    recording = dict(manual=False, elapsed=6.0, limit=30.0, need=1.0, far="elbow_flex is 31 degrees away")
+    assert "pick the object up" in record.status("recording", **recording, left_home=False)[1]
+    away = record.status("recording", **recording, left_home=True, at_home=False)[1]
+    assert "arm NOT at home: elbow_flex is 31 degrees away" in away
+    back = record.status("recording", **recording, left_home=True, at_home=True, still=0.4)
+    assert back[0] == "RECORDING 6 s"
+    assert "AT HOME: hold still 0.4 / 1.0 s" in back[1]
 
 
 def test_a_key_acts_once():

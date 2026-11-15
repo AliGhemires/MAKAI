@@ -95,71 +95,67 @@ l'objet, souffler, ou régler la scène.
   robot roule, cherche les objets et transporte sa prise dans cette pose.
 - **Elle ne doit plus bouger** : fixer le support du leader (scotch) et le laisser là. La
   première session d'un dataset garde sa pose dans le dossier du dataset (`makai_home.yaml`).
-  Une session suivante qui part de plus de 6° ailleurs affiche HOME POSE DIFFERS : remettre le
+  Une session suivante qui part de plus de 10° ailleurs affiche HOME POSE DIFFERS : remettre le
   support en place et relancer.
 - **Pour la mission** : l'enregistreur affiche la ligne `home: {...}` à copier dans
   `configs/arm_poses.yaml`, sans la pince. Le robot se met dans cette pose avant chaque
   saisie, et le modèle doit partir de la pose de ses démonstrations.
 
-**Où regarder.** Il n'y a pas de fenêtre à boutons : l'interface, c'est le terminal et la
-fenêtre Rerun.
+**Où regarder.** Une seule ligne dit quoi faire : la dernière ligne du terminal, qui se met
+à jour sur place. Le panneau « prediction.status » de la fenêtre Rerun affiche exactement les
+mêmes mots, à côté des deux caméras. Au-dessus, le terminal garde une ligne par épisode
+(sauvegardé, ou non et pourquoi), qui commence par `[sauvegardés / demandés]`.
 
-- **Le terminal** : chaque ligne commence par `[sauvegardés / demandés]`, puis l'état.
+```text
+[ 7/30] SAVED          6.2 s. The dataset now holds 38 episodes
+[ 7/30] RECORDING 9 s: AT HOME: hold still 0.4 / 1.0 s   [max 30 s, RIGHT ARROW = save now, LEFT ARROW = drop]
+```
 
-  ```text
-  [ 7/30] READY          place the object, then move the leader: recording starts by itself
-  [ 7/30] RECORDING      back on the rest and still = saved | RIGHT ARROW = save now | LEFT ARROW = drop
-  [ 8/30] SAVED          6.2 s. The dataset now holds 38 episodes
-  ```
+**Un épisode, pas à pas.** Commande : `uv run python scripts/collect.py sock`
 
-- **La fenêtre Rerun** : les deux caméras, et un panneau « prediction.status » qui affiche la
-  même chose (WAIT, READY ou RECORDING avec le temps écoulé, le compte de la session, la
-  taille du dataset).
-- **La voix** du laptop annonce aussi « Ready » et le numéro : monter le son.
+| Ce que la ligne affiche | Ce que fait le pilote |
+|---|---|
+| `PRESS RIGHT ARROW` | poser l'objet, leader sur son support, puis flèche droite |
+| `PUT THE LEADER ON ITS REST` | le bras n'est pas en `home` : la ligne dit quelle articulation, et de combien |
+| `GO` | rien n'est encore enregistré : l'enregistrement part au premier mouvement du leader |
+| `RECORDING 6 s` … `arm NOT at home` | saisir l'objet, puis ramener le leader sur son support |
+| `AT HOME: hold still 0.4 / 1.0 s` | le bras est vu en `home` : ne plus bouger, le compteur monte jusqu'à 1 s |
+| `SAVED` | l'épisode est sauvegardé : replacer l'objet, puis flèche droite pour le suivant |
 
-**Les touches, les mêmes dans les deux modes.**
+Rien ne démarre sans la flèche droite, et rien n'est enregistré en dehors de RECORDING.
+Chaque épisode part de `home`, sans temps mort au début, et finit par la même seconde immobile.
+
+**Les touches.**
 
 | Touche | Effet |
 |---|---|
-| Flèche droite | démarre un épisode tout de suite ; pendant un épisode, l'arrête et le sauvegarde |
-| Flèche gauche | pendant un épisode, le jette ; juste après une sauvegarde, marque cet épisode comme mauvais (la commande pour le supprimer s'affiche en fin de session) |
+| Flèche droite | prépare un épisode (GO) ; pendant un épisode, le sauvegarde tout de suite |
+| Flèche gauche | annule un GO ; pendant un épisode, le jette ; juste après une sauvegarde, marque cet épisode comme mauvais (la commande pour le supprimer s'affiche en fin de session) |
 | Échap | termine la session ; un épisode en cours est jeté |
 
 Si les touches ne font rien, cliquer une fois dans le terminal.
 
-**Mode automatique (par défaut)** : `uv run python scripts/collect.py sock`
+**Mode manuel** : `uv run python scripts/collect.py sock --manual`. L'enregistrement part à la
+flèche droite elle-même, et seule la flèche droite sauvegarde. Appuyer juste avant de bouger et
+dès le retour au repos : les secondes immobiles sont enregistrées avec le reste.
 
-1. Au lancement : une vue en direct, pour vérifier les deux images. Leader posé sur son
-   support, mains écartées, Entrée. Cette pose devient `home`.
-2. READY s'affiche quand le bras est revenu en `home` et ne bouge plus : poser l'objet.
-3. Dès que tu bouges le leader, l'épisode commence (RECORDING). Descendre, saisir, remonter,
-   reposer le leader sur son support en tenant l'objet.
-4. Après une seconde d'immobilité, l'épisode est sauvegardé (SAVED) et le compte augmente.
-   Lâcher l'objet, le replacer ailleurs dans la zone, et recommencer.
+**Quand un épisode n'est pas sauvegardé**, la ligne `NOT SAVED` dit pourquoi : plus de
+30 secondes (`--episode-time 60` pour élargir), flèche gauche, arrêt à la touche en moins
+d'une seconde (un double appui), ou retour au repos en moins de 3 secondes.
 
-Chaque épisode part donc de la même pose, sans temps mort au début, et finit par la même
-seconde immobile, sans que personne ait à y penser.
+**Si `AT HOME` ne vient pas au retour**, la ligne dit quelle articulation est trop loin, et de
+combien. Reposer le leader comme au départ, ou sauvegarder à la flèche droite. Si l'écart
+revient à chaque épisode, relancer avec une tolérance plus large : `--home-tol 15` (10 par
+défaut).
 
-**Mode manuel, le pilote décide** : `uv run python scripts/collect.py sock --manual`
+Les lignes techniques de l'encodeur vidéo ne s'affichent plus : elles vont dans
+`outputs/recordings/<nom>.log`.
 
-1. Même lancement.
-2. Poser l'objet, main sur le leader. Flèche droite : RECORDING.
-3. Saisir, revenir au repos. Flèche droite : SAVED.
-
-Rien ne démarre ni ne se sauvegarde tout seul. Appuyer juste avant de bouger et dès le
-retour au repos : les secondes immobiles du début et de la fin sont enregistrées avec le reste.
-
-**Ce que l'enregistreur refuse.** Il l'affiche et le dit, et rien n'est sauvegardé :
-
-- TOO LONG : l'épisode dépasse 15 secondes (`--episode-time 30` pour élargir).
-- FALSE START, en automatique : retour au repos en moins de 3 secondes.
-- TOO SHORT : arrêt à la touche en moins d'une seconde (un double appui).
-- Si READY ne vient jamais en automatique, le bras ne se stabilise pas assez près de `home` :
-  flèche droite pour démarrer quand même, ou relancer avec `--home-tol 10`.
-
-**Épisodes enregistrés avant le 15 nov. à 1 h** : ouvrir `outputs/recordings/<nom>.csv` et
-supprimer ceux qui durent moins d'une seconde (dernière colonne). Un défaut, corrigé depuis,
-faisait sauvegarder un épisode presque vide après chaque flèche pressée entre deux épisodes.
+**Épisodes enregistrés avant le 15 nov. à 2 h** : ouvrir `outputs/recordings/<nom>.csv` et
+supprimer ceux qui durent moins d'une seconde (dernière colonne). Deux défauts, corrigés
+depuis : une flèche pressée entre deux épisodes faisait sauvegarder le suivant presque vide ;
+et sur le vrai robot, dont le bras suit le leader avec un léger retard, l'enregistreur se
+réarmait tout seul et affichait des messages en rafale.
 
 Le reste du protocole (`docs/DATA_COLLECTION.md`) ne change pas :
 
