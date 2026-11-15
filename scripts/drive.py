@@ -45,6 +45,11 @@ from makai.robot.moves import TrialLog
 
 TELEMETRY_HZ = 10.0
 SIM_HZ = 50.0  # the simulated robot gives no encoders: read its speed at the control rate
+# Through the host, read on every tick of the loop (50 Hz). The host sends 30 observations a
+# second and each read takes at most the 2 newest: at 10 Hz the rest piled up in the network
+# buffers (2.7 MB on the Pi, images 2.5 s late) and the odometry, fed by the same late stream,
+# counted the turns two or three times over (15 Nov).
+HOST_HZ = 50.0
 log = logging.getLogger("drive")
 
 
@@ -299,7 +304,7 @@ def main() -> None:
         robot,
         driver,
         geometry,
-        telemetry_hz=SIM_HZ if args.sim else TELEMETRY_HZ,
+        telemetry_hz=SIM_HZ if args.sim else HOST_HZ if link == "host" else TELEMETRY_HZ,
         trials=trials,
         truth=truth,
         cameras=cameras,
