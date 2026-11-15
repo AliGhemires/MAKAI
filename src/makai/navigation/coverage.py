@@ -90,5 +90,23 @@ def row_waypoints(room: Room, row_spacing_m: float = 0.5) -> list[tuple[float, f
     return points
 
 
+def scan_waypoints(room: Room, swath_m: float = 1.6) -> list[tuple[float, float]]:
+    """Wide lanes for a robot that looks left and right as it drives: one lane down the middle
+    of every strip of floor at most `swath_m` wide.
+
+    Lanes run along x, from the start line to 30 cm (or the margin) before the far edge: from
+    there the camera sees the rest. The first lane is the one on the robot's right.
+    """
+    low = room.y_offset_m - room.width_m / 2
+    lanes = max(1, math.ceil(room.width_m / swath_m - 1e-9))
+    far = round(max(0.0, room.length_m - max(room.margin_m, 0.3)), 3)
+    points: list[tuple[float, float]] = []
+    for lane in range(lanes):
+        y = round(low + (lane + 0.5) * room.width_m / lanes, 3)
+        ends = [(0.0, y), (far, y)]
+        points.extend(ends if lane % 2 == 0 else ends[::-1])
+    return points
+
+
 def path_length_m(points: list[tuple[float, float]]) -> float:
     return sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False))

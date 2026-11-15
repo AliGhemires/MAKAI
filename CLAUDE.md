@@ -56,11 +56,13 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Mission qui balaie : le repère de la carte est celui de l'odométrie, origine à la pose de
   départ, **devant la poubelle, dos à elle, face à la pièce** ; les stations sont placées
   dans ce repère (`navigation.sweep.stations`). Détail : `docs/NAVIGATION.md`.
-- Elle a deux modes et passe de l'un à l'autre seule. **Aspirateur** (état `SWEEP`) : le
-  robot ne tourne jamais, il reste perpendiculaire au mur de la poubelle et glisse de côté le
-  long de rangées (`navigation.sweep.pattern: rows`). **Détection** (tous les autres états) :
-  il va chercher l'objet vu, le dépose, revient où il était et se remet perpendiculaire.
-  `pattern: lanes` rend l'ancien parcours en couloirs, où le robot tourne.
+- Elle a deux usages, choisis dans la console ou avec `--use` (`orchestrator/sweep.py`,
+  `for_use`). **Vacuum & collect** (chambre d'hôtel) : le robot passe sur tout le sol en
+  rangées sans jamais tourner, perpendiculaire au mur de la poubelle (`pattern: rows`), et ne
+  ramasse que ce qui est sur son passage (`pickup_range_m`). **Scan & collect** (rue) : il
+  suit de larges couloirs en regardant à gauche et à droite (`pattern: scan`) et va chercher
+  tout ce qu'il repère. Dans les deux, il dépose l'objet puis revient où il était.
+  `pattern: lanes` rend l'ancien parcours de Vacuum, en couloirs, où le robot tourne.
 - La zone à balayer est un rectangle imaginaire, sans mur. Elle se trace en conduisant le
   robot (console, onglet Mission, « Trace zone ») ; elle est gardée dans `configs/zone.yaml`
   (hors git) et remplace alors `navigation.sweep.room` (`navigation/zone.py`).
@@ -93,8 +95,9 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 `src/makai/app.py`.
 
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
-mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), son mode aspirateur
-en rangées (la base n'a jamais glissé de côté sur une longue distance), le tracé de la
+mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), ses deux usages
+(Vacuum en rangées : la base n'a jamais glissé de côté sur une longue distance ; Scan : elle
+n'a jamais avancé en faisant osciller son cap), le tracé de la
 zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
@@ -121,7 +124,7 @@ cette liste une fois validé.
 ```bash
 make setup | setup-lite     # installer tout | le cœur seulement
 make check                  # lint + tests (ce que fait la CI)
-make sim                    # les deux missions simulées : recherche sur place, puis balayage en rangées (mode aspirateur)
+make sim                    # les missions simulées : recherche sur place, Vacuum & collect, Scan & collect
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?

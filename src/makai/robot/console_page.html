@@ -82,6 +82,16 @@
   .mode.vacuum, .mode.detection { color: var(--text); }
   .mode.vacuum { border-color: var(--accent); } .mode.vacuum i { background: var(--accent); }
   .mode.detection { border-color: var(--s4); } .mode.detection i { background: var(--s4); }
+  .uses { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .use { text-align: left; border: 1px solid var(--line); background: var(--sunken); border-radius: 12px; padding: 10px 12px 11px; display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; row-gap: 2px; align-items: center; color: var(--text); }
+  .use svg { grid-row: 1 / span 2; width: 30px; height: 30px; stroke: var(--muted); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .use b { font-size: 14px; font-weight: 700; }
+  .use small { grid-column: 2; color: var(--muted); font-size: 12px; line-height: 1.3; }
+  .use em { font-style: normal; font-weight: 650; color: var(--text); }
+  .use.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .use.on svg { stroke: var(--accent); }
+  .use:disabled { cursor: default; }
+  .use:disabled:not(.on) { opacity: .45; }
   .state { font-size: 27px; font-weight: 720; letter-spacing: -.01em; margin: 6px 0 2px; }
   .why { color: var(--muted); min-height: 1.4em; }
   .pipe { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
@@ -178,11 +188,23 @@
     <div class="side">
       <div class="card status">
         <div class="top"><h2>Mission</h2><span class="badge"><span class="dot" id="dot-status"></span><span id="txt-status">idle</span></span></div>
-        <div class="mode" id="mode"><i></i><span id="mode-text">Vacuum mode</span></div>
+        <div class="uses" id="uses" role="radiogroup" aria-label="What the robot is used for">
+          <button class="use on" data-use="vacuum" role="radio">
+            <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M5 6h20M25 6v6M25 12H5M5 12v6M5 18h20M25 18v6M25 24H5"/></svg>
+            <b>Vacuum &amp; collect</b>
+            <small><em>Hotel room.</em> Passes over the whole floor, row by row, and picks up what lies on its way.</small>
+          </button>
+          <button class="use" data-use="scan" role="radio">
+            <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 24 5.5 8.5M15 24l9.5-15.5"/><path d="M10.2 16.4a9 9 0 0 1 9.6 0M7 11.3a15 15 0 0 1 16 0"/><circle cx="15" cy="24" r="1.8"/></svg>
+            <b>Scan &amp; collect</b>
+            <small><em>Street.</em> Patrols the zone, looks left and right, and goes to whatever it spots.</small>
+          </button>
+        </div>
+        <div class="mode" id="mode"><i></i><span id="mode-text">Vacuum</span></div>
         <div class="state" id="state">Ready</div>
         <div class="why" id="why">Robot in front of the bin, facing the room.</div>
         <div class="pipe" id="pipe">
-          <div data-step="sweep">Sweep</div><div data-step="approach">Approach</div><div data-step="pick">Pick</div><div data-step="dock">Dock</div><div data-step="drop">Drop</div><div data-step="resume">Resume</div><div data-step="home">Home</div>
+          <div data-step="sweep" id="step-sweep">Vacuum</div><div data-step="approach">Approach</div><div data-step="pick">Pick</div><div data-step="dock">Dock</div><div data-step="drop">Drop</div><div data-step="resume">Resume</div><div data-step="home">Home</div>
         </div>
         <div class="actions">
           <button class="btn primary" id="start">Start mission</button>
@@ -238,6 +260,7 @@ const CLIENT = "console-" + Math.random().toString(36).slice(2, 8);
 let tab = "mission";
 let mission = null;          // latest GET /api/mission
 let notice = null;           // why the last button press was refused, shown for a few seconds
+let use = null;              // the use chosen for the next mission: "vacuum" or "scan"
 let poseA = null, poseB = null;  // the two latest poses, to draw the robot moving smoothly between them
 let colors = {};
 
@@ -283,14 +306,14 @@ $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) setTab(e
 
 // ---- Mission: text ---------------------------------------------------------------------------
 const STATES = {
-  sweep: ["Sweeping", "Following the route, looking for things on the floor.", "sweep"],
+  sweep: ["Vacuuming", "Following the route, looking for things on the floor.", "sweep"],
   approach: ["Approaching", "Object in sight: placing the robot in front of it with the camera.", "approach"],
   pick: ["Picking", "The policy trained for this object drives the arm.", "pick"],
   dock: ["To the station", "Carrying the object back, on odometry.", "dock"],
   go_to_station: ["Aligning", "On the station's marker: this also corrects the position.", "dock"],
   drop: ["Dropping", "Releasing the object into the station.", "drop"],
   back_off: ["Backing off", "Clearing the station.", "drop"],
-  resume: ["Resuming", "Going back to the exact spot where the sweep was left, square to the wall.", "resume"],
+  resume: ["Resuming", "Going back to the exact spot where the route was left.", "resume"],
   return_home: ["Going home", "Room swept: back in front of the bin.", "home"],
   done: ["Done", "Room swept. The robot is back in front of the bin.", "home"],
   failed: ["Failed", "", ""],
@@ -302,10 +325,15 @@ function clock(seconds) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// Where the sweep is: "row 2 of 5" in vacuum rows (the robot slides sideways), "lane" when it turns.
+// Where the robot is on its route: "row 2 of 5" when it vacuums in rows, "lane" otherwise.
 function progress(m) {
   const n = Math.max(1, Math.ceil(m.waypoints.length / 2));
   return `${m.pattern === "rows" ? "row" : "lane"} ${Math.min(Math.floor(m.waypoint / 2) + 1, n)} of ${n}`;
+}
+// The use shown: the one of the mission on screen while it runs, else the one chosen for the next.
+function shownUse() {
+  const m = mission && mission.mission, live = mission && (mission.status === "running" || mission.status === "loading");
+  return live ? (m ? m.use : mission.use) : use || (mission ? mission.use : "vacuum");
 }
 
 function renderText() {
@@ -320,6 +348,13 @@ function renderText() {
   const size = tracing ? zone.size : mission.plan.room;
   $("#zone-note").textContent = tracing ? `${size.length_m.toFixed(2)} m deep · ${size.width_m.toFixed(2)} m wide`
     : mission.plan.traced ? `traced zone · ${size.length_m.toFixed(2)} × ${size.width_m.toFixed(2)} m` : "";
+  const chosen = shownUse();
+  for (const b of document.querySelectorAll("#uses .use")) {
+    b.classList.toggle("on", b.dataset.use === chosen);
+    b.setAttribute("aria-checked", b.dataset.use === chosen);
+    b.disabled = busy || tracing;
+  }
+  $("#step-sweep").textContent = chosen === "scan" ? "Scan" : "Vacuum";
   const [dot, word] = STATUS[status] || ["", status];
   $("#dot-status").className = "dot " + dot;
   $("#txt-status").textContent = word + (mission.simulated ? " · simulation" : "");
@@ -336,20 +371,26 @@ function renderText() {
   else if (status === "failed" && !m) { title = "Could not start"; why = mission.message; }
   else if (m) {
     [title, why, step] = STATES[m.state] || [m.state, "", ""];
-    if (m.state === "sweep") why = m.pattern === "rows"
-      ? `Sliding along ${progress(m)}, square to the wall, looking at the floor ahead.`
-      : `Following ${progress(m)}, looking for things on the floor.`;
+    if (m.state === "sweep" && m.use === "scan") { title = "Scanning"; why = `Driving down ${progress(m)}, looking left and right for things on the floor.`; }
+    else if (m.state === "sweep") why = m.pattern === "rows"
+      ? `Sliding along ${progress(m)}, square to the wall. It picks up what lies on its way.`
+      : `Following ${progress(m)}. It picks up what lies on its way.`;
+    if (m.state === "resume") why = m.use === "scan" ? "Going back to the exact spot where the patrol was left."
+      : "Going back to the exact spot where the vacuuming was left" + (m.pattern === "rows" ? ", square to the wall." : ".");
+    if ((m.state === "return_home" || m.state === "done") && m.use === "scan") why = why.replace("Room swept", "Zone scanned");
     if (m.state === "approach" && m.target) why = "Object in sight: placing the robot in front of it with the camera.";
     if (m.carrying && (m.state === "dock" || m.state === "go_to_station")) why = `Carrying ${m.carrying} to its station.` + (m.state === "go_to_station" ? " Aligning on the marker." : "");
     if (status === "stopped") { title = "Stopped"; why = (mission.message || "stopped") + ". Before starting again, put the robot back in front of the bin, facing the room."; step = ""; }
     if (status === "failed") { title = "Failed"; why = mission.message; step = ""; }
   }
-  // The two modes: vacuum while it sweeps, detection while it is away from its route for an object.
+  // What the robot is doing: following its route (vacuuming or scanning), or away from it for an object.
   const running = m && status === "running", mode = running ? m.mode : "";
-  $("#mode").className = "mode " + mode;
-  $("#mode-text").textContent = mode === "detection" ? "Detection mode · handling an object"
-    : mode === "vacuum" ? "Vacuum mode" + (m.pattern === "rows" ? " · heading locked" : "")
-    : (m ? m.pattern : mission.plan.pattern) === "rows" ? "Vacuum mode · rows, heading locked" : "Vacuum mode · lanes";
+  $("#mode").className = "mode " + (mode === "collect" ? "detection" : mode ? "vacuum" : "");
+  $("#mode-text").textContent = mode === "collect" ? "Collecting · away from its route for an object"
+    : mode === "scan" ? "Scanning · camera panning left and right"
+    : mode === "vacuum" ? "Vacuuming" + (m.pattern === "rows" ? " · heading locked, square to the wall" : "")
+    : chosen === "scan" ? "Ready to scan · wide lanes, camera panning"
+    : mission.plan.pattern === "lanes" ? "Ready to vacuum · lanes" : "Ready to vacuum · rows, heading locked";
   $("#state").textContent = title;
   $("#why").textContent = notice && performance.now() < notice.until ? notice.text : why;  // a refusal stays readable
   for (const d of document.querySelectorAll("#pipe div")) d.classList.toggle("on", d.dataset.step === step && status === "running");
@@ -425,7 +466,8 @@ function drawMap(now) {
   ctx.setLineDash([]);
 
   // Route planned (dashed).
-  const way = tracing ? [] : m ? m.waypoints : plan.waypoints;
+  const way = tracing ? [] : m && (mission.status === "running" || !use || use === m.use) ? m.waypoints
+    : plan.routes ? plan.routes[shownUse()] : plan.waypoints;
   ctx.setLineDash([5, 5]); ctx.strokeStyle = colors.muted; ctx.lineWidth = 1.25; ctx.beginPath();
   way.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
   ctx.stroke(); ctx.setLineDash([]);
@@ -526,12 +568,16 @@ function take(data) {
   renderText();
 }
 async function act(action) {
-  try { notice = null; take(await api("POST", "/api/mission/" + action, { client: CLIENT })); }
+  try { notice = null; take(await api("POST", "/api/mission/" + action, { client: CLIENT, use: shownUse() })); }
   catch (error) { notice = { text: error.message, until: performance.now() + 7000 }; renderText(); }
 }
 $("#start").addEventListener("click", () => act("start"));
 $("#stop").addEventListener("click", () => act("stop"));
 $("#reset").addEventListener("click", () => act("reset"));
+$("#uses").addEventListener("click", (e) => {
+  const b = e.target.closest(".use");
+  if (b && !b.disabled) { use = b.dataset.use; renderText(); }
+});
 $("#trace").addEventListener("click", () => act("trace"));
 $("#trace-done").addEventListener("click", () => act("trace_done"));
 $("#trace-cancel").addEventListener("click", () => act("trace_cancel"));

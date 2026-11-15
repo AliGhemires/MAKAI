@@ -1,7 +1,8 @@
 """Entry point: run the tidy-up mission, in simulation or on the robot.
 
 uv run makai-mission --sim            # no hardware needed
-uv run makai-mission --sim --sweep    # the same, sweeping the room in rows like a robot vacuum
+uv run makai-mission --sim --sweep    # a robot vacuum: rows over the whole floor, picks up what lies on its way
+uv run makai-mission --sim --sweep --use scan   # a patrol: looks left and right, goes to whatever it spots
 uv run makai-mission --sweep          # real robot, settings from configs/
 """
 
@@ -32,11 +33,11 @@ def build_sim(mission_cfg: MissionConfig, pick_success: float) -> tuple[Mission,
 
 
 def build_sweep_sim(
-    mission_cfg: MissionConfig, pick_success: float, slip: float = 0.04
+    mission_cfg: MissionConfig, pick_success: float, slip: float = 0.04, use: str = "vacuum"
 ) -> tuple[Mission, object]:
     """The sweeping mission in a simulated room, with wheels that slip a little."""
     from makai.navigation.coverage import Room
-    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
     from makai.sim.world import SimDrop, SimPerception, SimPick, SimRobot, sweep_world
 
     world = sweep_world()
@@ -48,12 +49,12 @@ def build_sweep_sim(
         SimPick(world, goal_xy=goal, success_rate=pick_success),
         SimDrop(world),
         mission_cfg,
-        SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations),
+        for_use(SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations), use),
     )
     return mission, world
 
 
-def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False) -> Mission:
+def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False, use: str = "vacuum") -> Mission:
     # Imported lazily: needs the `robot` and `perception` extras.
     from makai.manipulation.skills import build_drop_skill, build_pick_skill
     from makai.perception.pipeline import build_perception
@@ -64,9 +65,9 @@ def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False) -> Mi
     parts = (robot, build_perception(cfg), build_pick_skill(cfg), build_drop_skill(cfg), mission_cfg)
     if not sweep:
         return Mission(*parts)
-    from makai.orchestrator.sweep import SweepMission
+    from makai.orchestrator.sweep import SweepMission, for_use
 
-    return SweepMission(*parts, sweep_config(cfg))
+    return SweepMission(*parts, for_use(sweep_config(cfg), use))
 
 
 def sweep_config(cfg: dict):
@@ -99,6 +100,13 @@ def main() -> None:
         action="store_true",
         help="sweep the room in rows, like a vacuum, instead of looking around",
     )
+    parser.add_argument(
+        "--use",
+        choices=("vacuum", "scan"),
+        default="vacuum",
+        help="with --sweep. vacuum: pass over the whole floor, pick up what lies on the way. "
+        "scan: patrol the zone looking left and right, go to whatever is spotted",
+    )
     parser.add_argument("--pick-success", type=float, default=0.8, help="simulated grasp success rate")
     parser.add_argument("--max-duration", type=float, default=600.0, help="seconds")
     args = parser.parse_args()
@@ -107,14 +115,16 @@ def main() -> None:
     cfg = load_config()
     mission_cfg = mission_config(cfg)
     if args.sim:
-        build = build_sweep_sim if args.sweep else build_sim
-        mission, world = build(mission_cfg, args.pick_success)
+        if args.sweep:
+            mission, world = build_sweep_sim(mission_cfg, args.pick_success, use=args.use)
+        else:
+            mission, world = build_sim(mission_cfg, args.pick_success)
         final = mission.run(max_duration_s=args.max_duration)
         for obj, station in world.delivered:
             mark = "ok" if obj.category is station else "WRONG STATION"
             print(f"  {obj.label:12s} -> {station.value:9s} {mark}")
     else:
-        mission = build_real(cfg, mission_cfg, sweep=args.sweep)
+        mission = build_real(cfg, mission_cfg, sweep=args.sweep, use=args.use)
         final = mission.run(max_duration_s=args.max_duration, rate_hz=cfg["robot"]["fps"])
         mission.robot.disconnect()
 

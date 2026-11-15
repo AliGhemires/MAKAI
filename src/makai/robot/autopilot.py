@@ -21,6 +21,7 @@ from typing import Any
 from makai.contracts import BaseVelocity, Observation
 from makai.navigation.zone import zone_from_trail
 from makai.orchestrator.mission import TERMINAL
+from makai.orchestrator.sweep import USES
 
 log = logging.getLogger("makai.autopilot")
 
@@ -62,8 +63,9 @@ class Tap:
 class MissionRunner:
     """Starts, steps and stops one mission at a time, and keeps what the page shows about it.
 
-    `build(robot)` returns a ready mission; it may take seconds (loading the detector and the
-    policies), so it runs on its own thread while the page shows "loading".
+    `build(robot, use)` returns a ready mission for one of the two uses ("vacuum" or "scan",
+    `orchestrator.sweep.USES`); it may take seconds (loading the detector and the policies),
+    so it runs on its own thread while the page shows "loading".
     `preview()` returns the plan (room, route, stations) to draw before any mission has run.
 
     The runner also traces the zone to sweep (`navigation.zone`): between `trace()` and
@@ -75,7 +77,7 @@ class MissionRunner:
         self,
         loop: Any,
         driver: Any,
-        build: Callable[[Any], Any],
+        build: Callable[[Any, str], Any],
         preview: Callable[[], dict[str, Any]],
         reset: Callable[[], None] | None = None,
         simulated: bool = False,
@@ -83,6 +85,7 @@ class MissionRunner:
     ):
         self.loop, self.driver, self._build, self._preview, self._reset = loop, driver, build, preview, reset
         self.simulated = simulated
+        self.use = USES[0]  # the use of the last mission started, and of the next by default
         self._use_zone = use_zone
         self._trace: list[tuple[float, float]] | None = None  # the path driven while tracing the zone
         self._trace_yaw = 0.0
@@ -97,8 +100,11 @@ class MissionRunner:
         self.runs = 0
 
     # ------------------------------------------------------------ from the page
-    def start(self) -> None:
-        """Start a mission. ValueError, with the reason, if it cannot."""
+    def start(self, use: str | None = None) -> None:
+        """Start a mission, for this use (default: the last one). ValueError, with the reason,
+        if it cannot."""
+        if use is not None and use not in USES:
+            raise ValueError(f"The use must be one of {', '.join(USES)}.")
         if self.driver.estopped:
             raise ValueError("Emergency stop is on: resume first.")
         if self._trace is not None:
@@ -107,6 +113,7 @@ class MissionRunner:
             if self.status in ("loading", "running"):
                 raise ValueError("A mission is already running.")
             self.status, self.message = "loading", "loading the detector and the policies"
+            self.use = use or self.use
             self._stop.clear()
         threading.Thread(target=self._load, name="mission-load", daemon=True).start()
 
@@ -213,6 +220,7 @@ class MissionRunner:
             "status": self.status,
             "message": self.message,
             "simulated": self.simulated,
+            "use": self.use,
             "runs": self.runs,
             "mission": self._shot,
             "plan": self._preview(),
@@ -242,7 +250,7 @@ class MissionRunner:
     def _load(self) -> None:
         try:
             robot = Tap(self.loop.robot, self.loop, lambda: self._stop.is_set() or self.driver.estopped)
-            mission = self._build(robot)
+            mission = self._build(robot, self.use)
         except Exception as error:  # noqa: BLE001 - a missing model or calibration: say which
             log.exception("mission could not be prepared")
             with self._lock:

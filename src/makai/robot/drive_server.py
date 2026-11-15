@@ -16,7 +16,7 @@ Endpoints, all JSON:
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
   `GET /api/camera/<name>.jpg` (`?download=1` to save it): the latest image;
 - `GET /api/mission`: the sweeping mission (status, map, events) and its plan;
-  `POST /api/mission/start`, `/stop`, `/reset` (simulation only); `/trace`, `/trace_done`,
+  `POST /api/mission/start` (body `use`: "vacuum" or "scan"), `/stop`, `/reset` (simulation only); `/trace`, `/trace_done`,
   `/trace_cancel`, `/zone_forget` to trace the zone to sweep by driving the robot around it. Only with a mission runner,
   i.e. through the host or in simulation: then `/` is the console (`console_page.html`) and
   the driving page moves to `/drive`;
@@ -178,7 +178,7 @@ class DriveHandler(BaseHTTPRequestHandler):
         client = str(body.get("client", ""))[:64] or None
         driver = self.server.driver
         if path.startswith("/api/mission/"):
-            self._mission(path.removeprefix("/api/mission/"))
+            self._mission(path.removeprefix("/api/mission/"), body)
             return
         if path == "/api/drive":
             if client is None:
@@ -237,7 +237,7 @@ class DriveHandler(BaseHTTPRequestHandler):
             return
         self._json(self.server.state(client))
 
-    def _mission(self, action: str) -> None:
+    def _mission(self, action: str, body: dict) -> None:
         runner = self.server.runner
         if runner is None or action not in MISSION_ACTIONS:
             self._error(
@@ -245,7 +245,11 @@ class DriveHandler(BaseHTTPRequestHandler):
             )
             return
         try:
-            getattr(runner, action)()
+            if action == "start":
+                use = body.get("use")
+                runner.start(use if isinstance(use, str) else None)  # "vacuum" or "scan"
+            else:
+                getattr(runner, action)()
         except ValueError as exc:
             self._error(HTTPStatus.CONFLICT, str(exc))
             return

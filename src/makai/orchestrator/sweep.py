@@ -1,22 +1,27 @@
-"""The mission as a robot vacuum: sweep the room in rows, and tidy what is found on the way.
+"""The mission that covers a zone and tidies what it finds: a robot vacuum, or a patrol.
 
     SWEEP -> (object in sight) -> APPROACH -> PICK -> DOCK -> GO_TO_STATION -> DROP -> BACK_OFF
-          -> RESUME (back to where the sweep was left) -> SWEEP ... -> RETURN_HOME -> DONE
+          -> RESUME (back to where the route was left) -> SWEEP ... -> RETURN_HOME -> DONE
 
-The robot works in two modes and goes from one to the other by itself.
+The robot starts at the origin of the map: in front of the bin, back to it, facing the zone.
+It follows a route over the zone (SWEEP) and leaves it for the objects it finds (every other
+state). Two uses, which differ only in the route and in what makes the robot leave it:
 
-Vacuum mode (SWEEP). The robot starts at the origin of the map: in front of the bin, back to
-it, facing the room. It never turns: it keeps facing the room, square to the wall behind it,
-and slides along rows (`navigation.coverage.row_waypoints`). The camera looks at the strip of
-floor ahead.
+Vacuum and collect (`pattern: rows`), a hotel room. The robot is there to pass over the whole
+floor. It never turns: it keeps facing the zone, square to the wall behind it, and slides
+along rows (`navigation.coverage.row_waypoints`). It only picks up what lies on its way: the
+objects closer than `pickup_range_m`, in the strip of floor it is about to reach.
 
-Detection mode (every other state). As soon as the detector sees an object, the robot leaves
-its row, places itself in front of the object with the camera (the approach of the base
-mission, free to turn), runs the pick policy, drives back to the dock of the right station on
-odometry, finishes on the station's marker when it sees it, and drops. It then goes back to
-the exact spot it left, squares itself to the wall again, and carries on in vacuum mode. Every
-visit to a station also puts the odometry right: the marker's position is known, so the drift
-accumulated on the way is erased.
+Scan and collect (`pattern: scan`), a street. The robot is there to find things. It drives
+down wide lanes (`scan_waypoints`) while its heading swings left and right, so the camera
+looks over a wide strip, and it goes to whatever it spots, as far as the camera sees.
+
+In both, once an object is in sight the robot places itself in front of it with the camera
+(the approach of the base mission, free to turn), runs the pick policy, drives back to the
+dock of the right station on odometry, finishes on the station's marker when it sees it, and
+drops. It then goes back to the exact spot it left and carries on. Every visit to a station
+also puts the odometry right: the marker's position is known, so the drift accumulated on
+the way is erased.
 
 Everything the base mission does to approach and pick is reused unchanged; this class replaces
 only how the robot searches and how it goes to the stations.
@@ -40,7 +45,7 @@ from makai.contracts import (
     Target,
 )
 from makai.navigation.approach import ApproachController
-from makai.navigation.coverage import Room, row_waypoints, snake_waypoints
+from makai.navigation.coverage import Room, row_waypoints, scan_waypoints, snake_waypoints
 from makai.navigation.mapping import MapObject, RoomMap
 from makai.orchestrator.mission import Event, Mission, MissionConfig, State
 
@@ -63,11 +68,20 @@ class Station:
 @dataclass(frozen=True)
 class SweepConfig:
     room: Room = field(default_factory=Room)
-    # "rows": the vacuum mode. The robot never turns while it sweeps: it faces the room, square
-    # to the wall behind it, and slides sideways along rows.
-    # "lanes": the earlier path. The robot turns to follow lanes that run into the room.
+    # "rows": vacuum and collect. The robot never turns while it sweeps: it faces the zone,
+    # square to the wall behind it, and slides sideways along rows.
+    # "scan": scan and collect. It drives down wide lanes while its heading swings left and
+    # right, and goes to whatever it spots.
+    # "lanes": the earlier vacuum path. The robot turns to follow lanes that run into the zone.
     pattern: str = "rows"
     lane_spacing_m: float = 0.5  # between two rows (or two lanes)
+    # Vacuum: the robot only leaves its route for an object this close, the ones on its way.
+    # 0 = for anything the camera sees.
+    pickup_range_m: float = 1.0
+    scan_swath_m: float = 1.6  # scan: width of the strip of floor looked at from one lane
+    scan_speed: float = 0.08  # scan: m/s along the lanes, slow enough to look both ways on the way
+    scan_pan_deg: float = 60.0  # scan: the heading swings this far to each side of the way it drives
+    scan_period_s: float = 10.0  # scan: time of one swing, left and right
     # The bin stands just behind the start pose: the origin is its dock. An object whose
     # category has no station of its own goes to the first one listed.
     stations: Mapping[Category, Station] = field(
@@ -99,13 +113,28 @@ AWAY = (State.APPROACH, State.PICK, State.DOCK, State.GO_TO_STATION, State.DROP,
 SWEEP_HEADING = 0.0
 
 
+# The two uses of the mission, as the console and `makai-mission --use` name them.
+USES = ("vacuum", "scan")
+
+
 def sweep_waypoints(cfg: SweepConfig) -> list[tuple[float, float]]:
     """The route of the sweep, for the pattern chosen in the config."""
     if cfg.pattern == "rows":
         return row_waypoints(cfg.room, cfg.lane_spacing_m)
+    if cfg.pattern == "scan":
+        return scan_waypoints(cfg.room, cfg.scan_swath_m)
     if cfg.pattern == "lanes":
         return snake_waypoints(cfg.room, cfg.lane_spacing_m)
-    raise ValueError(f"navigation.sweep.pattern must be 'rows' or 'lanes', not {cfg.pattern!r}")
+    raise ValueError(f"navigation.sweep.pattern must be 'rows', 'scan' or 'lanes', not {cfg.pattern!r}")
+
+
+def for_use(cfg: SweepConfig, use: str) -> SweepConfig:
+    """The config of one use. "vacuum" keeps the vacuum path of the config (rows, or lanes)."""
+    if use == "scan":
+        return replace(cfg, pattern="scan")
+    if use == "vacuum":
+        return cfg if cfg.pattern in ("rows", "lanes") else replace(cfg, pattern="rows")
+    raise ValueError(f"The use must be one of {USES}, not {use!r}")
 
 
 def _wrap(angle: float) -> float:
@@ -144,9 +173,12 @@ class SweepMission(Mission):
         self._dock_nav = ApproachController(
             replace(self._nav.cfg, tol_x_m=self.sweep.dock_tol_m, tol_y_m=self.sweep.dock_tol_m)
         )
-        # Vacuum mode: the same gains, but translating only, never turning towards the point.
-        self._slide = ApproachController(replace(self._nav.cfg, near_radius_m=math.inf))
+        # Following the route: the same gains, but translating only, never turning towards the point.
+        speed = self.sweep.scan_speed if self.sweep.pattern == "scan" else self.sweep.sweep_speed
+        self._slide = ApproachController(replace(self._nav.cfg, near_radius_m=math.inf, max_lin=speed))
         self._nav_target: tuple[float, float, object] | None = None
+        self._course = SWEEP_HEADING  # scan: the way the current leg of the route goes
+        self._leg_started = 0.0  # scan: when the robot set off on this leg (or came back to it)
         self._anchored = False  # this delivery's position was already checked on the marker
         self._since_anchor_m = 0.0  # distance driven since a marker last put the position right
         self._last_xy = (0.0, 0.0)
@@ -190,7 +222,9 @@ class SweepMission(Mission):
             return
         x, y, yaw = self._resume or (self.odometry.x, self.odometry.y, self.odometry.yaw)
         if self.sweep.pattern == "rows":
-            yaw = SWEEP_HEADING  # back in vacuum mode: square to the wall, whatever it was when it left
+            yaw = SWEEP_HEADING  # back to vacuuming: square to the wall, whatever it was when it left
+        elif self.sweep.pattern == "scan":
+            yaw = self._course  # back to scanning: facing the way the route goes
         if not self._arrived:
             self._arrived = self._drive_to(x, y) or now - self._entered > self.sweep.travel_timeout_s
         elif self._face(yaw):
@@ -337,6 +371,9 @@ class SweepMission(Mission):
         return True
 
     def _start_approach(self, scene: Scene, now: float) -> bool:
+        reach = self.sweep.pickup_range_m if self.sweep.pattern != "scan" else 0.0
+        if reach > 0.0 and all(target.distance_m > reach for target in self._candidates(scene)):
+            return False  # vacuuming: what is further away is not on its way yet
         if not super()._start_approach(scene, now):
             return False
         track = self._track
@@ -384,7 +421,44 @@ class SweepMission(Mission):
 
     def _follow(self, x: float, y: float) -> bool:
         """One tick along the route of the sweep. True once at this corner of the route."""
-        return self._slide_to(x, y) if self.sweep.pattern == "rows" else self._drive_to(x, y)
+        if self.sweep.pattern == "rows":
+            return self._slide_to(x, y)
+        if self.sweep.pattern == "scan":
+            return self._scan_to(x, y)
+        return self._drive_to(x, y)
+
+    def _scan_to(self, x: float, y: float) -> bool:
+        """One tick towards a point of the map while looking left and right: the base translates
+        along the leg, and its heading swings around the way it goes. True once there.
+
+        Before setting off on a leg, and each time it comes back to it, the robot looks left and
+        right once from where it stands. Each swing to the left is undone by a swing to the
+        right, so what the wheels slip while turning cancels out instead of adding up."""
+        pose = self.odometry
+        period = self.sweep.scan_period_s
+        if self._nav_target != (x, y, "scan"):
+            self._nav_target = (x, y, "scan")
+            self._slide.reset()
+            if math.hypot(x - pose.x, y - pose.y) > self.sweep.waypoint_tol_m:
+                self._course = math.atan2(y - pose.y, x - pose.x)
+                self._leg_started = self.now
+        pan = math.radians(self.sweep.scan_pan_deg)
+        swing = pan * math.sin(2 * math.pi * (self.now - self._leg_started) / period)
+        limit = self.cfg.approach.max_ang
+        turn = max(-limit, min(limit, self.cfg.approach.k_ang * _wrap(self._course + swing - pose.yaw)))
+        velocity, arrived = self._slide.step(*self._to_base(x, y))
+        if arrived:
+            self.robot.stop()
+            return True
+        off_course = abs(_wrap(self._course - pose.yaw)) > pan + math.radians(25.0)
+        if off_course or self.now - self._leg_started < period:
+            # A new leg: face its way, then look left and right once before moving.
+            if off_course:
+                self._leg_started = self.now
+            self.robot.drive(BaseVelocity(theta=turn))
+            return False
+        self.robot.drive(replace(velocity, theta=turn))
+        return False
 
     def _slide_to(self, x: float, y: float) -> bool:
         """One tick towards a point of the map without turning: the base keeps facing the room,
@@ -447,6 +521,10 @@ class SweepMission(Mission):
         self._since_anchor_m, self._last_xy = 0.0, (x, y)
 
     # ------------------------------------------------------------------ reading
+    @property
+    def use(self) -> str:
+        return "scan" if self.sweep.pattern == "scan" else "vacuum"
+
     def snapshot(self) -> dict:
         """Everything the interface shows, as plain data."""
         pose = self.odometry
@@ -455,8 +533,10 @@ class SweepMission(Mission):
             target = [round(v, 3) for v in self._to_map(self._track.x_m, self._track.y_m)]
         return {
             "state": self.state.value,
-            # vacuum: sweeping, square to the wall. detection: away from the route for an object.
-            "mode": "detection" if self.state in AWAY else "vacuum",
+            # The use of this mission, and what the robot is doing: following its route (the
+            # name of the use) or away from it for an object ("collect").
+            "use": self.use,
+            "mode": "collect" if self.state in AWAY else self.use,
             "pattern": self.sweep.pattern,
             "time_s": round(self.now, 1),
             "in_state_s": round(self.now - (self._entered or self.now), 1),
