@@ -104,6 +104,7 @@ def test_a_recorded_path_is_played_through_without_going_back_or_stopping():
         def stop(self): ...
 
         def get_observation(self):  # the arm is where it was sent 6 ticks ago
+            self.looked = getattr(self, "looked", 0) + 1
             return SimpleNamespace(arm=self.sent[max(0, len(self.sent) - 7)])
 
         def move_arm(self, pose):
@@ -117,6 +118,7 @@ def test_a_recorded_path_is_played_through_without_going_back_or_stopping():
     assert elbow[-1] == pytest.approx(100.0)
     assert min(steps) > 0.0  # never sent back
     assert max(steps) == pytest.approx(min(steps), rel=0.3)  # constant speed: no stop at each point
+    assert robot.looked >= len(robot.sent) - 1  # an observation every tick: the console keeps its images
 
 
 def test_shared_config_is_consistent():
