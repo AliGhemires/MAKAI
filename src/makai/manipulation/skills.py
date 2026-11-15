@@ -102,10 +102,14 @@ class ScriptedSequence:
             start = {key: sent.get(key, goal) for key, goal in pose.items()}
             steps = max(1, int(round(duration * self.rate_hz)))
             for i in range(1, steps + 1):
+                tick = time.perf_counter()
+                # An observation every tick: it feeds the console (its cameras froze for the 28 s
+                # of a drop, 15 Nov) and lets a stop from the page cut the sequence short.
+                robot.get_observation()
                 s = i / steps
                 blend = s if duration < self.PATH_STEP_S else s * s * (3 - 2 * s)  # through, or smoothstep
                 robot.move_arm({key: start[key] + (goal - start[key]) * blend for key, goal in pose.items()})
-                self.sleep(1.0 / self.rate_hz)
+                self.sleep(max(0.0, 1.0 / self.rate_hz - (time.perf_counter() - tick)))
             sent.update(pose)
 
 
