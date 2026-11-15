@@ -14,6 +14,10 @@ Two modes. In both, nothing is recorded outside RECORDING, and the keys are the 
   LEFT ARROW   drop the episode being recorded; just after a save: mark that episode as bad
   ESC          end the session (an episode being recorded is dropped)
 
+The home pose is where the arm is when the leader sits on its rest and you press Enter: every
+episode starts from it and comes back to it. It is measured at each session, kept with the
+dataset by its first session, and a later session that starts from another pose is told so.
+
 Automatic (default): both hands stay on the job.
   1. READY when the arm is on its rest ("home") and still: place the object;
   2. recording starts by itself when the leader moves;
@@ -48,6 +52,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import yaml
 from lerobot.datasets import LeRobotDataset
 from lerobot.lerobot_types import TransitionKey
 from lerobot.teleoperators.so_leader import SO101Leader, SO101LeaderConfig
@@ -58,7 +63,8 @@ from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import log_say
 from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
 
-from makai.config import REPO_ROOT, load_config
+from makai.config import CONFIG_DIR, REPO_ROOT, load_config
+from makai.manipulation.skills import load_poses
 from makai.robot.lekiwi import ARM_KEYS, make_client
 
 STOP = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
@@ -66,6 +72,7 @@ STOP = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
 ARM = [key for key in ARM_KEYS if "gripper" not in key]
 
 
+HOME_FILE = "makai_home.yaml"  # in the dataset folder: the home pose of its first session
 KEY_PAUSE_S = 0.7  # after a key or a save, ignore the keys this long: a key held down repeats
 MIN_KEY_EPISODE_S = 1.0  # an episode stopped by the key sooner than this is a double press
 
@@ -177,6 +184,55 @@ def status_panel(
     return {TransitionKey.PREDICTION: {"language": {"status": [text]}}}
 
 
+def check_home(pose: dict[str, float], dataset_root: Path, tol: float, say) -> None:
+    """One home pose per dataset, and the same one on the robot.
+
+    "Home" is where the arm is when the leader sits on its rest: the pose every episode starts
+    from and comes back to. Each session measures it again. The first session of a dataset
+    writes it into the dataset folder and later sessions are compared with it: a rest that has
+    moved would make the new episodes start from another pose. It is also compared with `home`
+    in the poses file, the pose the mission puts the arm in before every pick.
+    """
+
+    def gap(reference: dict) -> tuple[str, float]:  # the joint that differs most, and by how much
+        key = max(ARM, key=lambda k: abs(pose[k] - float(reference.get(k, 0.0))))
+        return key, pose[key] - float(reference.get(key, 0.0))
+
+    line = yaml.safe_dump(pose, default_flow_style=True, width=1000).strip()
+    kept = dataset_root / HOME_FILE
+    if not kept.exists():
+        kept.write_text(line + "\n")
+        print(f"First session of this dataset: this is now its home pose (kept in {kept}).")
+    else:
+        key, degrees = gap(yaml.safe_load(kept.read_text()))
+        if abs(degrees) <= tol:
+            print(
+                f"Same home pose as the first session of this dataset (largest gap: {abs(degrees):.0f} degrees)."
+            )
+        else:
+            say("Home pose differs", f"{key} is {degrees:+.0f} degrees from this dataset's first session (tolerance {tol:.0f})")  # fmt: skip
+            print("  The new episodes would start from another pose than the earlier ones.")
+            print(
+                "  ESC, put the leader's rest back where it was, and run again. Or carry on if this is wanted."
+            )
+
+    poses_file = CONFIG_DIR / load_config()["manipulation"]["poses_file"]
+    robot_home = load_poses(poses_file).get("home", {})
+    key, degrees = gap(robot_home)
+    if abs(degrees) > tol:
+        unset = not any(abs(float(value)) > 1e-6 for value in robot_home.values())
+        print(
+            f"The mission does not know this home pose yet ({poses_file.name} still holds the placeholder)."
+            if unset
+            else f"The mission's home pose is another one: {key} differs by {degrees:+.0f} degrees."
+        )
+        print(
+            f"  The policy must start every pick from the pose it was trained from. In configs/{poses_file.name}:"
+        )
+        print(f"  home: {line}")
+        print("  (no gripper in it: going home must not open the hand that holds the object)")
+
+
 def session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad):
     """Record episodes, started and ended by the pilot's keys or by themselves (module docstring)."""
     total = dataset.meta.total_episodes
@@ -227,6 +283,12 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
     home_hand = np.mean([hand for _, hand in samples[fps // 2 :]], axis=0)
     names = [key.removeprefix("arm_").removesuffix(".pos") for key in ARM]
     print("Home pose:", ", ".join(f"{name} {value:.0f}" for name, value in zip(names, home_arm, strict=True)))
+    check_home(
+        {key: round(float(value), 1) for key, value in zip(ARM, home_arm, strict=True)},
+        Path(dataset.root),
+        args.home_tol,
+        say,
+    )
 
     recent: deque = deque(maxlen=2 * fps)  # the last two seconds of arm positions
     preroll: deque = deque(maxlen=fps // 4)  # frames from just before the leader moved

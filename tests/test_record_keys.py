@@ -63,3 +63,22 @@ def test_escape_is_not_a_right_arrow():
     events = {"exit_early": True, "rerecord_episode": False, "stop_recording": True}
     assert record.read_keys(events) == (False, False)
     assert events["stop_recording"]
+
+
+def test_one_home_pose_per_dataset(tmp_path, capsys):
+    said = []
+
+    def say(text, hint="", speak=True):
+        said.append(text)
+
+    first = dict.fromkeys(record.ARM, 20.0)
+    record.check_home(first, tmp_path, 6.0, say)
+    kept = tmp_path / record.HOME_FILE
+    assert kept.exists()
+    assert "home: {" in capsys.readouterr().out  # the line for configs/arm_poses.yaml, still a placeholder
+
+    record.check_home({**first, record.ARM[0]: 23.0}, tmp_path, 6.0, say)  # within the tolerance
+    assert said == []
+    record.check_home({**first, record.ARM[0]: 40.0}, tmp_path, 6.0, say)  # the rest has moved
+    assert said == ["Home pose differs"]
+    assert f"{record.ARM[0]}: 20.0" in kept.read_text()  # the first session's pose stays the reference
