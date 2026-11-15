@@ -62,20 +62,39 @@ poubelle, face à la pièce**. `x` va vers la pièce, `y` vers la gauche.
       sur sa face avant, à hauteur de la caméra (`make markers` pour les imprimer). Un panier
       à linge prend le marqueur n° 0.
 - [ ] **Le robot** : centre de la base à 35 cm du marqueur, dans son axe, dos à la poubelle.
-- [ ] **La zone à balayer** : un rectangle devant le robot. Mesurer sa longueur (dans l'axe
-      du robot) et sa largeur (centrée sur lui), et les écrire dans `configs/local.yaml` :
+- [ ] **La zone à balayer** : un rectangle imaginaire devant le robot, sans mur. On la
+      trace en conduisant le robot (ci-dessous). On peut aussi la mesurer et l'écrire dans
+      `configs/local.yaml` : longueur dans l'axe du robot, largeur centrée sur lui,
+      `margin_m: 0` s'il n'y a pas de mur.
 
 ```yaml
 navigation:
   sweep:
-    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}
+    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.0}
 ```
+
+**Tracer la zone en conduisant le robot.** Dans la console, onglet Mission :
+
+1. Robot à la pose de départ : devant la poubelle, dos à elle, face à la pièce.
+2. Bouton **Trace zone**. La pose de départ devient l'origine.
+3. Onglet Drive : conduire le robot le long du bord de la zone, ou seulement jusqu'à ses
+   coins. Sans tourner, c'est plus précis.
+4. Retour à l'onglet Mission : la carte montre le chemin et la taille de la zone. Bouton
+   **Use this zone**.
+5. Remettre le robot à la pose de départ avant **Start mission**.
+
+La zone est le rectangle qui contient tout le chemin parcouru, à partir de la ligne de
+départ. Le robot pourra aller jusqu'à ses bords (pas de marge, puisqu'il y est déjà passé).
+Elle est gardée dans `configs/zone.yaml` (hors git) et remplace la zone de la configuration
+tant que ce fichier existe : elle survit à un redémarrage. **Forget traced zone** la supprime.
+Sa taille dépend de l'odométrie pendant le tracé : quelques centimètres près.
 
 - [ ] **Rien d'autre au sol** que les objets à ramasser : le robot n'a aucun capteur
       d'obstacle et ne contourne rien.
-- [ ] **La ligne de départ dégagée** : rien à gauche ni à droite du robot, le long du mur de
-      la poubelle. C'est la première rangée, et la seule que la caméra n'a pas vue avant d'y
-      passer. Les deux coins de la zone de ce côté-là ne sont jamais vus : ne rien y poser.
+- [ ] **La ligne de départ dégagée** : rien à gauche ni à droite du robot, sur la ligne
+      où il démarre. C'est la première rangée, et la seule que la caméra n'a pas vue avant d'y
+      passer. Les 15 cm devant cette ligne ne sont jamais vus non plus. Avec une marge (zone
+      entre des murs), les deux coins de la zone de ce côté-là ne sont pas vus.
 - [ ] **La caméra avant calibrée** sur le sol : `make calibrate-ground`
       (`docs/ARCHITECTURE.md`, « Estimer la distance avec une seule caméra »).
 - [ ] **Le détecteur réentraîné sur des images de cette salle**, prises par la caméra du
@@ -139,8 +158,9 @@ Dans `configs/makai.yaml`, section `navigation.sweep` (valeurs d'une salle : `lo
 
 | Réglage | Défaut | Effet |
 |---|---|---|
-| `room.length_m`, `room.width_m` | 2,0 × 1,6 m | la zone à balayer, devant le robot |
-| `room.margin_m` | 0,30 m | le centre du robot reste à cette distance des bords |
+| `room.length_m`, `room.width_m` | 2,0 × 1,6 m | la zone à balayer, devant le robot ; remplacée par la zone tracée (`configs/zone.yaml`) quand il y en a une |
+| `room.margin_m` | 0,30 m | le centre du robot reste à cette distance des bords ; 0 sans mur (c'est le cas d'une zone tracée) |
+| `room.y_offset_m` | 0 | centre de la zone, à gauche du robot ; 0 = zone centrée sur lui |
 | `pattern` | `rows` | `rows` : mode aspirateur en rangées, sans tourner. `lanes` : l'ancien parcours, où le robot tourne pour suivre des couloirs qui s'enfoncent dans la pièce |
 | `lane_spacing_m` | 0,5 m | écart entre deux rangées ; plus petit = plus sûr de tout voir, plus long |
 | `sweep_speed` | 0,15 m/s | vitesse le long des rangées |
@@ -188,6 +208,8 @@ de `tests/test_sweep.py`), en rangées :
 | Dérive doublée | 4 sur 4, retour à 5 cm |
 | Marqueur jamais vu, sans dérive | dépose à l'odométrie, mission terminée |
 | Ancien parcours (`pattern: lanes`) | toujours testé : 4 sur 4 |
+| Zone tracée, sans marge, décalée de 30 cm vers la gauche | 2 objets sur 2 déposés, l'objet posé hors de la zone est ignoré, sol vu à plus de 90 % |
+| Zone tracée dans la console simulée en conduisant le robot | la mission suivante balaie cette zone |
 | Objet impossible à saisir | abandonné après 3 essais, jamais réapproché |
 | Objet hors de la zone | ignoré |
 
@@ -210,5 +232,6 @@ et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, p
 | Il dépose à côté | station mal placée dans `stations`, ou dérive sans marqueur | mesurer la position de la station ; `recheck_after_m: 4` |
 | Les rangées partent de travers | dérive du cap : le robot n'a que ses roues pour savoir s'il est perpendiculaire au mur, sauf devant le marqueur | `recheck_after_m: 3` ; réduire `sweep_speed` |
 | La base glisse mal de côté (à-coups, forte dérive) | roues ou sol peu adaptés au déplacement latéral | `pattern: lanes` : l'ancien parcours, où le robot avance et tourne |
-| Il heurte un bord | zone déclarée trop grande | réduire `room`, augmenter `margin_m` |
+| Il heurte un bord | zone déclarée trop grande | retracer la zone ; ou réduire `room`, augmenter `margin_m` |
+| La zone tracée est fausse | odométrie qui a dérivé pendant le tracé | retracer plus lentement, sans tourner ; ou **Forget traced zone** et écrire les dimensions dans `configs/local.yaml` |
 | « Could not start » dans la console | modèle, calibration ou poids introuvable | le message dit lequel |

@@ -94,7 +94,9 @@ navigation:
   sweep:                    # the mission that sweeps the room like a vacuum (makai-mission --sweep)
     # The map: its origin is where the robot starts, IN FRONT OF THE BIN, BACK TO IT, FACING THE ROOM.
     # x goes into the room, y to the left. The room's walls are x = 0 .. length, y = +-width/2.
-    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}   # margin: the robot's centre stays this far from the walls
+    # The zone is easier to trace than to measure: console, Mission tab, "Trace zone", then drive the
+    # robot around it. The traced zone is kept in configs/zone.yaml and replaces `room` below.
+    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}   # margin: the robot's centre stays this far from the edges (0 without walls)
     # rows  = vacuum mode: the robot never turns while it sweeps. It faces the room, square to the
     #         wall behind it, and slides sideways along rows; the first row is the start line.
     # lanes = the earlier path: it turns to follow lanes that run into the room.
