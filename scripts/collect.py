@@ -7,17 +7,15 @@
 What it does, in order:
   1. checks the robot, both cameras, the leader arm and the loop time (scripts/preflight.py).
      If the robot does not answer, it prints the exact command to start the host on the Pi;
-  2. records, hands-free (scripts/record.py: put the leader on its rest, press Enter once, then
-     "Ready" -> place the object -> move -> come back to rest and hold still one second);
+  2. records (scripts/record.py): a live view to check the cameras, then one episode at a time;
   3. zips the whole dataset onto your Desktop, ready to hand to whoever launches the training.
 
-Two ways to record, the count of saved episodes is always on screen:
-  automatic (default): an episode starts when the leader moves and is saved when it is back
-      on its rest;
-  --manual: the pilot decides: the RIGHT ARROW starts an episode, the RIGHT ARROW saves it.
-  In both: RIGHT ARROW = start now / save now, LEFT ARROW = drop, ESC = end the session.
+One episode: RIGHT ARROW -> GO -> recording starts when the leader moves -> saved once the arm
+is back home and still for one second. LEFT ARROW cancels or drops, ESC ends the session.
+The bottom line of the terminal and the status panel in Rerun say what to do at every step.
+--manual: recording starts at the RIGHT ARROW itself and only the RIGHT ARROW saves.
 
-Anything else on the line goes to record.py, for example:  --home-tol 10   or   --manual
+Anything else on the line goes to record.py, for example:  --home-tol 15   or   --manual
 `--dry-run` rehearses everything with a fake robot and leader.
 """
 
@@ -80,7 +78,7 @@ def main() -> None:
 
     print(f"\n== 2/3 recording {episodes} episodes of '{args.object}' into {name} ==")
     print("A Rerun window opens with the two cameras: a live view first, the recording starts after Enter.")
-    print("Each line below starts with [saved/asked]; the Rerun window shows the same in its 'status' panel.")
+    print("The bottom line of this terminal says what to do; the Rerun window shows the same words.")
     record = [sys.executable, str(SCRIPTS / "record.py"), "--name", name, "--object", args.object]
     code = subprocess.run([*record, "--episodes", str(episodes), *dry, *for_record]).returncode
 

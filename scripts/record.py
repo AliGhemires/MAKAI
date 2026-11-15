@@ -7,30 +7,24 @@ Run it again with the same --name to ADD episodes: nothing is overwritten, and a
 at most the episode being recorded. The dataset is pushed to the Hub when a session ends.
 
 A live view opens first (Rerun: both cameras, the arm follows the leader, nothing is recorded):
-set the scene, check the pictures, put the leader on its rest and press Enter.
+set the scene, check the pictures, put the leader on its rest and press Enter. The pose of the
+arm at that moment is "home": every episode starts from it and comes back to it. It is kept
+with the dataset by its first session, and a later session that starts elsewhere is told so.
 
-Two modes. In both, nothing is recorded outside RECORDING, and the keys are the same:
-  RIGHT ARROW  start an episode now, or stop it and save it now
-  LEFT ARROW   drop the episode being recorded; just after a save: mark that episode as bad
+One episode, the pilot in charge of when it begins:
+  1. place the object, then RIGHT ARROW: the recorder says GO, nothing is recorded yet;
+  2. recording starts when the leader moves (no dead time at the start);
+  3. the episode is saved once the arm has left home, is back home, and has stayed still for
+     one second. The status line says when the arm is seen at home and counts that second.
+  RIGHT ARROW  get ready for an episode; while recording: save it now
+  LEFT ARROW   cancel, or drop the episode being recorded; just after a save: mark it as bad
   ESC          end the session (an episode being recorded is dropped)
+Nothing is ever recorded outside RECORDING, and nothing starts without the RIGHT ARROW.
+--manual: recording starts at the RIGHT ARROW itself and only the RIGHT ARROW saves.
 
-The home pose is where the arm is when the leader sits on its rest and you press Enter: every
-episode starts from it and comes back to it. It is measured at each session, kept with the
-dataset by its first session, and a later session that starts from another pose is told so.
-
-Automatic (default): both hands stay on the job.
-  1. READY when the arm is on its rest ("home") and still: place the object;
-  2. recording starts by itself when the leader moves;
-  3. the episode is saved by itself once the arm is back home and still for one second.
-  Every episode starts from the same pose, has no dead time at the start, and ends with the
-  same second of stillness. If READY never comes, the arm does not settle within the
-  tolerance: press the RIGHT ARROW to start anyway, or raise --home-tol.
-
---manual: the pilot decides. RIGHT ARROW starts the episode, RIGHT ARROW saves it.
-
-Where the session stands is always on screen: every line in this terminal starts with
-[saved in this session / asked], and the Rerun window has a "status" panel next to the cameras
-(WAIT, READY or RECORDING, the count, the size of the dataset). It is also spoken.
+What the pilot must read is one status: the bottom line of this terminal and the "status"
+panel of the Rerun window show the same words. What happened (saved, not saved and why) stays
+above it as one line per episode, starting with [saved in this session / asked].
 
     uv run python scripts/record.py --name rehearsal --object sock --episodes 2 --dry-run
 
@@ -41,10 +35,12 @@ Protocol and quality rules: docs/DATA_COLLECTION.md. Tonight's plan: docs/CE_SOI
 """
 
 import argparse
+import contextlib
 import csv
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -78,33 +74,79 @@ MIN_KEY_EPISODE_S = 1.0  # an episode stopped by the key sooner than this is a d
 
 HELP = {
     False: """
-HOW THIS SESSION WORKS  (automatic mode)
-  1. READY shows when the leader is on its rest and still. Place the object.
-  2. Pick it up: recording starts by itself as soon as you move the leader.
-  3. Put the leader back on its rest and hold still one second: the episode is saved.
-  Nothing is recorded outside RECORDING, so take your time between episodes.
-     RIGHT ARROW   start now / stop and save now
-     LEFT ARROW    drop the episode being recorded (just after a save: mark that one as bad)
+HOW THIS SESSION WORKS
+  1. Place the object. Leader on its rest, hands off.
+  2. RIGHT ARROW: the recorder says GO. Nothing is recorded yet.
+  3. Pick the object up: recording starts when you move the leader.
+  4. Bring the leader back on its rest and hold still one second: the episode is saved.
+     The status line says when the arm is seen at home, and counts that second.
+  Then RIGHT ARROW for the next one. Nothing is recorded in between: take your time.
+     RIGHT ARROW   get ready for an episode / while recording: save it now
+     LEFT ARROW    cancel, or drop the episode being recorded (just after a save: mark it as bad)
      ESC           end the session
-  To decide every start and stop yourself, run with --manual.""",
+  To end every episode with the RIGHT ARROW instead, run with --manual.""",
     True: """
-HOW THIS SESSION WORKS  (manual mode: you decide)
-  1. Place the object, leader on its rest.
-  2. RIGHT ARROW: recording starts. Pick the object up and come back to the rest.
+HOW THIS SESSION WORKS  (manual mode)
+  1. Place the object. Leader on its rest.
+  2. RIGHT ARROW: recording starts at once. Pick the object up, come back to the rest.
   3. RIGHT ARROW again: the episode is saved.
-  Nothing is recorded outside RECORDING, so take your time between episodes.
+  Nothing is recorded in between: take your time.
      RIGHT ARROW   start / stop and save
-     LEFT ARROW    drop the episode being recorded (just after a save: mark that one as bad)
+     LEFT ARROW    drop the episode being recorded (just after a save: mark it as bad)
      ESC           end the session""",
 }
-READY_HINT = {
-    False: "place the object, then move the leader: recording starts by itself",
-    True: "place the object, then RIGHT ARROW to start recording",
-}
-RECORDING_HINT = {
-    False: "back on the rest and still = saved | RIGHT ARROW = save now | LEFT ARROW = drop",
-    True: "RIGHT ARROW = stop and save | LEFT ARROW = drop",
-}
+
+
+@contextlib.contextmanager
+def quiet(log_path: Path):
+    """Send what this process and the ones it starts write to the terminal into a file instead.
+
+    Saving an episode starts the video encoders, and they print some fifty lines each time:
+    the pilot's status was buried under them.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    terminal = os.dup(1), os.dup(2)
+    with open(log_path, "ab") as log:
+        os.dup2(log.fileno(), 1)
+        os.dup2(log.fileno(), 2)
+        try:
+            yield
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(terminal[0], 1)
+            os.dup2(terminal[1], 2)
+            os.close(terminal[0])
+            os.close(terminal[1])
+
+
+class Screen:
+    """Permanent lines for what happened, and one line at the bottom, redrawn in place, for what
+    is happening now. Without a real terminal (a log file) that line is printed when its
+    `key` changes, not at every change of a number."""
+
+    def __init__(self) -> None:
+        self.tty = sys.stdout.isatty()
+        self.shown = ""
+
+    def line(self, text: str) -> None:
+        if self.tty and self.shown:
+            sys.stdout.write("\r" + " " * len(self.shown) + "\r")
+        print(text, flush=True)
+        self.shown = ""
+
+    def now(self, text: str, key: str) -> None:
+        if not self.tty:
+            if key != self.shown:
+                print(text, flush=True)
+                self.shown = key
+            return
+        text = text[: shutil.get_terminal_size().columns - 1]
+        if text != self.shown:
+            sys.stdout.write("\r" + text.ljust(len(self.shown)))
+            sys.stdout.flush()
+            self.shown = text
 
 
 def read_keys(events: dict) -> tuple[bool, bool]:
@@ -119,24 +161,33 @@ def read_keys(events: dict) -> tuple[bool, bool]:
     return right, left
 
 
+def rehearsal_key(state: str, idle_for: float, recording_for: float, manual: bool) -> bool:
+    """--dry-run: the RIGHT ARROW a pilot would press, one second after an episode, and in
+    manual mode after three seconds of recording."""
+    return (state == "idle" and idle_for > 1.0) or (manual and state == "recording" and recording_for > 3.0)
+
+
 def decide(
     state: str,
     *,
     manual: bool,
     right: bool,
     left: bool,
-    settled: bool,
     moved: bool,
     back_home: bool,
     elapsed: float,
     min_episode: float,
     max_episode: float,
 ) -> str:
-    """What happens on this tick: "" (nothing), "ready", "start", "save", or why the episode is dropped.
+    """What happens on this tick: "" (nothing), "arm", "cancel", "start", "save", or why the
+    episode is dropped.
 
-    The RIGHT ARROW starts an episode, or stops and saves it; the LEFT ARROW drops it. In
-    automatic mode an episode also starts when the leader leaves its rest (`moved`) and is
-    saved once the arm is back on it and still (`back_home`).
+    idle -> (RIGHT ARROW) -> armed -> (the leader moves) -> recording -> (the arm is back home,
+    still) -> saved, idle again. Nothing starts without the RIGHT ARROW: a recorder that armed
+    itself restarted in a loop whenever the leader's rest was a few degrees off. `back_home`
+    must be false until the arm has left home: the real arm trails the leader, so when an
+    episode starts it is still at home and still. In manual mode the RIGHT ARROW starts the
+    recording itself and only the RIGHT ARROW saves.
     """
     if state == "recording":
         if left:
@@ -148,39 +199,66 @@ def decide(
         if not manual and back_home:
             return "save" if elapsed >= min_episode else "False start"
         return ""
+    if state == "armed":
+        if left:
+            return "cancel"
+        return "start" if right or moved else ""
     if right:
-        return "start"
-    if state == "reset":
-        return "ready" if manual or settled else ""
-    return "start" if not manual and moved else ""
+        return "start" if manual else "arm"
+    return ""
 
 
-def status_panel(
-    state: str, manual: bool, recorded: int, asked: int, total: int, elapsed: float = 0.0, limit: float = 0.0
-) -> dict:
-    """Where the session stands, as a text panel in Rerun next to the cameras.
+def status(
+    state: str,
+    *,
+    manual: bool,
+    elapsed: float = 0.0,
+    limit: float = 0.0,
+    at_home: bool = True,
+    far: str = "",
+    still: float = 0.0,
+    need: float = 1.0,
+    left_home: bool = False,
+) -> tuple[str, str]:
+    """What the pilot must read now: a headline and one line of detail.
+
+    The terminal and the Rerun panel show exactly these words, so they cannot disagree.
+    """
+    home = "arm at home" if at_home else f"arm NOT at home: {far}"
+    if state == "live":
+        return "LIVE VIEW", "nothing is recorded. Leader on its rest, hands off, then press Enter"
+    if state == "idle":
+        if manual:
+            return "PRESS RIGHT ARROW", f"to start recording   [{home}]"
+        if not at_home:
+            return "PUT THE LEADER ON ITS REST", f"{far} from home   [RIGHT ARROW = start anyway]"
+        return (
+            "PRESS RIGHT ARROW",
+            "once the object is placed. Recording will start when you move   [arm at home]",
+        )
+    if state == "armed":
+        return "GO", "recording starts when you move the leader   [LEFT ARROW = cancel]"
+    headline = f"RECORDING {elapsed:.0f} s"
+    if manual:
+        return headline, f"RIGHT ARROW = stop and save, LEFT ARROW = drop   [{home}]"
+    if not left_home:
+        detail = "pick the object up, then bring the leader back on its rest"
+    elif not at_home:
+        detail = f"bring the leader back on its rest ({home})"
+    else:
+        detail = f"AT HOME: hold still {min(still, need):.1f} / {need:.1f} s"
+    return headline, f"{detail}   [max {limit:.0f} s, RIGHT ARROW = save now, LEFT ARROW = drop]"
+
+
+def status_panel(headline: str, detail: str, last: str, recorded: int, asked: int, total: int) -> dict:
+    """The status as a text panel in Rerun, next to the cameras.
 
     LeRobot's viewer lays out a text panel for a policy's predicted text: we pass ours that way.
     """
-    if state == "live":
-        what = "LIVE VIEW: nothing is recorded yet.\nPut the leader on its rest, hands off, then press Enter."
-    elif state == "recording":
-        what = (
-            f"RECORDING   {elapsed:.0f} s   (dropped after {limit:.0f} s)\n"
-            + (
-                "RIGHT ARROW = stop and save"
-                if manual
-                else "back on the rest and still = saved   (RIGHT ARROW = save now)"
-            )
-            + "\nLEFT ARROW = drop this episode"
-        )
-    elif state == "armed":
-        what = "READY: place the object, then " + (
-            "press the RIGHT ARROW to start." if manual else "move the leader. Recording starts by itself."
-        )
-    else:
-        what = "WAIT: put the leader back on its rest and let go.   (RIGHT ARROW = start anyway)"
-    text = f"{what}\n\nSaved in this session: {recorded} of {asked}\nEpisodes in the dataset: {total}"
+    text = (
+        f"{headline}\n{detail}\n\nLast episode: {last}\n"
+        f"Saved in this session: {recorded} of {asked}\nEpisodes in the dataset: {total}"
+    )
     return {TransitionKey.PREDICTION: {"language": {"status": [text]}}}
 
 
@@ -233,9 +311,12 @@ def check_home(pose: dict[str, float], dataset_root: Path, tol: float, say) -> N
         print("  (no gripper in it: going home must not open the hand that holds the object)")
 
 
-def session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad):
-    """Record episodes, started and ended by the pilot's keys or by themselves (module docstring)."""
+def session(robot, leader, dataset, events, args, fps, task, display, say, screen, save, on_saved, on_bad):
+    """Record episodes: armed by the pilot, started by the leader moving, saved back at home."""
     total = dataset.meta.total_episodes
+    names = [key.removeprefix("arm_").removesuffix(".pos") for key in ARM]
+    recent: deque = deque(maxlen=2 * fps)  # the last two seconds of arm positions
+    preroll: deque = deque(maxlen=fps // 4)  # frames from just before the leader moved
 
     def tick():
         observation = robot.get_observation()
@@ -245,6 +326,18 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
         arm = np.array([float(observation[key]) for key in ARM])
         hand = np.array([float(leader_action[key.removeprefix("arm_")]) for key in ARM])
         return observation, action, arm, hand
+
+    def still_seconds() -> float:
+        """For how long the arm has not moved, up to the two seconds remembered."""
+        low = high = None
+        count = 0
+        for sample in reversed(recent):
+            low = sample if low is None else np.minimum(low, sample)
+            high = sample if high is None else np.maximum(high, sample)
+            if float((high - low).max()) >= args.still_tol:
+                break
+            count += 1
+        return count / fps
 
     # Live view first: the arm follows the leader and both cameras show in Rerun, so the
     # operator can set the scene and check the pictures before anything is recorded.
@@ -259,29 +352,37 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
     print(HELP[args.manual])
     print("  If the keys do nothing, click on this terminal once.\n")
     print("Check the two pictures, put the leader on its rest in the home pose, hands off.")
-    print("Then press Enter (or the RIGHT ARROW) to start.")
+    print("Then press Enter (or the RIGHT ARROW): the pose of the arm at that moment becomes home.")
     go = threading.Event()
     if args.dry_run:
         threading.Timer(1.5, go.set).start()
     else:
         threading.Thread(target=lambda: (input(), go.set()), daemon=True).start()
+    headline, detail = status("live", manual=args.manual)
     while not go.is_set() and not events["exit_early"] and not events["stop_recording"]:
         start = time.perf_counter()
         observation, action, _, _ = tick()
         if display:
-            panel = status_panel("live", args.manual, 0, args.episodes, total)
+            panel = status_panel(headline, detail, "none yet", 0, args.episodes, total)
             log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
     events["exit_early"] = False
 
-    samples = []
-    for _ in range(fps):  # one second: let the arm reach the leader, then average the second half
+    # Home: the arm trails the leader, so wait until it has stopped, then average half a second.
+    print("Measuring the home pose: do not touch the leader...")
+    hands: deque = deque(maxlen=fps // 2)
+    deadline = time.perf_counter() + 10.0
+    while still_seconds() < 1.0 and time.perf_counter() < deadline:
         start = time.perf_counter()
-        samples.append(tick()[2:])
+        _, _, arm, hand = tick()
+        recent.append(arm)
+        hands.append(hand)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
-    home_arm = np.mean([arm for arm, _ in samples[fps // 2 :]], axis=0)
-    home_hand = np.mean([hand for _, hand in samples[fps // 2 :]], axis=0)
-    names = [key.removeprefix("arm_").removesuffix(".pos") for key in ARM]
+    if still_seconds() < 1.0:
+        print("WARNING: the arm did not stay still for one second: this home pose may be wrong.")
+        print("  ESC, then run again with the leader resting on its support, hands off.")
+    home_arm = np.mean(list(recent)[-(fps // 2) :], axis=0)
+    home_hand = np.mean(hands, axis=0)
     print("Home pose:", ", ".join(f"{name} {value:.0f}" for name, value in zip(names, home_arm, strict=True)))
     check_home(
         {key: round(float(value), 1) for key, value in zip(ARM, home_arm, strict=True)},
@@ -289,18 +390,10 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
         args.home_tol,
         say,
     )
+    print()
 
-    recent: deque = deque(maxlen=2 * fps)  # the last two seconds of arm positions
-    preroll: deque = deque(maxlen=fps // 4)  # frames from just before the leader moved
-
-    def still_for(seconds: float) -> bool:
-        count = int(seconds * fps)
-        if len(recent) < count:
-            return False
-        window = np.array(list(recent)[-count:])
-        return float((window.max(axis=0) - window.min(axis=0)).max()) < args.still_tol
-
-    state, recorded, started, saved_at, quiet_until = "reset", 0, 0.0, -1e9, 0.0
+    state, recorded, started, saved_at, quiet_until = "idle", 0, 0.0, -1e9, 0.0
+    left_home, armed_hand, idle_since, last = False, home_hand, time.perf_counter(), "none yet"
     while recorded < args.episodes and not events["stop_recording"]:
         start = time.perf_counter()
         observation, action, arm, hand = tick()
@@ -310,17 +403,25 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
             **build_dataset_frame(dataset.features, action, prefix=ACTION),
             "task": task,
         }
+        # A key held down repeats, and keys pressed while an episode is written pile up.
         right, left = read_keys(events)
         if start < quiet_until:
             right = left = False
         elif right or left:
             quiet_until = start + KEY_PAUSE_S
-        at_home = float(np.abs(arm - home_arm).max()) < args.home_tol
+        gaps = np.abs(arm - home_arm)
+        at_home = float(gaps.max()) < args.home_tol
+        far = f"{names[int(gaps.argmax())]} is {gaps.max():.0f} degrees away"
+        if args.dry_run and at_home:  # nobody is there to press the keys
+            right = right or rehearsal_key(state, start - idle_since, start - started, args.manual)
+        still = still_seconds()
         elapsed = start - started if state == "recording" else 0.0
+        left_home = left_home or (state == "recording" and not at_home)
 
-        if left and state != "recording":
+        if left and state == "idle":
             if recorded > 0 and start - saved_at < 20.0:
                 on_bad()
+                last = "saved, then marked as bad"
                 say("Marked as bad", "the last episode: it is listed at the end, to remove before training")
                 saved_at = -1e9
             else:
@@ -331,57 +432,71 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, on_sa
             manual=args.manual,
             right=right,
             left=left,
-            settled=at_home and still_for(0.5),
-            moved=float(np.abs(hand - home_hand).max()) > args.leave_tol,
-            back_home=at_home and still_for(args.end_still),
+            moved=float(np.abs(hand - armed_hand).max()) > args.leave_tol,
+            back_home=left_home and at_home and still >= args.end_still,
             elapsed=elapsed,
             min_episode=args.min_episode,
             max_episode=args.episode_time,
         )
         if state == "armed":
             preroll.append(frame)
-        if step == "ready":
-            state = "armed"
+        if step == "arm":
+            state, armed_hand = "armed", hand  # "moved" is measured from where the leader is now
             preroll.clear()
-            say("Ready", READY_HINT[args.manual])
+            say("Go", show=False)
+        elif step == "cancel":
+            state, idle_since = "idle", start
         elif step == "start":
             # Started by the leader moving: keep the quarter second before it. By the key: from now.
-            for earlier in [frame] if right else list(preroll):
+            for earlier in list(preroll) if state == "armed" and not right else [frame]:
                 dataset.add_frame(earlier)
-            state, started = "recording", start
-            say("Recording", RECORDING_HINT[args.manual], speak=False)
+            state, started, left_home = "recording", start, not at_home
         elif state == "recording":
             dataset.add_frame(frame)
             if step == "save":
-                dataset.save_episode()
+                screen.now(f"[{recorded:>2}/{args.episodes}] SAVING: wait a moment", "saving")
+                save()
                 recorded += 1
                 saved_at = time.perf_counter()
                 on_saved(elapsed)
                 total = dataset.meta.total_episodes
+                last = f"saved, {elapsed:.1f} s"
                 say("Saved", f"{elapsed:.1f} s. The dataset now holds {total} episodes", speak=f"{recorded}")
             elif step:
                 dataset.clear_episode_buffer()
                 why = {
-                    "Too long": f" (over {args.episode_time:.0f} s, see --episode-time)",
-                    "Too short": f" (stopped in under {MIN_KEY_EPISODE_S:.0f} s: a double press?)",
-                    "False start": f" (back on the rest in under {args.min_episode:.0f} s)",
-                }.get(step, "")
-                say(step, "not saved" + why)
+                    "Too long": f"over {args.episode_time:.0f} s (see --episode-time)",
+                    "Too short": f"stopped in under {MIN_KEY_EPISODE_S:.0f} s: a double press?",
+                    "False start": f"back on the rest in under {args.min_episode:.0f} s",
+                    "Dropped": "LEFT ARROW",
+                }[step]
+                last = f"NOT saved: {why}"
+                say("Not saved", f"{why}. RIGHT ARROW for the next try", speak=step)
             if step:
-                recent.clear()
-                state = "reset"
-                quiet_until = time.perf_counter() + KEY_PAUSE_S
+                state, idle_since = "idle", time.perf_counter()
+                quiet_until = idle_since + KEY_PAUSE_S
 
+        headline, detail = status(
+            state,
+            manual=args.manual,
+            elapsed=elapsed,
+            limit=args.episode_time,
+            at_home=at_home,
+            far=far,
+            still=still,
+            need=args.end_still,
+            left_home=left_home,
+        )
+        if recorded < args.episodes:
+            screen.now(f"[{recorded:>2}/{args.episodes}] {headline}: {detail}", state)
         if display:
-            panel = status_panel(
-                state, args.manual, recorded, args.episodes, total, elapsed, args.episode_time
-            )
+            panel = status_panel(headline, detail, last, recorded, args.episodes, total)
             log_visualization_data("rerun", observation=observation, action=action, policy_step=panel)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
 
     if state == "recording":
         dataset.clear_episode_buffer()
-        say("Dropped", "the session ended during an episode: it is not saved", speak=False)
+        say("Not saved", "the session ended during an episode", speak=False)
 
 
 def main() -> None:
@@ -391,20 +506,20 @@ def main() -> None:
     parser.add_argument("--name", required=True, help="dataset name, e.g. pick_sock_v1")
     parser.add_argument("--object", required=True, help="what is being picked up: sock, can...")
     parser.add_argument("--episodes", type=int, default=30, help="episodes to record in this session")
-    parser.add_argument("--episode-time", type=float, default=15.0, help="seconds: longer is dropped")
+    parser.add_argument("--episode-time", type=float, default=30.0, help="seconds: longer is dropped")
     parser.add_argument("--task", default=None, help="default: 'Pick up the <object> from the floor'")
     parser.add_argument("--no-push", action="store_true", help="keep the dataset on this laptop")
     parser.add_argument("--no-display", action="store_true", help="do not open Rerun (if the loop is slow)")
     parser.add_argument("--dry-run", action="store_true", help="fake robot and leader: no hardware")
-    parser.add_argument("--manual", action="store_true", help="you start and stop every episode: RIGHT ARROW")
+    parser.add_argument("--manual", action="store_true", help="the RIGHT ARROW starts and saves each episode")
     parser.add_argument(
-        "--home-tol", type=float, default=6.0, help="degrees from home that still count as home"
+        "--home-tol", type=float, default=10.0, help="degrees from home that still count as home"
     )
     parser.add_argument(
         "--leave-tol", type=float, default=5.0, help="degrees of leader motion that start an episode"
     )
     parser.add_argument(
-        "--still-tol", type=float, default=1.5, help="degrees the arm may move and still be 'still'"
+        "--still-tol", type=float, default=2.0, help="degrees the arm may move and still be 'still'"
     )
     parser.add_argument(
         "--end-still", type=float, default=1.0, help="seconds still at home that end an episode"
@@ -435,6 +550,7 @@ def main() -> None:
         from makai.robot.fake import FakeKiwi, FakeLeader
 
         robot = FakeKiwi(make_client(cfg).config)
+        robot.lag_ticks = 12  # like the real arm, 0.4 s behind the leader
         leader = FakeLeader(SO101LeaderConfig(port="none", id="fake_leader"))
     else:
         robot = make_client(cfg)
@@ -475,14 +591,6 @@ def main() -> None:
         )
     leader.connect()
     listener, events = init_keyboard_listener()
-    if args.dry_run and args.manual:  # nobody is there to press the keys: RIGHT ARROW every 3 s
-
-        def press() -> None:
-            while True:
-                time.sleep(3.0)
-                events["exit_early"] = True
-
-        threading.Thread(target=press, daemon=True).start()
     display = not args.no_display
     if display:
         init_visualization("rerun", session_name="makai_record")
@@ -493,14 +601,21 @@ def main() -> None:
     bad: list[int] = []
     started = time.time()
 
-    def say(text: str, hint: str = "", speak: str | bool = True) -> None:
-        """Show and speak what the recorder is doing: the voice alone is easy to miss.
+    screen = Screen()
+
+    def say(text: str, hint: str = "", speak: str | bool = True, show: bool = True) -> None:
+        """Keep a line for what just happened, and speak it: the voice alone is easy to miss.
 
         The line starts with the number of episodes saved in this session."""
         saved = dataset.meta.total_episodes - first_episode
-        print(f"[{saved:>2}/{args.episodes}] {text.upper():<14} {hint}", flush=True)
+        if show:
+            screen.line(f"[{saved:>2}/{args.episodes}] {text.upper():<14} {hint}")
         if speak:
             log_say(text if speak is True else speak, play_sounds=not args.dry_run)
+
+    def save() -> None:  # the encoders' chatter goes to a file next to the episode list
+        with quiet(log_path.with_suffix(".log")):
+            dataset.save_episode()
 
     def log_episode(note: str) -> None:  # which episode holds which object
         with log_path.open("a", newline="") as f:
@@ -520,7 +635,7 @@ def main() -> None:
         log_episode("BAD")
 
     try:
-        session(robot, leader, dataset, events, args, fps, task, display, say, on_saved, on_bad)
+        session(robot, leader, dataset, events, args, fps, task, display, say, screen, save, on_saved, on_bad)
     finally:
         say("Session finished")
         robot.disconnect()

@@ -39,7 +39,7 @@ Durée visée : 8 à 12 secondes. La chaîne de tâche est toujours la même, au
 - [ ] 2 ou 3 épisodes d'essai enregistrés puis regardés dans le visualiseur (« Vérifier un
       dataset »), avant la première session de 30
 
-Ce que `scripts/record.py` garantit déjà en mode mains libres, sans y penser : pas de temps
+Ce que `scripts/record.py` garantit déjà, sans y penser : pas de temps
 mort au début ni à la fin, faux départs jetés, deux caméras synchronisées, même pose de
 départ et même seconde immobile à la fin de chaque épisode.
 
@@ -59,10 +59,11 @@ Elle enchaîne `scripts/preflight.py` et `scripts/record.py`, qu'on peut aussi l
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30
 ```
 
-L'enregistrement est mains libres : il démarre quand le leader quitte sa pose de repos et
-sauvegarde l'épisode quand le bras y est revenu et reste immobile une seconde. Le détail et
-les touches sont dans `docs/CE_SOIR.md`, section 2 (« Le guide du pilote »). Avec `--manual`,
-le pilote décide : `→` démarre l'épisode, `→` le sauvegarde, `←` le jette, `Échap` arrête.
+Le pilote lance chaque épisode à la flèche droite. L'enregistrement part au premier mouvement
+du leader, et l'épisode est sauvegardé quand le bras est revenu au repos et reste immobile une
+seconde. Le pas-à-pas et les touches sont dans `docs/CE_SOIR.md`, section 2 (« Le guide du
+pilote »). Avec `--manual`, l'enregistrement part à la flèche droite et seule la flèche droite
+sauvegarde.
 
 Faire des sessions de 30 épisodes. Relancer la même commande **ajoute** des épisodes au même
 dataset : rien n'est écrasé, et un plantage ne fait perdre que l'épisode en cours. Noter chaque

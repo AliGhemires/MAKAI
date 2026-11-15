@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections import deque
 
 import numpy as np
 from lerobot.robots.lekiwi import LeKiwiClient
@@ -20,12 +21,19 @@ JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_ro
 
 
 class FakeKiwi(LeKiwiClient):
-    """Returns moving test images and echoes back the last arm command as the arm state."""
+    """Returns moving test images and echoes back the last arm command as the arm state.
+
+    `lag_ticks`: the real arm trails its commands (Wi-Fi, servo ramp). Set it to a few ticks to
+    rehearse with an arm that is still where it was when the leader has already moved.
+    """
+
+    lag_ticks = 0
 
     def __init__(self, config):
         super().__init__(config)
         self._fake_connected = False
         self._arm = {f"arm_{joint}.pos": 0.0 for joint in JOINTS}
+        self._history: deque = deque([dict(self._arm)], maxlen=64)
         self._tick = 0
 
     @property
@@ -40,7 +48,8 @@ class FakeKiwi(LeKiwiClient):
 
     def get_observation(self) -> dict:
         self._tick += 1
-        observation = {**self._arm, "x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+        arm = self._history[-1 - min(self.lag_ticks, len(self._history) - 1)]
+        observation = {**arm, "x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
         for name, cam in self.config.cameras.items():
             image = np.full((cam.height, cam.width, 3), 90, dtype=np.uint8)
             x = (self._tick * 4) % max(1, cam.width - 60)
@@ -50,6 +59,7 @@ class FakeKiwi(LeKiwiClient):
 
     def send_action(self, action: dict) -> dict:
         self._arm.update({key: float(value) for key, value in action.items() if key in self._arm})
+        self._history.append(dict(self._arm))
         # Same return value as the real client: every state key, plus the vector.
         values = np.array([action.get(key, 0.0) for key in self._state_order], dtype=np.float32)
         sent = {key: values[i] for i, key in enumerate(self._state_order)}
