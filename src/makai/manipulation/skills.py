@@ -127,6 +127,7 @@ class PolicyPick:
         )
         self._features = None
         self.last_rate_hz = 0.0
+        self.last_gripper: float | None = None  # gripper reading when the policy stopped
 
     def run(self, robot: Robot, target: Target) -> bool:
         from lerobot.common.control_utils import predict_action
@@ -179,7 +180,7 @@ class PolicyPick:
         # the demonstrations: inference is too slow for this laptop.
         self.last_rate_hz = ticks / (time.perf_counter() - start)
 
-        gripper = robot.get_observation().arm.get(GRIPPER)
+        gripper = self.last_gripper = robot.get_observation().arm.get(GRIPPER)
         if self.after:
             self.after.play(robot)
         if self.gripper_open_above is None or gripper is None:

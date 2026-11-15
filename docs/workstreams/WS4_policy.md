@@ -39,7 +39,7 @@ base bloquée), `ScriptedPick` et `ScriptedDrop` (séquences de poses).
 - [ ] Porte G3 à 10:00 : policy à 5/10 ou plus ? Sinon la démo passe en saisie scriptée
 - [ ] Collecte v2 multi-objets, entraînement lancé avant 13:00
 - [ ] DAgger sur les échecs, entraînement v3 pour la nuit
-- [ ] Détection de saisie vide (`gripper_open_above`) : mesurer la valeur de la pince fermée à vide et sur objet
+- [ ] Détection de saisie vide (`gripper_open_above`) : mesurer la valeur de la pince fermée à vide et sur objet. `scripts/try_pick.py` affiche cette mesure à chaque essai et propose le seuil. Dans `pick_sock_v1` : 2,3 à vide, 5,7 en médiane sur la chaussette (de 3 à 12). Tant que ce réglage est vide, la mission ne retente jamais une saisie ratée.
 - [ ] Lundi 08:00 : choix du modèle final, chiffres pour le pitch
 
 ## Terminé quand
