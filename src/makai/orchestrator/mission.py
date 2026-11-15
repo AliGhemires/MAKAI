@@ -450,26 +450,36 @@ class Mission:
         distance = math.hypot(track.x_m, track.y_m)
         too_long = now - self._entered > cfg.approach_timeout_s / 2
         if not self._orbit_circling:
-            if distance < cfg.orbit_radius_m and not too_long:
-                return BaseVelocity(x=-cfg.back_off_speed)
+            back = BaseVelocity(x=-cfg.back_off_speed)
+            if distance < cfg.orbit_radius_m and not too_long and self._may_move(back):
+                return back
+            # Far enough, or backing further would leave the floor it may use: from here.
             self._orbit_circling, self._orbit_yaw = True, self.odometry.yaw
         left = self._orbit_left - math.remainder(self.odometry.yaw - self._orbit_yaw, math.tau)
         self._orbit_yaw = self.odometry.yaw
-        if left * self._orbit_left <= 0.0 or abs(left) < math.radians(1.0) or too_long:
-            # Done (or only backing away was asked): the approach takes over, on what it sees.
+        # Turning at `turn` with the object at (x, y), it stays put if the base moves by
+        # (turn * y, -turn * x). Plus: keep it centred, and at the radius.
+        turn = math.copysign(cfg.orbit_speed, left) + 1.0 * math.atan2(track.y_m, track.x_m)
+        velocity = BaseVelocity(
+            x=turn * track.y_m + 0.8 * (distance - cfg.orbit_radius_m),
+            y=-turn * track.x_m,
+            theta=turn,
+        )
+        done = left * self._orbit_left <= 0.0 or abs(left) < math.radians(1.0) or too_long
+        if done or not self._may_move(velocity):
+            # Done, only backing away was asked, or going round further would leave the floor
+            # it may use: the approach takes over, on what it sees.
             self._orbit_active, self._orbit_left, self._orbit_circling = False, 0.0, False
             self._object_ctrl.reset()
             self._last_seen = now
             return BaseVelocity()
         self._orbit_left = left
-        # Turning at `turn` with the object at (x, y), it stays put if the base moves by
-        # (turn * y, -turn * x). Plus: keep it centred, and at the radius.
-        turn = math.copysign(cfg.orbit_speed, left) + 1.0 * math.atan2(track.y_m, track.x_m)
-        return BaseVelocity(
-            x=turn * track.y_m + 0.8 * (distance - cfg.orbit_radius_m),
-            y=-turn * track.x_m,
-            theta=turn,
-        )
+        return velocity
+
+    def _may_move(self, velocity: BaseVelocity) -> bool:
+        """May the base move this way, backing away from an object or going round it? The
+        mission alone knows no walls: yes. The sweep keeps it in its zone, clear of the stations."""
+        return True
 
     def _match_track(self, scene: Scene) -> Target | None:
         """The sighting that is most likely the object we were already approaching."""

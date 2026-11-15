@@ -107,6 +107,9 @@ class SweepConfig:
     # Turns and side slides near the stations happen this much farther from them than their dock;
     # the last stretch to the dock is straight ahead (15 Nov: the arm hit the bins while turning).
     dock_clearance_m: float = 0.25
+    # Backing away from an object or going round it, the robot's centre stays this far from
+    # every station, and inside the zone (`_may_move`).
+    station_clearance_m: float = 0.30
     # After each pick, before going to the dock: turn to the first station (the bin with the
     # marker), look for its marker, let it correct the odometry, then go (15 Nov).
     look_for_marker_after_pick: bool = True
@@ -366,6 +369,35 @@ class SweepMission(Mission):
             self._drop_attempts = 0
             why = "in front of the station" if self._anchored else "no marker in sight: dropping on odometry"
             self._go(State.DROP, now, why)
+
+    def _may_move(self, velocity: BaseVelocity) -> bool:
+        """Backing away from an object, going round it: not out of the zone, not into a station.
+        15 Nov: an object near the start line had the robot back 20 cm past it, into the bins.
+        Moving back towards the floor it may use is always allowed."""
+        speed = math.hypot(velocity.x, velocity.y)
+        if speed < 1e-6:
+            return True
+        pose, ahead = self.odometry, 0.10  # where it would be a little further this way
+        c, s = math.cos(pose.yaw), math.sin(pose.yaw)
+        x = pose.x + ahead * (c * velocity.x - s * velocity.y) / speed
+        y = pose.y + ahead * (s * velocity.x + c * velocity.y) / speed
+        there = self._out_of_bounds_m(x, y)
+        return there <= 0.0 or there < self._out_of_bounds_m(pose.x, pose.y)
+
+    def _out_of_bounds_m(self, x: float, y: float) -> float:
+        """How far the robot's centre at (x, y) is outside the zone, or inside a station's
+        clearance (0 when it may stand there). Never behind the start line."""
+        room = self.sweep.room
+        low, high = room.y_range
+        out = max(0.0, -x, x - (room.length_m - room.margin_m), low - y, y - high)
+        near = max(
+            (
+                self.sweep.station_clearance_m - math.hypot(x - st.x, y - st.y)
+                for st in self.sweep.stations.values()
+            ),
+            default=0.0,
+        )
+        return max(out, near)
 
     @staticmethod
     def _back_from(x: float, y: float, heading: float, distance: float) -> tuple[float, float]:
