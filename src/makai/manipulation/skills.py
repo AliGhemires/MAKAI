@@ -10,6 +10,7 @@ Poses live in configs/arm_poses.yaml and are captured on the robot with
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +22,7 @@ from makai.contracts import Category, Robot, Target
 
 Pose = Mapping[str, float]
 GRIPPER = "arm_gripper.pos"
+log = logging.getLogger("makai.pick")
 
 
 def load_poses(path: str | Path) -> dict[str, dict[str, float]]:
@@ -153,7 +155,8 @@ class PolicyPick:
         )
         self._features = None
         self.last_rate_hz = 0.0
-        self.last_gripper: float | None = None  # gripper reading when the policy stopped
+        self.gripper_at_stop: float | None = None  # gripper reading when the policy stopped
+        self.last_gripper: float | None = None  # the reading the grasp check used (carry pose, if any)
 
     def run(self, robot: Robot, target: Target) -> bool:
         from lerobot.common.control_utils import predict_action
@@ -212,13 +215,32 @@ class PolicyPick:
         # the demonstrations: inference is too slow for this laptop.
         self.last_rate_hz = ticks / (time.perf_counter() - start)
 
-        gripper = self.last_gripper = robot.get_observation().arm.get(GRIPPER)
+        self.gripper_at_stop = robot.get_observation().arm.get(GRIPPER)
+        return self._holding(robot)
+
+    def _holding(self, robot: Robot, settle_s: float = 0.4) -> bool:
+        """Carry pose, then: is the hand holding something?
+
+        Read once the carry pose (home, hand commanded closed) is reached, not when the policy
+        stops: after a missed grasp the policy may come home with its hand still half open, which
+        read as "holding" (15 Nov, on the robot). Hand commanded closed is how the recordings end,
+        where `gripper_open_above` was measured: an empty hand closes, a held object stops it.
+        """
+        gripper = self.gripper_at_stop
         if self.after:
             self.after.play(robot)
+            time.sleep(settle_s)  # the gripper servo lags its command a little
+            gripper = robot.get_observation().arm.get(GRIPPER)
+        self.last_gripper = gripper
         if self.gripper_open_above is None or gripper is None:
             return True
-        # A gripper that could not close completely is holding something.
-        return gripper > self.gripper_open_above
+        held = gripper > self.gripper_open_above  # a gripper that could not close is holding something
+        log.info(
+            "grasp check: gripper %s when the policy stopped, %.1f in the carry pose -> %s (threshold %.1f)",
+            "?" if self.gripper_at_stop is None else f"{self.gripper_at_stop:.1f}",
+            gripper, "holding" if held else "empty", self.gripper_open_above,
+        )  # fmt: skip
+        return held
 
 
 class PickByCategory:

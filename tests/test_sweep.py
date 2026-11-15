@@ -228,9 +228,31 @@ def test_gives_up_on_an_object_and_does_not_come_back_to_it():
     grab = mission.pick.run
     mission.pick.run = lambda robot, target: target.label != "glued can" and grab(robot, target)
     assert mission.run(max_duration_s=1200) is State.DONE
-    assert mission.stats.abandoned == 1 and mission.stats.failed_picks == 3 and mission.stats.delivered == 1
+    sides = 1 + len(mission.cfg.orbit_deg)  # tried from where it came, then from each side round it
+    assert mission.stats.abandoned == 1 and mission.stats.delivered == 1
+    assert mission.stats.failed_picks == mission.cfg.max_pick_attempts * sides
     assert [o.label for o in world.objects] == ["glued can"]
     assert sorted(o.status for o in mission.map.objects) == ["abandoned", "delivered"]
+
+
+def test_after_three_missed_grasps_it_goes_round_the_object_and_tries_from_there():
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    grab, sides = mission.pick.run, []
+
+    def pick(robot, target):
+        """Only gives in from another side: where the robot stands, seen from the can."""
+        can = world.objects[0]
+        sides.append(math.degrees(math.atan2(world.y - can.y, world.x - can.x)))
+        return abs(math.remainder(sides[-1] - sides[0], 360.0)) > 25.0 and grab(robot, target)
+
+    mission.pick.run = pick
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert mission.stats.failed_picks == 3 and mission.stats.delivered == 1 and mission.stats.abandoned == 0
+    assert math.remainder(sides[3] - sides[0], 360.0) == pytest.approx(40.0, abs=8.0)  # counter-clockwise
+    assert any("trying from +40 deg round it" in event.reason for event in mission.events)
 
 
 def test_the_snapshot_is_plain_data():
