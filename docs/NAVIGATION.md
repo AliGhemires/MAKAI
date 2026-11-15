@@ -101,27 +101,27 @@ elle.
 
 ### Arène de la démo (15 nov. au soir, `docs/DECISIONS.md` D30)
 
-Celle des premiers essais de mission sur le robot, à refaire telle quelle. Poubelle
-**derrière** : la caméra ne voit pas encore les bandes de scotch (`docs/DEBUG_ODOMETRY.md`,
-11.3), et les rotations sont justes depuis les codeurs. Vue de dessus, le robot regarde vers
-le haut :
+Celle du premier essai de mission réussi sur le robot (le robot a trouvé, approché et saisi la
+canette), à refaire telle quelle. Poubelle **derrière**, marquée du **motif en U** : la caméra
+ne voit pas les bandes de scotch (`docs/DEBUG_ODOMETRY.md`, 11.3), et les rotations sont justes
+depuis les codeurs. Vue de dessus, le robot regarde vers le haut :
 
 ```
-          y = +0,80                y = -0,80
-  x = 2,00  +--------------------------+   fond de la zone
-            |                          |
-            |   rangées du centre du   |   le centre du robot reste à 30 cm des bords
-            |   robot : x = 0 ; 0,5 ;  |   (margin_m) : y de -0,50 à +0,50,
-            |   1,0 ; 1,5, y ±0,50     |   x jusqu'à 1,50
-            |                          |
-  x = 0     +-----------( R )----------+   ligne de départ : elle passe par le centre du robot
-                       [ BIN ]             face avant du carton à 35 cm derrière le centre
+            y = +2,04                                y = 0
+  x = 1,04  +------------------------------------------+   fond de la zone
+            |                                          |
+            |  rangées du centre du robot, de droite   |   pas de marge : le centre du
+            |  à gauche puis retour : x = 0 ; 0,27 ;   |   robot va jusqu'aux bords
+            |  0,54, y de 0 à 2,04                     |
+  x = 0     +-------------------------------------( R )+   départ : coin arrière droit
+                                                [ BIN ]    face avant à 35 cm derrière le centre
 ```
 
-- **Zone** : 2,0 m devant le robot, 1,6 m de large centrée sur lui. C'est `navigation.sweep.room`
-  de `configs/makai.yaml` (2,0 × 1,6, `margin_m: 0.30`). **Ne pas tracer de zone** : une zone
-  tracée (`configs/zone.yaml`) la remplace. S'il y en a une sur le laptop de la démo, la
-  supprimer.
+- **Zone** : tracée dans la console le 15 à 19 h 56 en conduisant le robot ; **1,04 m devant
+  lui, 2,04 m de large, entièrement à sa gauche**. Gardée dans `configs/zone.yaml` (hors git),
+  dont une copie est dans git : `configs/zone_demo.yaml`. Avant la démo, sur le laptop de la
+  démo : `Copy-Item configs/zone_demo.yaml configs/zone.yaml` (ou `cp`). **Ne pas retracer** :
+  un nouveau tracé l'écrase.
 - **Poubelle** (`stations.trash`, x = -0,35) : face avant du carton à **35 cm du centre du
   robot**, dans son axe, soit environ **22 cm derrière le point de contact de la roue
   arrière** (rayon de la base 12,5 cm). Le 15 au soir, le robot s'y est arrêté au bon endroit
@@ -131,12 +131,17 @@ le haut :
   part de zéro à chaque Start. Les bases servent entre deux essais : « Set base 1 » une fois
   au départ, puis « Go base 1 » ramène le robot au départ, à 1 cm près le 15 au soir. Vérifier
   sur les marques au sol.
+- **Le motif en U** (`perception.stations.kind: pattern`, `UPatternDetector`) : sur la face
+  avant de la poubelle, dans l'axe du robot, son centre à **environ 10 cm du sol** (plus haut,
+  il sort de l'image quand le robot est à 35 cm). Au retour, le robot se tourne vers la
+  poubelle, voit le U, s'arrête à 35 cm de lui et recale son odométrie. Sans U en vue, il
+  regarde 20° de chaque côté puis dépose à l'odométrie. Mesurer la largeur du U blanc à la
+  règle et l'écrire dans `perception.stations.pattern.u_width_m` (4,4 cm estimés).
 - **Marques au sol** (scotch) : les deux roues avant au départ, les quatre coins de la zone,
   la face avant de la poubelle.
-- **Laptop de la démo** : celui d'Amine, avec dans `configs/local.yaml` la détection des
-  cartons coupée (`perception.stations.kind: aruco`) et pas de recherche du marqueur à la
-  base (`navigation.sweep.marker_scan_deg: []`) : il dépose à l'odométrie. Les poses de dépose
-  restent à capturer (`drop_reach`, `drop_open` dans `configs/arm_poses.yaml`).
+- **Laptop de la démo** : celui d'Amine, avec dans `configs/local.yaml`
+  `perception.stations.kind: pattern` et `navigation.sweep.marker_scan_deg: [20, -20]`. Les
+  poses de dépose restent à capturer (`drop_reach`, `drop_open` dans `configs/arm_poses.yaml`).
 
 - [ ] **Les deux stations** : deux cartons, chacun avec une bande de scotch gris sur sa
       face avant. Bande **horizontale** : le linge. Bande **verticale** : les déchets (à
