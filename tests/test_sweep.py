@@ -271,6 +271,36 @@ def test_a_missed_pick_is_tried_again_though_the_pick_took_its_time():
     assert mission.stats.delivered == 1
 
 
+def test_every_delivery_checks_the_position_on_the_bins_marker_then_goes_straight_in():
+    """The demo arena of 15 Nov: the bin behind the start, marked; the basket 48 cm to its left,
+    not marked. Wheels that slip: the odometry drifts. Each delivery stops on the bin's marker
+    at `anchor_standoff_m`, then drives to its station's dock, the last stretch straight."""
+    stations = {
+        Category.TRASH: Station(-0.35, 0.0, 0.0, 0.0),
+        Category.CLOTHING: Station(-0.35, 0.48, 0.0, 0.48),
+    }
+    world = SimWorld(
+        objects=[SimObject(0.8, 0.9, Category.CLOTHING, "sock"), SimObject(0.6, 1.6, Category.TRASH, "can")],
+        stations={Category.TRASH: (-0.35, 0.0), Category.CLOTHING: (-0.35, 0.48)},
+    )
+    room = Room(length_m=1.04, width_m=2.04, margin_m=0.0, y_offset_m=1.02)
+    mission = build(world, stations=stations, room=room, slip=0.04, yaw_drift=0.03)
+    perceive = mission.perception.perceive
+
+    def basket_unmarked(obs):
+        scene = perceive(obs)
+        return replace(scene, stations={k: v for k, v in scene.stations.items() if k is Category.TRASH})
+
+    mission.perception.perceive = basket_unmarked
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert sorted((o.label, station) for o, station in world.delivered) == [
+        ("can", Category.TRASH),
+        ("sock", Category.CLOTHING),
+    ]
+    reasons = [event.reason for event in mission.events]
+    assert reasons.count("position checked on the marker") >= 2  # once per delivery, at least
+
+
 def test_up_close_a_sock_taken_for_a_can_still_goes_to_the_clothing_bin():
     """15 Nov: a sock seen as clothing from afar, as trash in the last images (it leaves the
     image), was picked with the can model and taken to the trash bin."""

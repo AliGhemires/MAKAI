@@ -99,6 +99,14 @@ class SweepConfig:
     # metres without seeing one. 0 = only when delivering. Raise it on a floor that grips well.
     recheck_after_m: float = 0.0
     max_dock_tries: int = 3  # markers lost this many times in one delivery: drop on odometry
+    # Every delivery first checks the position on the marker of the first station (the bin with
+    # the U), from this far: close enough to read it well, far enough that the object carried
+    # does not hide it and the U stays in the image (15 Nov: lost at 35 cm, every time). The
+    # rest is driven on odometry from there: a short way, straight.
+    anchor_standoff_m: float = 0.60
+    # Turns and side slides near the stations happen this much farther from them than their dock;
+    # the last stretch to the dock is straight ahead (15 Nov: the arm hit the bins while turning).
+    dock_clearance_m: float = 0.25
     # After each pick, before going to the dock: turn to the first station (the bin with the
     # marker), look for its marker, let it correct the odometry, then go (15 Nov).
     look_for_marker_after_pick: bool = True
@@ -195,10 +203,14 @@ class SweepMission(Mission):
         self._slide_exact = ApproachController(
             replace(self._slide.cfg, tol_x_m=self.sweep.dock_tol_m, tol_y_m=self.sweep.dock_tol_m)
         )
+        # On a station's marker the robot stops `anchor_standoff_m` from it; the dock is reached
+        # from there on odometry (`_deliver`).
+        station_cfg = replace(self._station_ctrl.cfg, goal_x_m=self.sweep.anchor_standoff_m)
         if self.sweep.pattern == "rows":
             # Vacuum: the base never turns towards what it goes to, object or marker. It slides.
             self._object_ctrl = ApproachController(replace(self._object_ctrl.cfg, near_radius_m=math.inf))
-            self._station_ctrl = ApproachController(replace(self._station_ctrl.cfg, near_radius_m=math.inf))
+            station_cfg = replace(station_cfg, near_radius_m=math.inf)
+        self._station_ctrl = ApproachController(station_cfg)
         self.locked_at: float | None = None  # when a marker last told the robot where it is
         self._nav_target: tuple[float, float, object] | None = None
         self._course = SWEEP_HEADING  # scan: the way the current leg of the route goes
@@ -216,6 +228,9 @@ class SweepMission(Mission):
         self._dock_tries = 0
         self._looked_from_afar = True  # this delivery looked for the bin's marker where it picked
         self._marker_seen_at: float | None = None
+        self._dock_step = (
+            0  # of a delivery: 0 to the marker, 1 looking there, 2 to the pre-dock, 3 to the dock
+        )
         self._object: MapObject | None = None
 
     # ------------------------------------------------------------------ loop
@@ -301,9 +316,68 @@ class SweepMission(Mission):
         elif self._face(station.heading + math.pi):
             self._go(State.DONE, now, "room swept, back in front of the bin")
 
+    def _deliver(self, scene: Scene, now: float) -> None:
+        """Take what is held to its station, the position checked on the bin's marker first.
+
+        1. The marker in sight, from wherever: steer on it, stop `anchor_standoff_m` from it;
+           arriving puts the position right (`_anchor`). Not in sight: look for it where the
+           robot picked, then from where it should be seen best.
+        2. From there, on odometry: the station's pre-dock (its dock, `dock_clearance_m` back),
+           then straight to the dock, face the station, drop. Turns and side slides stay clear
+           of the stations. The basket has no marker: it is placed from the bin's (15 Nov).
+        """
+        key = self._home_key  # the station with the marker
+        anchor = self.sweep.stations[key]
+        target = self.sweep.stations[self._station_key]
+        if not self._anchored and key in scene.stations and self._dock_tries <= self.sweep.max_dock_tries:
+            self._station_ctrl.reset()
+            self._last_seen = now
+            self._go(State.GO_TO_STATION, now, "bin's marker in sight")
+            return
+        if not self._anchored and not self._looked_from_afar:
+            if self._look_for_marker(scene, now):
+                self._looked_from_afar, self._scan, self._faced_at = True, 0, None
+            return
+        if not self._anchored and self._dock_step == 0 and self._dock_tries <= self.sweep.max_dock_tries:
+            x, y = self._back_from(anchor.x, anchor.y, anchor.heading, self.sweep.anchor_standoff_m)
+            if self._travel(x, y, exact=True, heading=anchor.heading):
+                self._dock_step, self._scan, self._faced_at = 1, 0, None
+            elif now - self._entered > self.sweep.travel_timeout_s:
+                self._go(State.FAILED, now, "could not reach the station")
+            return
+        if not self._anchored and self._dock_step == 1:
+            found = self._find_marker(key, scene, now, anchor.heading)
+            if found is None:
+                return
+            self._dock_step = 2  # not there either: the odometry will have to do
+        self._dock_step = max(self._dock_step, 2)
+        if self._dock_step == 2:
+            x, y = self._back_from(target.dock_x, target.dock_y, target.heading, self.sweep.dock_clearance_m)
+            if self._travel(x, y, exact=True, heading=target.heading):
+                self._dock_step = 3
+            elif now - self._entered > self.sweep.travel_timeout_s:
+                self._go(State.FAILED, now, "could not reach the station")
+            return
+        if self._dock_step == 3:
+            if self._travel(target.dock_x, target.dock_y, exact=True, heading=target.heading):
+                self._dock_step = 4
+            return
+        if self._face(target.heading):
+            self._drop_attempts = 0
+            why = "in front of the station" if self._anchored else "no marker in sight: dropping on odometry"
+            self._go(State.DROP, now, why)
+
+    @staticmethod
+    def _back_from(x: float, y: float, heading: float, distance: float) -> tuple[float, float]:
+        """The point `distance` back from (x, y), facing `heading` (towards the station)."""
+        return x - distance * math.cos(heading), y - distance * math.sin(heading)
+
     def _on_dock(self, scene: Scene, now: float) -> None:
         """Go to the station. As soon as the camera sees it, steer on what the camera sees.
         Until then: drive to its dock on odometry, face the station, look for its marker."""
+        if self.carrying is not None:
+            self._deliver(scene, now)
+            return
         station = self.sweep.stations[self._station_key]
         if not self._anchored and self._station_key in scene.stations:
             # In sight, from wherever the robot is: no need to trust the odometry up to the dock.
@@ -352,8 +426,10 @@ class SweepMission(Mission):
             self._go(State.DROP, now, "no marker in sight: dropping on odometry")
 
     def _on_go_to_station(self, scene: Scene, now: float) -> None:
-        """The last centimetres, on the station's marker. Arriving also puts the odometry right."""
-        sighting = scene.stations.get(self._station_key)
+        """Onto a marker: the bin's, for a delivery (`_deliver`), else the station's. Arriving
+        puts the odometry right."""
+        key = self._home_key if self.carrying is not None else self._station_key
+        sighting = scene.stations.get(key)
         if sighting is None:
             self.robot.stop()
             if now - self._last_seen > self.cfg.lost_timeout_s:
@@ -363,7 +439,7 @@ class SweepMission(Mission):
         velocity, arrived = self._station_ctrl.step(sighting.x_m, sighting.y_m)
         self.robot.drive(velocity)
         if arrived:
-            self._anchor(sighting, self._station_key)
+            self._anchor(sighting, key)
             self._anchored = True
             self._go(State.DOCK, now, "position checked on the marker")
         elif now - self._entered > self.cfg.approach_timeout_s:
@@ -415,7 +491,7 @@ class SweepMission(Mission):
                 self._looked_from_afar = (
                     not self.sweep.look_for_marker_after_pick or self.starts_away_from_dock
                 )
-                self._marker_seen_at = None
+                self._marker_seen_at, self._dock_step = None, 0
             self._dock_tries += 1
         super()._go(state, now, reason)
 

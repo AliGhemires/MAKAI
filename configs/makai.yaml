@@ -117,6 +117,7 @@ navigation:
   mission:
     station_standoff_m: 0.35
     search_speed: 0.6
+    back_off_s: 3.0         # after a drop, back off 30 cm (at 0.10 m/s) before turning: clear of the bins (15 Nov)
     max_pick_attempts: 3    # grasps from one side; then it backs away to orbit_radius_m, goes round the
     orbit_deg: [40, -40]    # object to each of these angles in turn (deg, + = counter-clockwise from above)
     orbit_radius_m: 0.50    # and tries again from there; [] = give up after the first side
