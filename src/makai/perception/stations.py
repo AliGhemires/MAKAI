@@ -123,6 +123,12 @@ class TapeStationDetector:
     # ------------------------------------------------------------------ in the image
     def find_strips(self, image_rgb: np.ndarray) -> list[Strip]:
         """The best strip of each direction, if any."""
+        # Half the size is enough to see a strip, and four times quicker: this runs at every image.
+        shrink = 2 if image_rgb.shape[1] >= 480 else 1
+        if shrink > 1:
+            image_rgb = cv2.resize(
+                image_rgb, None, fx=1 / shrink, fy=1 / shrink, interpolation=cv2.INTER_AREA
+            )
         lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
         light = lab[..., 0]
         chroma = np.hypot(lab[..., 1] - 128.0, lab[..., 2] - 128.0)
@@ -163,17 +169,23 @@ class TapeStationDetector:
             best: tuple[float, Strip] | None = None
             for label in range(1, count):
                 x, y, w, h, area = (int(v) for v in stats[label])
-                if area < self.min_area_px:
+                if area < self.min_area_px / shrink**2:
                     continue
                 found = self._measure(labels[y : y + h, x : x + w] == label, above, x, y)
                 if found is None:
                     continue
                 start, end, thickness, across, low, high = found
                 length = end - start
-                if length / thickness < (3.5 if kind == "horizontal" else 2.2):
-                    continue
                 limit = flat.shape[1]
                 whole = start > 1 and end < limit - 1
+                # Long and thin. A strip that runs out of the image only shows part of its length.
+                slender = (
+                    (3.5 if kind == "horizontal" else 2.2)
+                    if whole
+                    else (1.5 if kind == "horizontal" else 1.2)
+                )
+                if length / thickness < slender:
+                    continue
                 known = self.lengths_m.get(kind)
                 beside = low <= 1 or high >= flat.shape[0] - 1  # cut along its length by the image's edge
                 if whole and known and not beside:
@@ -201,7 +213,16 @@ class TapeStationDetector:
                     else (low, start, high - low, length)
                 )
                 u, v = (along, across) if kind == "horizontal" else (across, along)
-                strip = Strip(kind, u, v, float(length), thickness, start <= 1, end >= limit - 1, box)
+                strip = Strip(  # in pixels of the image as it was given
+                    kind,
+                    u * shrink,
+                    v * shrink,
+                    float(length * shrink),
+                    thickness * shrink,
+                    start <= 1,
+                    end >= limit - 1,
+                    tuple(int(side * shrink) for side in box),
+                )
                 if best is None or length * thickness > best[0]:
                     best = (length * thickness, strip)
             if best is not None:
