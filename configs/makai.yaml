@@ -166,6 +166,8 @@ manipulation:
     device: null              # null = as trained; "mps" on the Macs
     after: [home]             # poses played once the policy is done (carry pose)
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
+    gripper_held_below: 20.0  # commanded closed, a hand still wider than this did not close: empty (15 Nov:
+                              # 33.9 read as "holding" a sock left on the floor; held objects read 3 to 12)
     n_action_steps: null      # actions played before looking at the cameras again (null = as trained; 30 = every second)
     # One model per kind of object. When set, `policy_path` above is only used for other kinds.
     # The two reference models of 15 Nov (docs/REGISTRY.md), to replace by the best ones once

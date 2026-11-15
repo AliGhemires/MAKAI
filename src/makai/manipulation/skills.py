@@ -148,6 +148,7 @@ class PolicyPick:
         gripper_open_above: float | None = None,
         n_action_steps: int | None = None,
         revision: str | None = None,
+        gripper_held_below: float | None = None,
     ):
         """`n_action_steps`: how many predicted actions to play before looking at the cameras
         again (the model plans `chunk_size` ahead; default: as trained). Lower is more reactive.
@@ -158,6 +159,9 @@ class PolicyPick:
 
         self.task, self.duration_s, self.fps, self.after = task, duration_s, fps, after
         self.gripper_open_above = gripper_open_above
+        # Commanded closed, a hand still wider than this is not holding: it did not close at all
+        # (15 Nov: 33.9 read as "holding" a sock that stayed on the floor; held objects read <= 12).
+        self.gripper_held_below = gripper_held_below
         self.policy = get_policy_class(policy_type).from_pretrained(policy_path, revision=revision)
         if device:
             self.policy.to(device)
@@ -253,6 +257,8 @@ class PolicyPick:
         if self.gripper_open_above is None or gripper is None:
             return True
         held = gripper > self.gripper_open_above  # a gripper that could not close is holding something
+        if self.gripper_held_below is not None and gripper >= self.gripper_held_below:
+            held = False  # ... unless it did not close at all
         log.info(
             "grasp check: gripper %s when the policy stopped, %.1f in the carry pose -> %s (threshold %.1f)",
             "?" if self.gripper_at_stop is None else f"{self.gripper_at_stop:.1f}",
@@ -293,6 +299,7 @@ def build_pick_skill(cfg: dict):
             after,
             entry.get("gripper_open_above", pick.get("gripper_open_above")),
             entry.get("n_action_steps", pick.get("n_action_steps")),
+            gripper_held_below=entry.get("gripper_held_below", pick.get("gripper_held_below")),
         )
 
     # One policy per kind of object when `policies` lists them; `policy_path` is then the

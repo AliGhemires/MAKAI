@@ -181,9 +181,21 @@ def test_the_grasp_is_checked_once_the_hand_is_closed_in_the_carry_pose():
 
     skill = PolicyPick.__new__(PolicyPick)  # the grasp check only: no model to load
     skill.gripper_open_above, skill.gripper_at_stop, skill.after = 4.3, 20.0, CarryPose()
+    skill.gripper_held_below = 20.0
     assert skill._holding(Hand(holding=False), settle_s=0.0) is False and skill.last_gripper == 2.4
     assert skill._holding(Hand(holding=True), settle_s=0.0) is True and skill.last_gripper == 6.0
-    skill.after = None  # no carry pose: the reading when the policy stopped is all there is
+
+    class StuckOpen(CarryPose):  # 15 Nov: commanded closed, the hand stayed at 33.9, the sock on the floor
+        def play(self, robot):
+            robot.gripper = 33.9
+
+    skill.after = StuckOpen()
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is False
+    skill.after = CarryPose()
+    skill.after, skill.gripper_held_below = (
+        None,
+        None,
+    )  # no carry pose: the reading at the stop is all there is
     assert skill._holding(Hand(holding=False), settle_s=0.0) is True
 
 

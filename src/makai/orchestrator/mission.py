@@ -63,10 +63,16 @@ class MissionConfig:
     # going on odometry alone ("last mile"), for at most `blind_timeout_s`.
     blind_below_x_m: float = 0.45
     blind_timeout_s: float = 8.0
+    # Closer than this the object starts leaving the image and is easily taken for something
+    # else: what it is seen as there counts only if it was never seen farther (15 Nov).
+    classify_near_m: float = 0.55
     approach_timeout_s: float = 40.0
     track_gate_m: float = 0.30  # max jump between two sightings of the same object
     station_exclusion_m: float = 0.30  # ignore objects this close to a station (already delivered)
     max_pick_attempts: int = 3  # per object, from each side tried
+    # After a missed grasp, back away to `orbit_radius_m` before trying again: the camera sees
+    # the object again, where the grasp may have pushed it (it is out of view at the grasp pose).
+    retry_from_afar: bool = True
     # Then go round the object and try from another side: so many degrees round it from where the
     # first approach came (counter-clockwise seen from above), one after the other. () = give up.
     orbit_deg: tuple[float, ...] = (40.0, -40.0)
@@ -143,6 +149,9 @@ class Mission:
         self._pick_attempts = 0
         self._drop_attempts = 0
         self._failed_objects = 0
+        # What the tracked object was seen as, summed confidence: from afar, and up close.
+        self._votes: dict[Category, float] = {}
+        self._votes_near: dict[Category, float] = {}
         self._reset_orbit()
 
     # ------------------------------------------------------------------ loop
@@ -206,19 +215,29 @@ class Mission:
     def _on_approach(self, scene: Scene, now: float) -> None:
         match = self._match_track(scene)
         if match is not None:
-            if match.confidence <= 0.0 < self._track.confidence:
-                # A guess from far away must not overwrite what we already know it is.
-                match = replace(match, category=self._track.category, confidence=self._track.confidence)
+            if match.confidence > 0.0:
+                votes = self._votes_near if match.distance_m < self.cfg.classify_near_m else self._votes
+                votes[match.category] = votes.get(match.category, 0.0) + match.confidence
+            if self._votes or self._votes_near:
+                # What it is: what it was seen as most, all along the approach, not in the last
+                # image. Up close the object leaves the image and a sock was taken for a can (15
+                # Nov): what is seen that close counts only if it was never seen farther. A guess
+                # from far away (no confidence) does not vote.
+                votes = self._votes or self._votes_near
+                kind = max(votes, key=votes.__getitem__)
+                if match.category is not kind:
+                    match = replace(match, category=kind, label=kind.value)
+                match = replace(match, confidence=max(match.confidence, self._track.confidence))
             self._track, self._last_seen = match, now
         elif (
-            not self._orbit_left  # going round it: followed on odometry, it shows again at the end
+            not self._orbit_active  # backing away, going round it: followed on odometry, it shows again
             and not self._in_blind_zone(now)
             and now - self._last_seen > self.cfg.lost_timeout_s
         ):
             self.robot.stop()
             self._go(State.SEARCH, now, "lost the object")
             return
-        if self._orbit_left:
+        if self._orbit_active:
             self.robot.drive(self._orbit_step(now))
             return
         # Seen, too close to be seen, or out of sight for a moment (the edge of the image, a
@@ -245,11 +264,13 @@ class Mission:
         if self._pick_attempts < self.cfg.max_pick_attempts:
             self._object_ctrl.reset()
             self._last_seen = now
+            if self.cfg.retry_from_afar:  # back away until it is in view again: the grasp may have pushed it
+                self._orbit_active, self._orbit_left, self._orbit_circling = True, 0.0, False
             self._go(State.APPROACH, now, f"pick failed, retry {self._pick_attempts}")
             return
         if self._orbits < len(self.cfg.orbit_deg):
             side = float(self.cfg.orbit_deg[self._orbits])
-            self._orbit_left = math.radians(side) - self._orbit_offset
+            self._orbit_active, self._orbit_left = True, math.radians(side) - self._orbit_offset
             self._orbit_offset = math.radians(side)
             self._orbits += 1
             self._orbit_circling, self._pick_attempts = False, 0
@@ -357,12 +378,17 @@ class Mission:
         if target is None:
             return False
         self._track, self._last_seen, self._pick_attempts = target, now, 0
+        self._votes, self._votes_near = {}, {}
+        if target.confidence > 0.0:
+            near = target.distance_m < self.cfg.classify_near_m
+            (self._votes_near if near else self._votes)[target.category] = target.confidence
         self._reset_orbit()
         self._object_ctrl.reset()
         self._go(State.APPROACH, now, f"found {target.label} at {target.distance_m:.2f} m")
         return True
 
     def _reset_orbit(self) -> None:
+        self._orbit_active = False  # backing away from the object, then going round it if `_orbit_left`
         self._orbits = 0  # sides tried after the first one, for the current object
         self._orbit_offset = 0.0  # how far round the object the current side is (rad)
         self._orbit_left = 0.0  # still to go round it (rad, the base's turn); 0 = not going round
@@ -384,7 +410,8 @@ class Mission:
         left = self._orbit_left - math.remainder(self.odometry.yaw - self._orbit_yaw, math.tau)
         self._orbit_yaw = self.odometry.yaw
         if left * self._orbit_left <= 0.0 or abs(left) < math.radians(1.0) or too_long:
-            self._orbit_left, self._orbit_circling = 0.0, False
+            # Done (or only backing away was asked): the approach takes over, on what it sees.
+            self._orbit_active, self._orbit_left, self._orbit_circling = False, 0.0, False
             self._object_ctrl.reset()
             self._last_seen = now
             return BaseVelocity()
