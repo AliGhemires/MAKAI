@@ -70,6 +70,9 @@ class StationSighting:
     category: Category  # the kind of object this station accepts
     x_m: float
     y_m: float
+    # Direction the station's front (its marker) faces, in the base frame, when it can be
+    # measured. Looking straight at the station from in front of it gives pi.
+    facing_rad: float | None = None
 
     @property
     def distance_m(self) -> float:

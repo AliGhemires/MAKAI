@@ -42,6 +42,8 @@ class SimWorld:
     time: float = 0.0
     carrying: SimObject | None = None
     delivered: list[tuple[SimObject, Category]] = field(default_factory=list)
+    # Direction each station's front faces, in the world frame (optional).
+    station_facing: dict[Category, float] = field(default_factory=dict)
 
     def to_base(self, wx: float, wy: float) -> tuple[float, float]:
         dx, dy = wx - self.x, wy - self.y
@@ -57,10 +59,15 @@ class SimWorld:
 
 
 class SimRobot(Robot):
-    """Each `get_observation()` advances the world by one control period."""
+    """Each `get_observation()` advances the world by one control period.
 
-    def __init__(self, world: SimWorld, dt: float = 1 / 30):
-        self.world, self.dt = world, dt
+    `slip` and `yaw_drift` make the wheels lie, as real omni wheels do: the base really moves
+    `slip` less than it reports, and turns `yaw_drift` rad for every metre driven. The
+    observation still reports the commanded velocity, so the odometry drifts.
+    """
+
+    def __init__(self, world: SimWorld, dt: float = 1 / 30, slip: float = 0.0, yaw_drift: float = 0.0):
+        self.world, self.dt, self.slip, self.yaw_drift = world, dt, slip, yaw_drift
         self._vel = BaseVelocity()
         self.arm: dict[str, float] = {}
 
@@ -69,7 +76,10 @@ class SimRobot(Robot):
     def disconnect(self) -> None: ...
 
     def get_observation(self) -> Observation:
-        self.world.advance(self._vel, self.dt)
+        v = self._vel
+        keep = 1.0 - self.slip
+        real = BaseVelocity(v.x * keep, v.y * keep, v.theta * keep + self.yaw_drift * math.hypot(v.x, v.y))
+        self.world.advance(real, self.dt)
         return Observation(stamp=self.world.time, arm=dict(self.arm), base_velocity=self._vel)
 
     def drive(self, velocity: BaseVelocity) -> None:
@@ -123,7 +133,10 @@ class SimPerception:
         stations = {}
         for category, (sx, sy) in self.world.stations.items():
             if (pos := self._see(sx, sy, self.station_max_range)) is not None:
-                stations[category] = StationSighting(category, pos[0], pos[1])
+                facing = self.world.station_facing.get(category)
+                if facing is not None:
+                    facing = (facing - self.world.yaw + math.pi) % (2 * math.pi) - math.pi
+                stations[category] = StationSighting(category, pos[0], pos[1], facing)
         return Scene(tuple(targets), stations)
 
 
@@ -178,4 +191,19 @@ def demo_world() -> SimWorld:
             SimObject(-1.0, -0.6, Category.TRASH, "paper ball"),
         ],
         stations={Category.CLOTHING: (1.8, 1.6), Category.TRASH: (1.8, -1.6)},
+    )
+
+
+def sweep_world() -> SimWorld:
+    """A room to sweep: the robot starts at the origin, the bin just behind it, a laundry
+    basket beside the bin, and a few things on the floor."""
+    return SimWorld(
+        objects=[
+            SimObject(1.45, -0.55, Category.TRASH, "can"),
+            SimObject(1.10, 0.10, Category.CLOTHING, "sock"),
+            SimObject(1.90, 0.60, Category.TRASH, "can"),
+            SimObject(0.75, 0.65, Category.CLOTHING, "sock"),
+        ],
+        stations={Category.TRASH: (-0.35, 0.0), Category.CLOTHING: (-0.35, 0.7)},
+        station_facing={Category.TRASH: 0.0, Category.CLOTHING: 0.0},
     )

@@ -22,8 +22,9 @@ fmt:             ## fix style automatically
 	uv run --no-sync ruff check --fix .
 	uv run --no-sync ruff format .
 
-sim:             ## run the whole mission in the 2D simulator (no robot)
+sim:             ## run both missions in the 2D simulator (no robot): looking around, then sweeping in lanes
 	uv run --no-sync makai-mission --sim
+	uv run --no-sync makai-mission --sim --sweep
 
 mission:         ## run the mission on the real robot (host must run on the Pi)
 	uv run --no-sync makai-mission
