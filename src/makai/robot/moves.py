@@ -245,6 +245,9 @@ class GoToTuning:
     max_lin_m_s: float = 0.15
     max_ang_rad_s: float = 0.6
     accel_m_s2: float = 0.3  # gentle start
+    # Gentle start in turns too, as the precise moves (120 deg/s2): without it the base jumped to
+    # full turning speed and the wheels slipped by a different amount at every turn (15 Nov).
+    ang_accel_rad_s2: float = math.radians(120.0)
     gain_lin: float = 1.2  # 1/s: near the end, speed = gain x distance left
     gain_ang: float = 1.5
     creep_m_s: float = 0.015  # slowest useful speed; the servos stall well below
@@ -268,7 +271,7 @@ class GoTo:
         self.deadline = now + 10.0 + 3 * distance / tuning.max_lin_m_s + 3 * turn / tuning.max_ang_rad_s
         self.phase, self.status = "moving", ""
         self.error: tuple[float, float] = (distance, turn)  # metres, radians: what is left
-        self._speed, self._last_t, self._settle_until = 0.0, now, None
+        self._speed, self._turn_rate, self._last_t, self._settle_until = 0.0, 0.0, now, None
 
     def cancel(self, status: str) -> None:
         self.status = self.status or status
@@ -301,10 +304,16 @@ class GoTo:
             ahead = math.cos(yaw) * dx + math.sin(yaw) * dy
             left = -math.sin(yaw) * dx + math.cos(yaw) * dy
             vx, vy = ahead / distance * self._speed, left / distance * self._speed
-        w = 0.0
+        wanted = 0.0
         if abs(turn) > t.tol_rad:
-            w = math.copysign(max(t.creep_rad_s, min(t.max_ang_rad_s, t.gain_ang * abs(turn))), turn)
-        return BaseVelocity(vx, vy, w)
+            wanted = math.copysign(max(t.creep_rad_s, min(t.max_ang_rad_s, t.gain_ang * abs(turn))), turn)
+        # Speed up gently, slow down at once (the gain already brakes near the end).
+        if wanted * self._turn_rate < 0:
+            self._turn_rate = 0.0
+        if abs(wanted) > abs(self._turn_rate):
+            wanted = math.copysign(min(abs(wanted), abs(self._turn_rate) + t.ang_accel_rad_s2 * dt), wanted)
+        self._turn_rate = wanted
+        return BaseVelocity(vx, vy, wanted)
 
 
 MOVE_NAMES = {

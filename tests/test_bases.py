@@ -154,8 +154,17 @@ def test_an_exact_rectangle_closes_on_itself():
     assert abs(math.degrees(wrap_angle(robot.true[2]))) < 2.0
 
 
+def test_turns_start_gently():
+    """No jump to full turning speed: the wheels slipped by a different amount at every turn."""
+    goto = GoTo("move", (0.0, 0.0, math.pi / 2), (0.0, 0.0, 0.0), now=0.0)
+    rates = [goto.step((0.0, 0.0, 0.0), i * DT).theta for i in range(1, 30)]
+    limit = goto.tuning.ang_accel_rad_s2
+    assert all(rate <= limit * i * DT + 1e-9 for i, rate in enumerate(rates, start=1))
+    assert rates[-1] == pytest.approx(goto.tuning.max_ang_rad_s)  # and it does reach full speed
+
+
 def test_goto_turns_the_short_way_and_times_out():
     goto = GoTo("1", (0.0, 0.0, math.radians(350)), (0.0, 0.0, 0.0), now=0.0)
-    assert goto.step((0.0, 0.0, 0.0), 0.0).theta < 0  # 350 deg is -10 deg: turn right
+    assert goto.step((0.0, 0.0, 0.0), DT).theta < 0  # 350 deg is -10 deg: turn right
     goto = GoTo("1", (1.0, 0.0, 0.0), (0.0, 0.0, 0.0), now=0.0)
     assert goto.step((0.0, 0.0, 0.0), 1000.0) is None and goto.status == "timeout"
