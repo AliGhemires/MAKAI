@@ -13,6 +13,8 @@ Endpoints, all JSON:
 - `POST /api/reset_odometry`;
 - `POST /api/move` {client, axis, target, speed}: precise move (m or rad, m/s or rad/s),
   `POST /api/move/cancel` (also stops a go-to-base);
+- `POST /api/goto` {client, dx, dy, dyaw}: move by that much (m ahead, m left, rad
+  counter-clockwise), closed on odometry both ways: an overshoot is driven back;
 - `POST /api/base/set` {base: "1"|"2"}: remember where the robot is, heading included;
   `POST /api/base/go` {client, base}: drive back there on odometry;
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
@@ -35,6 +37,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
 import threading
 import time
@@ -221,6 +224,22 @@ class DriveHandler(BaseHTTPRequestHandler):
                 return
         elif path == "/api/move/cancel":
             self.server.loop.cancel_move()
+        elif path == "/api/goto":
+            if client is None:
+                self._error(HTTPStatus.BAD_REQUEST, "missing client id")
+                return
+            try:
+                dx, dy, dyaw = (float(body.get(key) or 0.0) for key in ("dx", "dy", "dyaw"))
+                if (
+                    not all(math.isfinite(v) for v in (dx, dy, dyaw))
+                    or max(abs(dx), abs(dy)) > 3.0
+                    or abs(dyaw) > 2 * math.pi
+                ):
+                    raise ValueError("dx and dy at most 3 m, dyaw at most one turn")
+                self.server.loop.go_relative(client, dx, dy, dyaw, time.monotonic())
+            except (TypeError, ValueError) as exc:
+                self._error(HTTPStatus.CONFLICT, str(exc))
+                return
         elif path in ("/api/base/set", "/api/base/go"):
             name = str(body.get("base", ""))
             if name not in BASE_NAMES:

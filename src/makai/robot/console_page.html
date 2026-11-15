@@ -620,9 +620,8 @@ async function turn(sign) {
   if (!zone || !zone.tracing || !zone.pose) return;
   try {
     notice = null;
-    await api("POST", "/api/move", {
-      client: CLIENT, axis: "theta", target: quarterTurn(zone.pose.yaw, sign), speed: 0.8, label: "zone trace: quarter turn",
-    });
+    // An exact move: closed both ways on odometry, so an overshoot is turned back.
+    await api("POST", "/api/goto", { client: CLIENT, dyaw: quarterTurn(zone.pose.yaw, sign) });
   } catch (error) { notice = { text: error.message, until: performance.now() + 7000 }; renderText(); }
 }
 $("#turn-left").addEventListener("click", () => turn(+1));
@@ -653,8 +652,10 @@ function renderBases() {
   for (const b of document.querySelectorAll("[data-move]")) b.disabled = running || moving;
   $("#move-cancel").hidden = !moving;
   const g = s.goto, last = s.last_goto;
-  $("#bases-note").textContent = g ? `to base ${g.base}: ${g.left_cm} cm, ${g.left_deg}° left`
-    : last ? `base ${last.base}: ${last.status}, odometry says ${last.left_cm} cm / ${last.left_deg}° left. Check the floor mark.` : "";
+  const what = (name) => (name === "move" ? "move" : `base ${name}`);
+  $("#bases-note").textContent = g ? `${what(g.base)}: ${g.left_cm} cm, ${g.left_deg}° left`
+    : last ? `${what(last.base)}: ${last.status}, odometry says ${last.left_cm} cm / ${last.left_deg}° left`
+      + (last.base === "move" ? "" : ". Check the floor mark.") : "";
 }
 async function robotAct(path, body) {
   try { notice = null; robotState = await api("POST", path, { client: CLIENT, ...body }); renderBases(); }
@@ -668,7 +669,8 @@ for (const b of document.querySelectorAll("[data-move]")) {
   b.addEventListener("click", () => {
     const [axis, sign] = b.dataset.move.split(",");
     const cm = Math.min(300, Math.max(1, Number($("#move-cm").value) || 0));
-    robotAct("/api/move", { axis, target: Number(sign) * cm / 100, speed: 0.12, label: "console: precise move" });
+    // Exact: closed both ways on odometry (the Measure tab's moves never back up, on purpose).
+    robotAct("/api/goto", { [axis === "x" ? "dx" : "dy"]: Number(sign) * cm / 100 });
   });
 }
 $("#move-cancel").addEventListener("click", () => robotAct("/api/move/cancel", {}));
