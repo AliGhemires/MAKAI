@@ -190,22 +190,32 @@ class CameraCapture(threading.Thread):
 class SimCamera(threading.Thread):
     """A synthetic camera for the simulator: the floor grid seen from the robot, moving with it."""
 
-    def __init__(self, hub: CameraHub, name: str, pose: Callable[[], tuple[float, float, float]], fps=10.0):
+    def __init__(
+        self,
+        hub: CameraHub,
+        name: str,
+        pose: Callable[[], tuple[float, float, float]],
+        fps=10.0,
+        things: Callable[[], list[tuple[float, float, tuple[int, int, int], float]]] | None = None,
+    ):
         super().__init__(name=f"sim-camera-{name}", daemon=True)
         self.hub, self.cam, self.pose, self.period = hub, name, pose, 1.0 / fps
+        self.things = things  # what lies on the simulated floor: (x, y, colour BGR, radius in metres)
         self._stop = threading.Event()
         hub.expect(name, "simulation")
 
     def run(self) -> None:
         while not self._stop.wait(self.period):
-            self.hub.put(self.cam, render_floor(self.cam, *self.pose()), rgb=False)
+            things = self.things() if self.things is not None else ()
+            self.hub.put(self.cam, render_floor(self.cam, *self.pose(), things=things), rgb=False)
 
     def stop(self) -> None:
         self._stop.set()
 
 
-def render_floor(name: str, x: float, y: float, yaw: float, width=640, height=480) -> np.ndarray:
-    """A 25 cm floor grid in perspective, as a camera 25 cm above the floor would see it."""
+def render_floor(name: str, x: float, y: float, yaw: float, width=640, height=480, things=()) -> np.ndarray:
+    """A 25 cm floor grid in perspective, as a camera 25 cm above the floor would see it, with
+    the `things` that lie on it: (x, y, colour BGR, radius in metres), drawn as discs."""
     img = np.full((height, width, 3), (58, 52, 46), np.uint8)
     horizon, focal, cam_height = int(height * 0.32), 520.0, 0.25 if name != "wrist" else 0.12
     img[:horizon] = (92, 80, 70)
@@ -232,6 +242,24 @@ def render_floor(name: str, x: float, y: float, yaw: float, width=640, height=48
     origin = project(0.0, 0.0)
     if origin:
         cv2.circle(img, origin, 6, (60, 180, 250), -1, cv2.LINE_AA)
+    for wx, wy, colour, radius in sorted(
+        things, key=lambda t: -math.hypot(t[0] - x, t[1] - y)
+    ):  # far ones first
+        centre = project(wx, wy)
+        forward = c * (wx - x) + s * (wy - y)
+        if centre and forward > 0.15:
+            half = max(2, int(focal * radius / forward))
+            cv2.ellipse(
+                img,
+                (centre[0], centre[1] - half // 3),
+                (half, max(2, half // 2)),
+                0,
+                0,
+                360,
+                colour,
+                -1,
+                cv2.LINE_AA,
+            )
     cv2.putText(
         img, f"{name} (simulated)", (14, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (235, 235, 235), 1, cv2.LINE_AA
     )

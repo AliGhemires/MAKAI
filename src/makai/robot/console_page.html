@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>MAKAI console</title>
+<style>
+  /* Same tokens as the driving page (drive_page.html), so the two look like one product. */
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --sunken: #eceef2; --line: #d8dce3; --text: #15181d; --muted: #5f6876;
+    --accent: #2f6df6; --accent-soft: rgba(47, 109, 246, .13); --covered: rgba(47, 109, 246, .12);
+    --ok: #16a34a; --warn: #d97706; --danger: #dc2626; --danger-press: #b91c1c;
+    --radius: 14px; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0f13; --panel: #141920; --sunken: #0f1318; --line: #252d38; --text: #e6eaf0; --muted: #8a94a3;
+      --accent: #6b93ff; --accent-soft: rgba(107, 147, 255, .16); --covered: rgba(107, 147, 255, .13);
+      --ok: #22c55e; --warn: #f59e0b; --danger: #ef4444; --danger-press: #dc2626; --shadow: none;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 18px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 760; letter-spacing: .09em; white-space: nowrap; }
+  .brand span { font-weight: 500; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+  nav { display: flex; gap: 4px; padding: 3px; background: var(--sunken); border: 1px solid var(--line); border-radius: 11px; }
+  nav button { border: 0; background: none; padding: 6px 16px; border-radius: 8px; color: var(--muted); font-weight: 600; }
+  nav button.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .chips { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--line); color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--danger); }
+  .dot.live { background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .estop { border: 0; border-radius: 10px; background: var(--danger); color: #fff; font-weight: 750; letter-spacing: .08em; padding: 8px 20px; }
+  .estop:active { background: var(--danger-press); }
+
+  /* Views */
+  main { flex: 1; min-height: 0; position: relative; }
+  .view { position: absolute; inset: 0; padding: 14px 18px; overflow: auto; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  h2 { font-size: 12px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0; }
+
+  /* Mission */
+  #view-mission { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(330px, 1fr); gap: 14px; overflow: hidden; }
+  .map-card { display: flex; flex-direction: column; min-height: 0; }
+  .map-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px 8px; }
+  .map-head .where { margin-left: auto; color: var(--muted); font-size: 13px; }
+  #map { flex: 1; min-height: 0; width: 100%; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px 12px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .key { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .key.area { border-radius: 3px; background: var(--covered); border: 1px solid var(--accent); }
+  .key.path { width: 18px; height: 0; border-radius: 0; border-top: 2px solid var(--accent); }
+  .key.lane { width: 18px; height: 0; border-radius: 0; border-top: 2px dashed var(--muted); }
+  .key.ring { background: none; border: 2px solid var(--muted); }
+  .side { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; }
+  .status { padding: 14px 16px; }
+  .status .top { display: flex; align-items: center; gap: 10px; }
+  .status .badge { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); margin-left: auto; }
+  .state { font-size: 27px; font-weight: 720; letter-spacing: -.01em; margin: 6px 0 2px; }
+  .why { color: var(--muted); min-height: 1.4em; }
+  .pipe { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
+  .pipe div { text-align: center; font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 6px 0 5px; border-radius: 8px; background: var(--sunken); border: 1px solid var(--line); }
+  .pipe div.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { flex: 1; border: 1px solid var(--line); background: var(--sunken); border-radius: 10px; padding: 9px 12px; font-weight: 650; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile { padding: 11px 12px; }
+  .tile .v { font-size: 23px; font-weight: 700; line-height: 1.15; margin-top: 3px; }
+  .tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+  .tile .s { color: var(--muted); font-size: 12px; margin-top: 1px; min-height: 1.3em; }
+  .cams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+  .cam { position: relative; aspect-ratio: 4 / 3; background: var(--sunken); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .cam img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam span { position: absolute; left: 8px; top: 7px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; }
+  .log { padding: 12px 16px; flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+  .log ol { list-style: none; margin: 8px 0 0; padding: 0; overflow: auto; flex: 1; font-size: 13px; }
+  .log li { display: grid; grid-template-columns: 54px 132px 1fr; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .log li:first-child { border-top: 0; }
+  .log .t { color: var(--muted); } .log .r { color: var(--muted); }
+
+  /* Drive, cameras, data */
+  #view-drive { padding: 0; } #view-drive iframe { width: 100%; height: 100%; border: 0; display: block; }
+  #view-cameras { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-content: start; }
+  #view-cameras figure { margin: 0; padding: 12px; }
+  #view-cameras figcaption { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  #view-cameras img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--sunken); display: block; }
+  #view-data { display: flex; flex-direction: column; gap: 14px; }
+  .runs { padding: 14px 16px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 13.5px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); }
+  td.n, th.n { text-align: right; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+  .gallery figure { margin: 0; padding: 12px; cursor: zoom-in; }
+  .gallery img { width: 100%; border-radius: 8px; display: block; background: #fff; }
+  .gallery figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); padding: 30px; text-align: center; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; background: rgba(8, 10, 14, .72); display: grid; place-items: center; z-index: 10; }
+  .overlay .box { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 26px 34px; text-align: center; max-width: 440px; }
+  .overlay h3 { margin: 0 0 6px; font-size: 20px; letter-spacing: .06em; color: var(--danger); }
+  .overlay p { color: var(--muted); margin: 0 0 16px; }
+  .zoom { cursor: zoom-out; } .zoom img { max-width: 94vw; max-height: 92vh; border-radius: 10px; background: #fff; }
+
+  @media (max-width: 1000px) {
+    #view-mission { grid-template-columns: 1fr; overflow: auto; }
+    .map-card { min-height: 56vh; }
+    #view-cameras { grid-template-columns: 1fr; }
+    .chips .chip.opt { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">MAKAI<span>console</span></div>
+  <nav id="tabs">
+    <button data-tab="mission" class="on">Mission</button><button data-tab="drive">Drive</button><button data-tab="cameras">Cameras</button><button data-tab="data">Data</button>
+  </nav>
+  <div class="chips">
+    <span class="chip opt" id="chip-link"><span class="dot" id="dot-link"></span><span id="txt-link">connecting</span></span>
+    <span class="chip opt num" id="chip-batt" hidden>battery <b id="txt-batt">–</b></span>
+    <button class="estop" id="estop" title="Emergency stop (Space)">STOP</button>
+  </div>
+</header>
+
+<main>
+  <section class="view" id="view-mission">
+    <div class="card map-card">
+      <div class="map-head">
+        <h2>Room map</h2>
+        <span class="where num" id="where"></span>
+      </div>
+      <canvas id="map" aria-label="Map of the room: covered floor, path of the robot, objects and stations"></canvas>
+      <div class="legend">
+        <span><i class="key area"></i>floor seen by the camera</span>
+        <span><i class="key path"></i>path driven</span>
+        <span><i class="key lane"></i>lanes planned</span>
+        <span><i class="key" style="background: var(--s1)"></i>clothing</span>
+        <span><i class="key" style="background: var(--s2)"></i>trash</span>
+        <span><i class="key ring"></i>given up</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card status">
+        <div class="top"><h2>Mission</h2><span class="badge"><span class="dot" id="dot-status"></span><span id="txt-status">idle</span></span></div>
+        <div class="state" id="state">Ready</div>
+        <div class="why" id="why">Robot in front of the bin, facing the room.</div>
+        <div class="pipe" id="pipe">
+          <div data-step="sweep">Sweep</div><div data-step="approach">Approach</div><div data-step="pick">Pick</div><div data-step="dock">Dock</div><div data-step="drop">Drop</div><div data-step="resume">Resume</div><div data-step="home">Home</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="start">Start mission</button>
+          <button class="btn" id="stop" disabled>Stop</button>
+          <button class="btn" id="reset" hidden>Reset room</button>
+        </div>
+      </div>
+
+      <div class="tiles">
+        <div class="card tile"><h2>Delivered</h2><div class="v num" id="t-delivered">0</div><div class="s" id="t-delivered-s"></div></div>
+        <div class="card tile"><h2>Floor seen</h2><div class="v num" id="t-coverage">0<small>%</small></div><div class="s" id="t-coverage-s"></div></div>
+        <div class="card tile"><h2>Time</h2><div class="v num" id="t-time">0:00</div><div class="s" id="t-time-s"></div></div>
+        <div class="card tile"><h2>Drift fixed</h2><div class="v num" id="t-fix">–</div><div class="s" id="t-fix-s">on the marker</div></div>
+      </div>
+
+      <div class="card cams">
+        <div class="cam"><img id="thumb-front" alt="Front camera"><span>front</span></div>
+        <div class="cam"><img id="thumb-wrist" alt="Wrist camera"><span>wrist</span></div>
+      </div>
+
+      <div class="card log">
+        <h2>What happened</h2>
+        <ol id="events"><li><span class="t"></span><span></span><span class="r">Nothing yet.</span></li></ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-drive" hidden><iframe id="drive-frame" title="Driving page"></iframe></section>
+
+  <section class="view" id="view-cameras" hidden>
+    <figure class="card"><figcaption><h2>Front camera</h2><span class="num" id="cam-front-info"></span></figcaption><img id="big-front" alt="Front camera, live"></figure>
+    <figure class="card"><figcaption><h2>Wrist camera</h2><span class="num" id="cam-wrist-info"></span></figcaption><img id="big-wrist" alt="Wrist camera, live"></figure>
+  </section>
+
+  <section class="view" id="view-data" hidden>
+    <div class="card runs">
+      <h2>Training runs</h2>
+      <table><thead><tr><th>Run</th><th class="n">Steps</th><th class="n">Training error, start</th><th class="n">Training error, now</th><th class="n">Seconds per step</th></tr></thead><tbody id="runs"></tbody></table>
+    </div>
+    <div class="gallery" id="gallery"></div>
+  </section>
+</main>
+
+<div class="overlay" id="estop-overlay" hidden>
+  <div class="box"><h3>EMERGENCY STOP</h3><p>The wheels are stopped and the mission is ended. They stay stopped until you resume.</p><button class="btn primary" id="resume">Resume</button></div>
+</div>
+<div class="overlay zoom" id="zoom" hidden><img id="zoom-img" alt=""></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const CLIENT = "console-" + Math.random().toString(36).slice(2, 8);
+let tab = "mission";
+let mission = null;          // latest GET /api/mission
+let poseA = null, poseB = null;  // the two latest poses, to draw the robot moving smoothly between them
+let colors = {};
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method, cache: "no-store",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* not JSON */ }
+  if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+  return data;
+}
+
+function readColors() {
+  const css = getComputedStyle(document.documentElement);
+  for (const name of ["bg", "panel", "sunken", "line", "text", "muted", "accent", "accent-soft", "covered", "s1", "s2", "ok", "danger"])
+    colors[name] = css.getPropertyValue("--" + name).trim();
+}
+readColors();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+
+// ---- Tabs ------------------------------------------------------------------------------------
+function setTab(name) {
+  tab = name;
+  for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === name);
+  for (const v of document.querySelectorAll(".view")) v.hidden = v.id !== "view-" + name;
+  // The driving page sends stick positions while it is open: load it only when it is looked at.
+  const frame = $("#drive-frame");
+  if (name === "drive") { if (!frame.src.endsWith("/drive")) frame.src = "/drive"; }
+  else if (frame.src && !frame.src.endsWith("about:blank")) frame.src = "about:blank";
+  // A live stream holds a connection: open the two big ones only on their tab.
+  for (const cam of ["front", "wrist"]) {
+    const img = $("#big-" + cam);
+    if (name === "cameras") img.src = `/api/camera/${cam}.mjpg?fps=15`;
+    else { img.removeAttribute("src"); }
+  }
+  if (name === "data") loadData();
+  try { history.replaceState(null, "", name === "mission" ? location.pathname : "#" + name); } catch (_) { /* file:// */ }
+}
+$("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) setTab(e.target.dataset.tab); });
+
+// ---- Mission: text ---------------------------------------------------------------------------
+const STATES = {
+  sweep: ["Sweeping", "Following the lanes, looking for things on the floor.", "sweep"],
+  approach: ["Approaching", "Object in sight: placing the robot in front of it with the camera.", "approach"],
+  pick: ["Picking", "The policy trained for this object drives the arm.", "pick"],
+  dock: ["To the station", "Carrying the object back, on odometry.", "dock"],
+  go_to_station: ["Aligning", "On the station's marker: this also corrects the position.", "dock"],
+  drop: ["Dropping", "Releasing the object into the station.", "drop"],
+  back_off: ["Backing off", "Clearing the station.", "drop"],
+  resume: ["Resuming", "Going back to the exact spot where the sweep was left.", "resume"],
+  return_home: ["Going home", "Room swept: back in front of the bin.", "home"],
+  done: ["Done", "Room swept. The robot is back in front of the bin.", "home"],
+  failed: ["Failed", "", ""],
+};
+const STATUS = { idle: ["", "idle"], loading: ["warn", "loading"], running: ["live", "running"], done: ["ok", "done"], failed: ["bad", "failed"], stopped: ["warn", "stopped"] };
+
+function clock(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function renderText() {
+  if (!mission) return;
+  const m = mission.mission, status = mission.status;
+  const [dot, word] = STATUS[status] || ["", status];
+  $("#dot-status").className = "dot " + dot;
+  $("#txt-status").textContent = word + (mission.simulated ? " · simulation" : "");
+  $("#reset").hidden = !mission.simulated;
+  $("#start").disabled = status === "running" || status === "loading";
+  $("#stop").disabled = !(status === "running" || status === "loading");
+  $("#reset").disabled = status === "running" || status === "loading";
+  $("#start").textContent = status === "loading" ? "Loading…" : m && status !== "running" ? "Start again" : "Start mission";
+
+  let title = "Ready", why = "Robot in front of the bin, facing the room.", step = "";
+  if (status === "loading") { title = "Loading"; why = "Loading the detector and the policies."; }
+  else if (status === "failed" && !m) { title = "Could not start"; why = mission.message; }
+  else if (m) {
+    [title, why, step] = STATES[m.state] || [m.state, "", ""];
+    if (m.state === "sweep") why = `Lane ${Math.min(Math.floor(m.waypoint / 2) + 1, m.waypoints.length / 2)} of ${m.waypoints.length / 2}, looking for things on the floor.`;
+    if (m.state === "approach" && m.target) why = "Object in sight: placing the robot in front of it with the camera.";
+    if (m.carrying && (m.state === "dock" || m.state === "go_to_station")) why = `Carrying ${m.carrying} to its station.` + (m.state === "go_to_station" ? " Aligning on the marker." : "");
+    if (status === "stopped") { title = "Stopped"; why = (mission.message || "stopped") + ". Before starting again, put the robot back in front of the bin, facing the room."; step = ""; }
+    if (status === "failed") { title = "Failed"; why = mission.message; step = ""; }
+  }
+  $("#state").textContent = title;
+  $("#why").textContent = why;
+  for (const d of document.querySelectorAll("#pipe div")) d.classList.toggle("on", d.dataset.step === step && status === "running");
+
+  const stats = m ? m.stats : { delivered: 0, picked: 0, failed_picks: 0, abandoned: 0 };
+  $("#t-delivered").textContent = stats.delivered;
+  $("#t-delivered-s").textContent = m ? `${stats.picked} picked` + (stats.failed_picks ? `, ${stats.failed_picks} retried` : "") + (stats.abandoned ? `, ${stats.abandoned} given up` : "") : "";
+  $("#t-coverage").innerHTML = `${m ? Math.round(100 * m.map.coverage) : 0}<small>%</small>`;
+  $("#t-coverage-s").textContent = m ? `lane ${Math.min(Math.floor(m.waypoint / 2) + 1, m.waypoints.length / 2)} of ${m.waypoints.length / 2}` : "";
+  $("#t-time").textContent = clock(m ? m.time_s : 0);
+  $("#t-time-s").textContent = m && m.carrying ? `carrying ${m.carrying}` : "";
+  $("#t-fix").innerHTML = m && m.anchor_m !== null ? `${(100 * m.anchor_m).toFixed(1)}<small>cm</small>` : "–";
+  $("#where").textContent = m ? `x ${m.pose.x.toFixed(2)} m · y ${m.pose.y.toFixed(2)} m · ${Math.round(((m.pose.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180)}°` : "";
+
+  const events = m ? m.events.slice(-12).reverse() : [];
+  $("#events").innerHTML = events.length
+    ? events.map((e) => `<li><span class="t num">${clock(e.t)}</span><b>${e.to.replace(/_/g, " ")}</b><span class="r">${e.why}</span></li>`).join("")
+    : '<li><span class="t"></span><span></span><span class="r">Nothing yet.</span></li>';
+}
+
+// ---- Mission: the map ------------------------------------------------------------------------
+const canvas = $("#map"), ctx = canvas.getContext("2d");
+function lerpAngle(a, b, t) { let d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; }
+
+function drawMap(now) {
+  requestAnimationFrame(drawMap);
+  if (tab !== "mission" || !mission) return;
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const m = mission.mission, plan = mission.plan, room = plan.room;
+  const stations = Object.entries(m ? m.stations : plan.stations);
+  // World window: the room, the stations behind the origin, a little air around.
+  const minX = Math.min(-0.2, ...stations.map(([, s]) => s.x - 0.24)), maxX = room.length_m + 0.08;
+  const half = Math.max(room.width_m / 2, ...stations.map(([, s]) => Math.abs(s.y) + 0.2)) + 0.14;
+  const scale = Math.min((w - 28) / (maxX - minX), (h - 24) / (2 * half));
+  const left = (w - scale * (maxX - minX)) / 2, top = (h - scale * 2 * half) / 2;
+  const X = (x) => left + (x - minX) * scale, Y = (y) => top + (half - y) * scale;
+
+  // Floor the camera has looked at.
+  if (m) {
+    const cell = m.map.cell_m, px = cell * scale + 0.6;
+    ctx.fillStyle = colors.covered;
+    m.map.covered.forEach((row, r) => {
+      const y = -room.width_m / 2 + (r + 1) * cell;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== "1") continue;
+        let end = c; while (end + 1 < row.length && row[end + 1] === "1") end++;
+        ctx.fillRect(X(c * cell), Y(y), (end - c + 1) * cell * scale + 0.6, px);
+        c = end;
+      }
+    });
+  }
+  // Grid every half metre, then the walls.
+  ctx.strokeStyle = colors.line; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0.5; x < room.length_m; x += 0.5) { ctx.moveTo(X(x), Y(room.width_m / 2)); ctx.lineTo(X(x), Y(-room.width_m / 2)); }
+  for (let y = -Math.floor(room.width_m) / 2; y < room.width_m / 2; y += 0.5) { if (Math.abs(y) < room.width_m / 2) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(room.length_m), Y(y)); } }
+  ctx.stroke();
+  ctx.strokeStyle = colors.text; ctx.lineWidth = 1.5;
+  ctx.strokeRect(X(0), Y(room.width_m / 2), room.length_m * scale, room.width_m * scale);
+
+  // Lanes planned (dashed), and the part already driven (solid, faint).
+  const way = m ? m.waypoints : plan.waypoints;
+  ctx.setLineDash([5, 5]); ctx.strokeStyle = colors.muted; ctx.lineWidth = 1.25; ctx.beginPath();
+  way.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Path driven.
+  if (m && m.map.trail.length > 1) {
+    ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.beginPath();
+    m.map.trail.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.stroke();
+  }
+
+  // Stations and their docks.
+  ctx.font = "600 11.5px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const delivered = m ? m.map.objects.filter((o) => o.status === "delivered") : [];
+  for (const [name, s] of stations) {
+    const size = 0.3 * scale;
+    ctx.fillStyle = colors.sunken; ctx.strokeStyle = colors.text; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(X(s.x) - size / 2, Y(s.y) - size / 2, size, size, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = colors.muted;
+    ctx.fillText(name === "trash" ? "bin" : name === "clothing" ? "basket" : name, X(s.x), Y(s.y) - size / 2 - 9);
+    ctx.strokeStyle = colors.muted; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(s.dock_x), Y(s.dock_y), 4, 0, 2 * Math.PI); ctx.stroke();
+    // What it already holds, as dots inside the box.
+    delivered.filter((o) => Math.hypot(o.x - s.x, o.y - s.y) < 0.05).forEach((o, i) => {
+      ctx.fillStyle = o.category === "trash" ? colors.s2 : colors.s1;
+      ctx.beginPath(); ctx.arc(X(s.x) - size / 4 + (i % 3) * size / 4, Y(s.y) - size / 5 + Math.floor(i / 3) * size / 4, 4, 0, 2 * Math.PI); ctx.fill();
+    });
+  }
+
+  // Where the sweep was left, while the robot is away from it.
+  if (m && m.resume) {
+    const [x, y] = m.resume;
+    ctx.strokeStyle = colors.accent; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(X(x), Y(y), 9, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = colors.muted; ctx.fillText("resume here", X(x), Y(y) - 18);
+  }
+
+  // The robot, moving smoothly between the two latest poses.
+  let pose = m ? m.pose : { x: 0, y: 0, yaw: 0 };
+  if (poseA && poseB && poseB.at > poseA.at) {
+    const t = Math.min(1.3, (now - poseB.at) / (poseB.at - poseA.at));
+    pose = { x: poseB.x + (poseB.x - poseA.x) * t, y: poseB.y + (poseB.y - poseA.y) * t, yaw: lerpAngle(poseA.yaw, poseB.yaw, 1 + t) };
+  }
+
+  // Objects on the floor.
+  if (m) for (const o of m.map.objects) {
+    if (o.status === "delivered" || o.status === "picked") continue;
+    const color = o.category === "trash" ? colors.s2 : colors.s1;
+    if (o.status === "abandoned") {
+      ctx.strokeStyle = colors.muted; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(o.x), Y(o.y), 6, 0, 2 * Math.PI); ctx.stroke();
+      continue;
+    }
+    if (o.status === "approaching") {
+      const beat = 0.5 + 0.5 * Math.sin(now / 180);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.35 + 0.5 * beat;
+      ctx.beginPath(); ctx.arc(X(o.x), Y(o.y), 11 + 3 * beat, 0, 2 * Math.PI); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = color; ctx.lineWidth = 1.25;
+      ctx.beginPath(); ctx.moveTo(X(pose.x), Y(pose.y)); ctx.lineTo(X(o.x), Y(o.y)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle = color; ctx.strokeStyle = colors.panel; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(X(o.x), Y(o.y), 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  }
+
+  // The robot: what its camera sees, its body, its heading, what it carries.
+  const rx = X(pose.x), ry = Y(pose.y), body = 0.125 * scale;
+  ctx.fillStyle = colors["accent-soft"];
+  ctx.beginPath(); ctx.moveTo(rx, ry); ctx.arc(rx, ry, 1.5 * scale, -pose.yaw - 0.48, -pose.yaw + 0.48); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = colors.panel; ctx.strokeStyle = colors.text; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(rx, ry, body, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = colors.accent;
+  ctx.beginPath();
+  ctx.moveTo(rx + Math.cos(-pose.yaw) * body * 0.95, ry + Math.sin(-pose.yaw) * body * 0.95);
+  ctx.lineTo(rx + Math.cos(-pose.yaw + 2.5) * body * 0.6, ry + Math.sin(-pose.yaw + 2.5) * body * 0.6);
+  ctx.lineTo(rx + Math.cos(-pose.yaw - 2.5) * body * 0.6, ry + Math.sin(-pose.yaw - 2.5) * body * 0.6);
+  ctx.closePath(); ctx.fill();
+  if (m && m.carrying) {
+    ctx.fillStyle = m.carrying === "trash" ? colors.s2 : colors.s1; ctx.strokeStyle = colors.panel; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(rx + Math.cos(-pose.yaw) * (body + 7), ry + Math.sin(-pose.yaw) * (body + 7), 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  }
+
+  // Scale: half a metre.
+  ctx.strokeStyle = colors.muted; ctx.lineWidth = 2; ctx.beginPath();
+  const barY = Math.min(h - 10, Y(-room.width_m / 2) + 16);
+  ctx.moveTo(X(room.length_m) - 0.5 * scale, barY); ctx.lineTo(X(room.length_m), barY); ctx.stroke();
+  ctx.fillStyle = colors.muted; ctx.textAlign = "right"; ctx.fillText("0.5 m", X(room.length_m) - 0.5 * scale - 8, barY);
+}
+requestAnimationFrame(drawMap);
+
+// ---- Mission: buttons and polling --------------------------------------------------------------
+function take(data) {
+  mission = data;
+  const m = data.mission;
+  if (m) {
+    const at = performance.now();
+    if (!poseB || Math.hypot(m.pose.x - poseB.x, m.pose.y - poseB.y) > 0.5) poseA = poseB = { ...m.pose, at };  // a jump (reset): no glide
+    else if (m.pose.x !== poseB.x || m.pose.y !== poseB.y || m.pose.yaw !== poseB.yaw || at - poseB.at > 400) { poseA = poseB; poseB = { ...m.pose, at }; }
+  } else poseA = poseB = null;
+  renderText();
+}
+async function act(action) {
+  try { take(await api("POST", "/api/mission/" + action, { client: CLIENT })); }
+  catch (error) { $("#why").textContent = error.message; }
+}
+$("#start").addEventListener("click", () => act("start"));
+$("#stop").addEventListener("click", () => act("stop"));
+$("#reset").addEventListener("click", () => act("reset"));
+
+async function pollMission() {
+  try { if (tab === "mission" || (mission && mission.status === "running")) take(await api("GET", "/api/mission")); }
+  catch (_) { /* shown by the link chip */ }
+  setTimeout(pollMission, 110);
+}
+pollMission();
+
+// ---- Robot state: link, battery, emergency stop -----------------------------------------------
+async function pollRobot() {
+  try {
+    const s = await api("GET", "/api/state");
+    $("#dot-link").className = "dot " + (s.error ? "warn" : "ok");
+    $("#txt-link").textContent = s.error ? s.error.slice(0, 60) : (window.INFO ? INFO.link : "connected");
+    $("#chip-batt").hidden = s.battery_v === null;
+    if (s.battery_v !== null) $("#txt-batt").textContent = s.battery_v.toFixed(1) + " V";
+    $("#estop-overlay").hidden = !s.estop;
+    for (const cam of ["front", "wrist"]) {
+      const c = s.cameras && s.cameras[cam];
+      $(`#cam-${cam}-info`).textContent = c && c.fps ? `${c.fps.toFixed(0)} images/s` : "";
+    }
+  } catch (_) {
+    $("#dot-link").className = "dot bad"; $("#txt-link").textContent = "no answer from the robot's page";
+  }
+  setTimeout(pollRobot, 1000);
+}
+api("GET", "/api/info").then((info) => { window.INFO = info; }).catch(() => {}).finally(pollRobot);
+
+$("#estop").addEventListener("click", () => api("POST", "/api/stop", { client: CLIENT }).then(() => { $("#estop-overlay").hidden = false; }).catch(() => {}));
+$("#resume").addEventListener("click", () => api("POST", "/api/release", { client: CLIENT }).then(() => { $("#estop-overlay").hidden = true; }).catch(() => {}));
+addEventListener("keydown", (e) => { if (e.code === "Space" && !e.repeat && tab !== "drive") { e.preventDefault(); $("#estop").click(); } });
+
+// ---- Small cameras on the Mission tab: one image after the other, no open stream --------------
+function thumb(cam) {
+  const img = $("#thumb-" + cam);
+  const next = () => {
+    if (tab !== "mission" || document.hidden) return setTimeout(next, 400);
+    const probe = new Image();
+    probe.onload = () => { img.src = probe.src; setTimeout(next, 140); };
+    probe.onerror = () => setTimeout(next, 1000);
+    probe.src = `/api/camera/${cam}.jpg?t=${Date.now()}`;
+  };
+  next();
+}
+thumb("front"); thumb("wrist");
+
+// ---- Data ----------------------------------------------------------------------------------------
+let dataLoaded = false;
+async function loadData() {
+  if (dataLoaded) return;
+  try {
+    const data = await api("GET", "/api/figures");
+    dataLoaded = true;
+    $("#runs").innerHTML = data.runs.length
+      ? data.runs.map((r) => `<tr><td>${r.run}</td><td class="n num">${r.steps.toLocaleString("en").replace(/,/g, " ")}</td><td class="n num">${r.first.toFixed(3)}</td><td class="n num">${r.last.toFixed(3)}</td><td class="n num">${r.seconds_per_step ? (+r.seconds_per_step).toFixed(3) : "–"}</td></tr>`).join("")
+      : '<tr><td colspan="5" class="empty">No run logged yet: uv run python scripts/hpc/run_logs.py</td></tr>';
+    $("#gallery").innerHTML = data.images.map((name) => `<figure class="card" data-src="/figures/${name}"><img loading="lazy" src="/figures/${name}" alt=""><figcaption>${name.replace(/\.[a-z]+$/, "").replace(/_/g, " ")}</figcaption></figure>`).join("")
+      || '<div class="empty">No figure in docs/figures yet.</div>';
+  } catch (error) { $("#gallery").innerHTML = `<div class="empty">${error.message}</div>`; }
+}
+$("#gallery").addEventListener("click", (e) => {
+  const figure = e.target.closest("figure");
+  if (figure) { $("#zoom-img").src = figure.dataset.src; $("#zoom").hidden = false; }
+});
+$("#zoom").addEventListener("click", () => { $("#zoom").hidden = true; });
+
+const wanted = location.hash.slice(1);
+if (["drive", "cameras", "data"].includes(wanted)) setTab(wanted);
+</script>
+</body>
+</html>

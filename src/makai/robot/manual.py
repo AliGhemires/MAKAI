@@ -279,6 +279,9 @@ class DriveLoop:
         self._move: PreciseMove | None = None
         self._cancel: str | None = None
         self.last_trial: dict[str, Any] | None = None
+        # Set while a mission drives (robot/autopilot.py): called every tick instead of the
+        # sticks. The mission observes and commands the robot itself, on this loop's thread.
+        self.autopilot: Callable[[], None] | None = None
 
     def start(self) -> None:
         self._stop.clear()
@@ -293,6 +296,13 @@ class DriveLoop:
         self.robot.stop()
 
     def tick(self, now: float) -> None:
+        autopilot = self.autopilot
+        if autopilot is not None:
+            self._attempt("mission", autopilot)
+            if now >= self._next_voltage and hasattr(self.robot, "battery_voltage"):
+                self._next_voltage = now + self.voltage_period
+                self._attempt("motors", self._read_health)
+            return
         if self._encoders is not False:
             self._attempt("encoders", self._read_encoders)
         if now >= self._next_telemetry:
@@ -401,8 +411,16 @@ class DriveLoop:
                 self.odometry = WheelOdometry(self.geometry)
             self.odometry.update(positions)
 
+    def note_command(self, velocity: BaseVelocity) -> None:
+        """What a mission just sent to the wheels, for the page."""
+        with self._lock:
+            self.commanded = velocity
+
     def _observe(self) -> None:
-        obs = self.robot.get_observation()
+        self.observed(self.robot.get_observation())
+
+    def observed(self, obs) -> None:
+        """Take in one observation: images for the page, speeds, arm, odometry."""
         if self.cameras is not None:
             for name, image in obs.images.items():
                 self.cameras.put(name, image, rgb=True)  # LeRobot images are RGB

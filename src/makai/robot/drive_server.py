@@ -15,6 +15,12 @@ Endpoints, all JSON:
   `POST /api/move/cancel`;
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
   `GET /api/camera/<name>.jpg` (`?download=1` to save it): the latest image;
+- `GET /api/mission`: the sweeping mission (status, map, events) and its plan;
+  `POST /api/mission/start`, `/stop`, `/reset` (simulation only). Only with a mission runner,
+  i.e. through the host or in simulation: then `/` is the console (`console_page.html`) and
+  the driving page moves to `/drive`;
+- `GET /api/figures`: the figures of docs/figures and the training runs they come from;
+  `GET /figures/<name>`: one of them;
 - `GET /api/trials`, `GET /api/trials.csv`: the moves and their statistics;
   `POST /api/trials/measure` {id, tape}: what the tape says (cm, or degrees for turns);
   `POST /api/trials/clear`.
@@ -24,6 +30,7 @@ Refused requests answer {"error": "why"} with a 4xx status.
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 import threading
@@ -39,8 +46,30 @@ from makai.robot.manual import DriveLoop, ManualDriver
 from makai.robot.moves import MoveSpec
 
 PAGE = Path(__file__).with_name("drive_page.html")
+CONSOLE = Path(__file__).with_name("console_page.html")
+FIGURES = Path(__file__).resolve().parents[3] / "docs" / "figures"
 MAX_BODY_BYTES = 4096
 CAMERA_PATH = re.compile(r"^/api/camera/([A-Za-z0-9_-]+)\.(mjpg|jpg)$")
+FIGURE_PATH = re.compile(r"^/figures/([A-Za-z0-9_-]+\.(png|jpg|csv))$")
+FIGURE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "csv": "text/csv; charset=utf-8"}
+
+
+def figures() -> dict[str, Any]:
+    """The figures kept for the slides, and one line per training run found in their csv files."""
+    if not FIGURES.is_dir():
+        return {"images": [], "runs": []}
+    images = sorted(p.name for p in FIGURES.iterdir() if p.suffix in (".png", ".jpg"))
+    runs: dict[str, dict[str, Any]] = {}
+    for path in sorted(FIGURES.glob("training_curves*.csv")):
+        for row in csv.DictReader(path.open(newline="")):
+            try:
+                step, error = int(row["step"]), float(row["l1_loss"])
+            except (KeyError, ValueError):
+                continue
+            run = runs.setdefault(row["run"], {"run": row["run"], "first": error, "steps": 0, "last": error})
+            if step >= run["steps"]:
+                run["steps"], run["last"], run["seconds_per_step"] = step, error, row.get("step_s")
+    return {"images": images, "runs": list(runs.values())}
 
 
 class DriveServer(ThreadingHTTPServer):
@@ -53,9 +82,11 @@ class DriveServer(ThreadingHTTPServer):
         driver: ManualDriver,
         info: dict[str, Any],
         cameras: CameraHub | None = None,
+        runner: Any = None,
     ):
         super().__init__(address, DriveHandler)
         self.loop, self.driver, self.info = loop, driver, info
+        self.runner = runner  # robot/autopilot.py MissionRunner, or None (wired mode on the Pi)
         self.cameras = cameras if cameras is not None else CameraHub()
         self.closing = threading.Event()  # ends the camera streams
         PAGE.read_bytes()  # fail now, not when the first phone connects
@@ -67,6 +98,10 @@ class DriveServer(ThreadingHTTPServer):
     @property
     def page(self) -> bytes:
         return PAGE.read_bytes()  # read each time: edit the page, reload the browser
+
+    @property
+    def console(self) -> bytes:
+        return CONSOLE.read_bytes()
 
     def state(self, client: str | None) -> dict[str, Any]:
         return {**self.loop.snapshot(), **self.driver.status(client, time.monotonic())}
@@ -89,7 +124,28 @@ class DriveHandler(BaseHTTPRequestHandler):
             else:
                 self._snapshot(name, query)
         elif path in ("/", "/index.html"):
+            page = self.server.console if self.server.runner is not None else self.server.page
+            self._send(HTTPStatus.OK, page, "text/html; charset=utf-8")
+        elif path == "/drive":
             self._send(HTTPStatus.OK, self.server.page, "text/html; charset=utf-8")
+        elif path == "/console":
+            self._send(HTTPStatus.OK, self.server.console, "text/html; charset=utf-8")
+        elif path == "/api/mission":
+            if self.server.runner is None:
+                self._error(
+                    HTTPStatus.NOT_FOUND, "No mission here: start the page through the host, or with --sim."
+                )
+            else:
+                self._json(self.server.runner.snapshot())
+        elif path == "/api/figures":
+            self._json(figures())
+        elif FIGURE_PATH.match(path):
+            name, kind = FIGURE_PATH.match(path).groups()
+            file = FIGURES / name
+            if file.is_file():
+                self._send(HTTPStatus.OK, file.read_bytes(), FIGURE_TYPES[kind])
+            else:
+                self._send(HTTPStatus.NOT_FOUND, b"no such figure", "text/plain")
         elif path == "/api/info":
             self._json(self.server.info)
         elif path == "/api/state":
@@ -116,6 +172,9 @@ class DriveHandler(BaseHTTPRequestHandler):
             return
         client = str(body.get("client", ""))[:64] or None
         driver = self.server.driver
+        if path.startswith("/api/mission/"):
+            self._mission(path.removeprefix("/api/mission/"))
+            return
         if path == "/api/drive":
             if client is None:
                 self._send(HTTPStatus.BAD_REQUEST, b"missing client id", "text/plain")
@@ -172,6 +231,20 @@ class DriveHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
             return
         self._json(self.server.state(client))
+
+    def _mission(self, action: str) -> None:
+        runner = self.server.runner
+        if runner is None or action not in ("start", "stop", "reset"):
+            self._error(
+                HTTPStatus.NOT_FOUND, "No mission here: start the page through the host, or with --sim."
+            )
+            return
+        try:
+            getattr(runner, action)()
+        except ValueError as exc:
+            self._error(HTTPStatus.CONFLICT, str(exc))
+            return
+        self._json(runner.snapshot())
 
     def _snapshot(self, name: str, query: dict[str, list[str]]) -> None:
         frame = self.server.cameras.jpeg(name)

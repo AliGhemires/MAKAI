@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -140,17 +141,29 @@ class SimPerception:
         return Scene(tuple(targets), stations)
 
 
+def _wait(robot: Robot, seconds: float) -> None:
+    """Let simulated time pass, in real time, while a skill 'works' (the base is stopped)."""
+    dt = getattr(robot, "dt", 1 / 30)
+    for _ in range(int(seconds / dt)):
+        robot.get_observation()
+        time.sleep(dt)
+
+
 class SimPick:
     """Succeeds with probability `success_rate` if an object sits at the pre-grasp pose."""
 
-    def __init__(self, world: SimWorld, goal_xy=(0.22, 0.0), reach_tol_m=0.03, success_rate=1.0, seed=0):
+    def __init__(
+        self, world: SimWorld, goal_xy=(0.22, 0.0), reach_tol_m=0.03, success_rate=1.0, seed=0, duration_s=0.0
+    ):
         self.world, self.goal, self.tol, self.rate = world, goal_xy, reach_tol_m, success_rate
         self.rng = random.Random(seed)
         self.attempts = 0
+        self.duration_s = duration_s  # a real grasp takes seconds: lets the control page show it
 
     def run(self, robot: Robot, target: Target) -> bool:
         self.attempts += 1
         robot.stop()
+        _wait(robot, self.duration_s)
         for obj in self.world.objects:
             bx, by = self.world.to_base(obj.x, obj.y)
             if math.hypot(bx - self.goal[0], by - self.goal[1]) <= self.tol:
@@ -165,11 +178,12 @@ class SimPick:
 class SimDrop:
     """Succeeds if the robot holds something and a station is within reach in front of it."""
 
-    def __init__(self, world: SimWorld, reach_m: float = 0.45):
-        self.world, self.reach = world, reach_m
+    def __init__(self, world: SimWorld, reach_m: float = 0.45, duration_s: float = 0.0):
+        self.world, self.reach, self.duration_s = world, reach_m, duration_s
 
     def run(self, robot: Robot, category: Category) -> bool:
         robot.stop()
+        _wait(robot, self.duration_s)
         if self.world.carrying is None:
             return False
         for station_category, (sx, sy) in self.world.stations.items():

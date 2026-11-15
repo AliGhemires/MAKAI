@@ -81,6 +81,10 @@ class SweepConfig:
     camera_range_m: float = 1.5  # how far the camera is trusted, for the coverage map
 
 
+# The states in which the robot has left its route and will come back to it.
+AWAY = (State.APPROACH, State.PICK, State.DOCK, State.GO_TO_STATION, State.DROP, State.BACK_OFF, State.RESUME)
+
+
 def _wrap(angle: float) -> float:
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
@@ -419,9 +423,7 @@ class SweepMission(Mission):
                 for key, s in self.sweep.stations.items()
             },
             "target": target,
-            "resume": [round(v, 3) for v in self._resume]
-            if self._resume and self.state is not State.SWEEP
-            else None,
+            "resume": [round(v, 3) for v in self._resume] if self._resume and self.state in AWAY else None,
             "anchor_m": None if self.last_correction_m is None else round(self.last_correction_m, 3),
             "events": [
                 {"t": round(e.stamp, 1), "from": e.previous.value, "to": e.state.value, "why": e.reason}
