@@ -114,6 +114,9 @@ elle.
     - Une bande ne dit pas dans quel sens le carton est tourné : le cap n'est pas relu de
       près, seulement corrigé à distance par la direction de la bande. Poser les cartons bien
       face au robot.
+    - Pas d'autre scotch gris en vue si possible. Celui collé au sol est écarté par le
+      détecteur (vu de biais, il n'a ni la forme ni la hauteur d'une bande sur un carton),
+      mais l'enlever reste plus sûr.
     - Avec des marqueurs ArUco imprimés à la place : `perception.stations.kind: aruco`
       (`make markers`, n° 0 pour le linge, n° 1 pour les déchets).
 - [ ] **Le robot** : à la pose de départ de la disposition choisie.
