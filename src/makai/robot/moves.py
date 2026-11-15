@@ -262,6 +262,7 @@ class GoTo:
 
     def __init__(self, name: str, goal: Pose, start: Pose, now: float, tuning: GoToTuning = GoToTuning()):
         self.name, self.goal, self.tuning = name, goal, tuning
+        self.start, self.started = start, now
         distance = math.hypot(goal[0] - start[0], goal[1] - start[1])
         turn = abs(wrap_angle(goal[2] - start[2]))
         self.deadline = now + 10.0 + 3 * distance / tuning.max_lin_m_s + 3 * turn / tuning.max_ang_rad_s

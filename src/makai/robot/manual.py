@@ -544,10 +544,45 @@ class DriveLoop:
             result["left_cm"],
             result["left_deg"],
         )
+        self._log_goto(goto, pose, now)
         self.driver.reset_motion()  # the sticks start again from standstill
         with self._lock:
             self._goto, self.last_goto = None, result
         return BaseVelocity()
+
+    def _log_goto(self, goto: GoTo, pose: Pose, now: float) -> None:
+        """One line per exact move or go-to-base, next to the precise moves' log: where it
+        started, where it aimed, where odometry says it ended, and the true pose in simulation."""
+        if self.trials.path is None:
+            return
+        path = self.trials.path.with_name("goto_log.csv")
+
+        def three(p: Pose | None) -> list[str]:
+            return ["", "", ""] if p is None else [f"{p[0]:.4f}", f"{p[1]:.4f}", f"{math.degrees(p[2]):.2f}"]
+
+        truth = tuple(self.truth()) if self.truth is not None else None
+        cells = [
+            time.strftime("%Y-%m-%d %H:%M:%S"),
+            goto.name,
+            goto.status,
+            *three(goto.start),
+            *three(goto.goal),
+            *three(pose),
+            *three(truth),
+            f"{now - goto.started:.2f}",
+        ]
+        try:
+            new = not path.exists()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                if new:
+                    f.write(
+                        "time,name,status,start_x,start_y,start_yaw_deg,goal_x,goal_y,goal_yaw_deg,"
+                        "end_x,end_y,end_yaw_deg,true_x,true_y,true_yaw_deg,duration_s\n"
+                    )
+                f.write(",".join(cells) + "\n")
+        except OSError as error:  # a full disk must not stop the robot
+            log.warning("could not log the move: %s", error)
 
     def _finish_move(self, move: PreciseMove) -> None:
         truth = None
