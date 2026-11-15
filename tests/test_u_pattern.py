@@ -74,6 +74,20 @@ def test_nothing_without_the_pattern():
     assert UPatternDetector(CAMERA, Category.TRASH, U_M).detect(image) == {}
 
 
+def test_a_u_far_above_the_floor_is_not_the_bin():
+    """A window pane framed by dark bars, behind the zone, can look like a U: its size puts it
+    close, its place in the image puts it high up. Stuck 10 cm above the floor, it is the bin."""
+    detector = UPatternDetector(CAMERA, Category.TRASH, U_M)
+    image = scene(None)
+    z0, half, bar = 0.24, U_M / 2, 0.010  # the same U, 26 cm up (near the top of the image), 1.2 m ahead
+    paint(image, 1.2, 0.035, -0.035, z0 - 0.012, z0 + 0.058, DARK)
+    paint(image, 1.2, half, half - bar, z0, z0 + U_M, WHITE)
+    paint(image, 1.2, -half + bar, -half, z0, z0 + U_M, WHITE)
+    paint(image, 1.2, half, -half, z0, z0 + bar, WHITE)
+    assert detector.find(image) and detector.detect(image) == {}
+    assert detector.detect(scene(1.2))[Category.TRASH].x_m == pytest.approx(1.2, rel=0.06)
+
+
 def test_on_the_robots_camera():
     """15 Nov: the box 1.2 m ahead (measured on the floor), the pattern on it; then the same
     boxes 0.9 m ahead without it."""

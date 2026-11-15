@@ -340,8 +340,16 @@ class UPatternDetector:
     direction steady to 0.01 degree.
     """
 
-    def __init__(self, camera: CameraModel, category: Category, u_width_m: float = 0.044):
+    def __init__(
+        self,
+        camera: CameraModel,
+        category: Category,
+        u_width_m: float = 0.044,
+        min_height_m: float = 0.03,  # height of the U's centre above the floor: stuck at about 10 cm
+        max_height_m: float = 0.20,
+    ):
         self.camera, self.category, self.u_width_m = camera, category, u_width_m
+        self.min_height_m, self.max_height_m = min_height_m, max_height_m
 
     def find(self, image_rgb: np.ndarray) -> list[tuple[float, float, float, float]]:
         """Candidates in the image: (u, v, width_px, contrast), best first."""
@@ -373,21 +381,27 @@ class UPatternDetector:
             found.append((x + w / 2.0, y + h / 2.0, float(w), light - float(np.median(ring))))
         return sorted(found, key=lambda c: -c[3])
 
-    def detect(self, image_rgb: np.ndarray) -> dict[Category, StationSighting]:
-        found = self.find(image_rgb)
-        if not found:
-            return {}
-        u, v, width, _ = found[0]
-        scale = image_rgb.shape[1] / self.camera.width
+    def locate(self, u: float, v: float, width: float, image_width: int) -> np.ndarray:
+        """Where a U of that width at that pixel is, in the base frame (x, y, height above floor)."""
+        scale = image_width / self.camera.width
         u, v, width = u / scale, v / scale, width / scale
         f = self.camera.focal_px
         depth = f * self.u_width_m / width
-        point = self.camera.camera_to_base(
+        return self.camera.camera_to_base(
             np.array(
                 [(u - self.camera.width / 2.0) * depth / f, (v - self.camera.height / 2.0) * depth / f, depth]
             )
         )
-        return {self.category: StationSighting(self.category, float(point[0]), float(point[1]))}
+
+    def detect(self, image_rgb: np.ndarray) -> dict[Category, StationSighting]:
+        # The first U at the height it is stuck at. Its size tells how far it is, so where it sits
+        # in the image tells how high: a window pane framed by dark bars, seen behind the zone,
+        # comes out a metre up (15 Nov: the robot steered on such a U, then lost it).
+        for u, v, width, _ in self.find(image_rgb):
+            point = self.locate(u, v, width, image_rgb.shape[1])
+            if self.min_height_m <= point[2] <= self.max_height_m:
+                return {self.category: StationSighting(self.category, float(point[0]), float(point[1]))}
+        return {}
 
 
 def build_station_detector(perception_cfg: Mapping, camera: CameraModel):
