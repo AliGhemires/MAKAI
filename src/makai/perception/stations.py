@@ -89,7 +89,10 @@ class TapeStationDetector:
       have something else beside them;
     - at the right height. The camera is low: a strip stuck across a box sits at about the
       height of the lens, so it shows near the horizon line of the image wherever the box is,
-      and an upright strip crosses that line. Things lying on the floor stay below it.
+      and an upright strip crosses that line. Things lying on the floor stay below it;
+    - of the right shape. Tape stuck on the floor is seen at a grazing angle: a piece lying
+      across looks far thinner than its length allows, and a line running away from the robot
+      climbs towards the horizon without ever passing it.
 
     How far it is: a thing of known size looks smaller the further it is. The length of the
     strip is used while the image shows it whole, the width of the tape once it does not
@@ -108,12 +111,14 @@ class TapeStationDetector:
         min_flank_chroma: float = 19.0,  # ... from which it is cardboard, or floor
         min_area_px: int = 150,
         horizon_margin_px: float | None = 45.0,  # None: no check of the height (a hand-held photo)
+        min_height_m: float = 0.03,  # a strip lower than this above the floor is tape on the floor
     ):
         self.camera, self.kinds = camera, dict(kinds)
         self.tape_width_m, self.lengths_m = tape_width_m, dict(lengths_m or {})
         self.widths_m = dict(widths_m or {})
         self.grey_chroma, self.max_chroma, self.min_flank_chroma = grey_chroma, max_chroma, min_flank_chroma
         self.min_area_px, self.horizon_margin_px = min_area_px, horizon_margin_px
+        self.min_height_m = min_height_m
 
     # ------------------------------------------------------------------ in the image
     def find_strips(self, image_rgb: np.ndarray) -> list[Strip]:
@@ -167,12 +172,28 @@ class TapeStationDetector:
                 length = end - start
                 if length / thickness < (3.5 if kind == "horizontal" else 2.2):
                     continue
-                if margin is not None:
-                    if kind == "horizontal" and across > horizon + margin:
-                        continue  # too low in the image: something lying on the floor
-                    if kind == "vertical" and (start > horizon + margin or end < horizon - margin):
-                        continue  # an upright strip crosses the height of the lens
                 limit = flat.shape[1]
+                whole = start > 1 and end < limit - 1
+                known = self.lengths_m.get(kind)
+                beside = low <= 1 or high >= flat.shape[0] - 1  # cut along its length by the image's edge
+                if whole and known and not beside:
+                    # Seen whole, a strip keeps its proportions. Tape on the floor does not.
+                    expected = known / (self.widths_m.get(kind) or self.tape_width_m)
+                    if not 0.45 * expected <= length / thickness <= 2.3 * expected:
+                        continue
+                if margin is not None:
+                    scale = height / self.camera.height
+                    if kind == "horizontal":
+                        if across > horizon + margin:
+                            continue  # too low in the image: something lying on the floor
+                        # How high above the floor a strip at that distance and that row would be.
+                        focal = self.camera.focal_px * scale
+                        size = known if (whole and known) else (self.widths_m.get(kind) or self.tape_width_m)
+                        depth = focal * size / (length if (whole and known) else thickness)
+                        if self.camera.height_m - (across - horizon) * depth / focal < self.min_height_m:
+                            continue
+                    elif start > horizon - 6 * scale or end < horizon + 6 * scale:
+                        continue  # an upright strip starts on the floor and passes the height of the lens
                 along = (start + end) / 2.0
                 box = (
                     (start, low, length, high - low)

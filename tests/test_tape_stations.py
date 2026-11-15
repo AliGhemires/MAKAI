@@ -113,6 +113,41 @@ def test_what_is_not_a_strip_on_a_box_is_ignored():
     assert detector().detect(bare) == {}
 
 
+def floor_tape(image: np.ndarray, x0: float, x1: float, y0: float, y1: float) -> None:
+    """A piece of grey tape stuck on the floor, from x0 to x1 ahead and y0 to y1 to the left."""
+    corners = [(x0, y0, 0.0), (x0, y1, 0.0), (x1, y1, 0.0), (x1, y0, 0.0)]
+    pixels = np.array([CAMERA.project(np.array(c)) for c in corners]).round().astype(np.int32)
+    cv2.fillPoly(image, [pixels], TAPE)
+
+
+@pytest.mark.parametrize("ahead", [0.6, 1.0, 1.4, 1.8, 2.2, 3.0, 4.0])
+def test_tape_stuck_across_the_floor_is_not_a_box(ahead):
+    image = scene()
+    floor_tape(image, ahead, ahead + TAPE_M, -0.3, 0.3)  # beyond 1.8 m it used to pass for the clothing box
+    assert detector().detect(image) == {}
+    floor_tape(image, ahead, ahead + TAPE_M, -LONG_M / 2, LONG_M / 2)  # even as long as the real strip
+    assert detector().detect(image) == {}
+
+
+@pytest.mark.parametrize("far", [1.0, 2.0, 3.0, 5.0])
+def test_a_line_of_tape_running_away_on_the_floor_is_not_a_box(far):
+    image = scene()
+    floor_tape(image, 0.5, far, -TAPE_M / 2, TAPE_M / 2)  # to 3 m it used to pass for the trash box
+    assert detector().detect(image) == {}
+
+
+def test_tape_on_the_floor_in_front_of_the_boxes_changes_nothing():
+    image = scene()
+    box(image, 2.0, 0.32, "horizontal")
+    box(image, 2.0, -0.30, "vertical")
+    floor_tape(image, 1.2, 1.2 + TAPE_M, -0.4, 0.4)
+    floor_tape(image, 0.5, 1.6, 0.05, 0.05 + TAPE_M)
+    seen = detector().detect(image)
+    assert seen[Category.CLOTHING].x_m == pytest.approx(2.0, rel=0.06)
+    assert seen[Category.TRASH].x_m == pytest.approx(2.0, rel=0.06)
+    assert seen[Category.CLOTHING].y_m == pytest.approx(0.32, abs=0.04)
+
+
 def test_only_the_configured_strips_are_stations():
     image = scene()
     box(image, 1.5, 0.3, "horizontal")
