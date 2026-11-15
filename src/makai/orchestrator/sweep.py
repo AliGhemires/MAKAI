@@ -451,14 +451,16 @@ class SweepMission(Mission):
                 f"{late}: dropping here" if self.carrying else late,
             )
 
-    def _on_pick(self, scene: Scene, now: float) -> None:
-        abandoned = self.stats.abandoned
-        super()._on_pick(scene, now)
+    def _picked(self, now: float) -> None:
+        super()._picked(now)
         if self._object is not None:
-            if self.state is State.DOCK:
-                self._object.status = "picked"
-            elif self.stats.abandoned > abandoned:
-                self._object.status = "abandoned"
+            self._object.status = "picked"
+
+    def _missed(self, now: float, why: str = "pick failed") -> None:
+        abandoned = self.stats.abandoned
+        super()._missed(now, why)
+        if self._object is not None and self.stats.abandoned > abandoned:
+            self._object.status = "abandoned"
 
     def _on_drop(self, scene: Scene, now: float) -> None:
         delivered = self.stats.delivered
@@ -485,7 +487,7 @@ class SweepMission(Mission):
         if state in (State.RESUME, State.DOCK, State.RETURN_HOME):
             self._arrived, self._faced_at, self._home_step, self._scan = False, None, 0, 0
         if state is State.DOCK:
-            if self.state is State.PICK:  # a new delivery
+            if self.state in (State.PICK, State.APPROACH):  # a new delivery (after a grasp, checked or not)
                 self._dock_tries, self._anchored = 0, False
                 # With the bin across the zone its marker is in view all along: nothing to look for.
                 self._looked_from_afar = (
