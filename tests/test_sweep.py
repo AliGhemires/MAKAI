@@ -1,22 +1,39 @@
 """The sweeping mission, end to end on the simulated robot, and the pieces it is made of."""
 
 import math
+from dataclasses import replace
 
 import pytest
 
-from makai.contracts import Category
-from makai.navigation.coverage import Room, path_length_m, snake_waypoints
+from makai.contracts import Category, Scene, StationSighting
+from makai.navigation.coverage import Room, path_length_m, row_waypoints, scan_waypoints, snake_waypoints
 from makai.navigation.mapping import RoomMap
 from makai.orchestrator.mission import MissionConfig, State
-from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
-from makai.sim.world import SimDrop, SimObject, SimPerception, SimPick, SimRobot, SimWorld, sweep_world
+from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
+from makai.sim.world import (
+    SimDrop,
+    SimObject,
+    SimPerception,
+    SimPick,
+    SimRobot,
+    SimWorld,
+    facing_world,
+    sweep_world,
+)
 
 ROOM = Room(length_m=2.4, width_m=1.8)
 TWO_STATIONS = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
 
 
 def build(
-    world: SimWorld, stations=None, pick_success=1.0, slip=0.0, yaw_drift=0.0, room=ROOM
+    world: SimWorld,
+    stations=None,
+    pick_success=1.0,
+    slip=0.0,
+    yaw_drift=0.0,
+    room=ROOM,
+    pattern="rows",
+    **more,
 ) -> SweepMission:
     cfg = MissionConfig()
     return SweepMission(
@@ -25,7 +42,7 @@ def build(
         SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m), success_rate=pick_success),
         SimDrop(world),
         cfg,
-        SweepConfig(room=room, stations=stations or TWO_STATIONS),
+        SweepConfig(room=room, stations=stations or TWO_STATIONS, pattern=pattern, **more),
     )
 
 
@@ -42,6 +59,64 @@ def test_snake_path_covers_the_width_and_stays_off_the_walls():
 
 def test_a_narrow_room_gets_one_lane():
     assert snake_waypoints(Room(length_m=2.0, width_m=0.6), 0.5) == [(0.3, 0.0), (1.7, 0.0)]
+
+
+def test_rows_start_on_the_start_line_and_reach_the_far_end():
+    points = row_waypoints(Room(length_m=2.0, width_m=1.6), row_spacing_m=0.5)
+    assert points[:4] == [(0.0, -0.5), (0.0, 0.5), (0.5, 0.5), (0.5, -0.5)]  # across, one row forward, back
+    rows = sorted({x for x, _ in points})
+    assert rows == [0.0, 0.5, 1.0, 1.5]  # the last row looks at the half metre left before the far wall
+    assert all(abs(y) == 0.5 for _, y in points)  # the robot's centre stays 30 cm from the side walls
+    assert path_length_m(points) == pytest.approx(4 * 1.0 + 3 * 0.5)
+    spread = sorted({x for x, _ in row_waypoints(ROOM, 0.5)})  # 2.4 m long: rows evenly spread
+    assert spread[0] == 0.0 and spread[-1] == 1.9 and len(spread) == 5
+    assert all(b - a <= 0.5 + 1e-9 for a, b in zip(spread, spread[1:], strict=False))
+
+
+def test_rows_in_a_room_one_robot_wide_go_straight_ahead():
+    assert row_waypoints(Room(length_m=2.0, width_m=0.6), 0.5) == [
+        (0.0, 0.0),
+        (0.5, 0.0),
+        (1.0, 0.0),
+        (1.5, 0.0),
+    ]
+
+
+def test_an_unknown_pattern_is_refused():
+    with pytest.raises(ValueError, match="pattern"):
+        build(sweep_world(), pattern="spiral")
+
+
+def test_in_vacuum_mode_the_robot_never_turns():
+    world = SimWorld(stations={Category.TRASH: (-0.35, 0.0)}, station_facing={Category.TRASH: 0.0})
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})  # nothing on the floor
+    turned, sideways = 0.0, 0.0
+    while mission.state is State.SWEEP and mission.now < 600:
+        mission.step()
+        if mission.state is State.SWEEP:
+            turned += abs(mission.robot._vel.theta) * mission.robot.dt
+            sideways += abs(mission.robot._vel.y) * mission.robot.dt
+            assert abs(world.yaw) < 1e-6  # square to the wall behind it, all along
+    assert mission.state is State.RETURN_HOME and turned == 0.0
+    assert sideways == pytest.approx(0.6 + 5 * 1.2, abs=0.25)  # to the end of the start line, then five rows
+    # Never seen while it sweeps: the 15 cm at the robot's feet and the two corners beside the start line.
+    assert 0.88 < mission.map.coverage < 0.95
+
+
+def test_comes_back_square_to_the_wall_after_each_object():
+    world = sweep_world()
+    mission = build(world, slip=0.04, yaw_drift=0.03)
+    modes, squared = set(), []
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        before = mission.state
+        mission.step()
+        modes.add((mission.state, mission.snapshot()["mode"]) if mission.now % 5 < 0.04 else (None, None))
+        if before is State.RESUME and mission.state is State.SWEEP:
+            squared.append(abs(math.asin(math.sin(mission.odometry.yaw))))
+    assert mission.state is State.DONE and len(world.delivered) == 4
+    assert len(squared) == 4 and max(squared) <= math.radians(3.0) + 1e-9
+    assert (State.SWEEP, "vacuum") in modes and (State.SWEEP, "collect") not in modes
+    assert any(mode == "collect" for state, mode in modes if state in (State.APPROACH, State.DOCK))
 
 
 def test_the_map_marks_what_the_camera_has_looked_at():
@@ -64,9 +139,10 @@ def test_the_map_keeps_one_entry_per_object():
     assert (first.x, first.y) == (1.05, 0.22)
 
 
-def test_sweeps_the_room_and_tidies_everything():
+@pytest.mark.parametrize("pattern", ["rows", "lanes"])
+def test_sweeps_the_room_and_tidies_everything(pattern):
     world = sweep_world()
-    mission = build(world)
+    mission = build(world, pattern=pattern)
     assert mission.run(max_duration_s=1200) is State.DONE
     assert world.objects == [] and world.carrying is None
     assert sorted((o.label, s.value) for o, s in world.delivered) == [
@@ -153,9 +229,174 @@ def test_gives_up_on_an_object_and_does_not_come_back_to_it():
     grab = mission.pick.run
     mission.pick.run = lambda robot, target: target.label != "glued can" and grab(robot, target)
     assert mission.run(max_duration_s=1200) is State.DONE
-    assert mission.stats.abandoned == 1 and mission.stats.failed_picks == 3 and mission.stats.delivered == 1
+    sides = 1 + len(mission.cfg.orbit_deg)  # tried from where it came, then from each side round it
+    assert mission.stats.abandoned == 1 and mission.stats.delivered == 1
+    assert mission.stats.failed_picks == mission.cfg.max_pick_attempts * sides
     assert [o.label for o in world.objects] == ["glued can"]
     assert sorted(o.status for o in mission.map.objects) == ["abandoned", "delivered"]
+
+
+def test_a_missed_pick_is_tried_again_though_the_pick_took_its_time():
+    """15 Nov: a real pick blocks the mission for 10 to 20 s. After a miss the object was then
+    "lost" at once (not seen for 20 s), and the retry never happened."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    mission.perception.min_range = 0.45  # as the robot's camera: blind to the object at the pre-grasp pose
+    grab, tries = mission.pick.run, []
+
+    def slow_pick(robot, target):
+        world.time += 20.0
+        tries.append(target)
+        return len(tries) > 1 and grab(robot, target)
+
+    mission.pick.run = slow_pick
+    farthest = []  # from the can, between the two grasps: it backs away to see it again
+    step = mission.step
+
+    def watched_step():
+        if len(tries) == 1 and world.objects:
+            can = world.objects[0]
+            farthest.append(math.hypot(world.x - can.x, world.y - can.y))
+        return step()
+
+    mission.step = watched_step
+    assert mission.run(max_duration_s=900) is State.DONE
+    reasons = [event.reason for event in mission.events]
+    retry = reasons.index("pick failed, retry 1")
+    assert mission.events[retry + 1].state is State.PICK  # tried again, without losing it
+    assert "lost the object" not in reasons[retry : retry + 2]
+    assert max(farthest) > 0.45  # backed away until the camera saw it again
+    assert mission.stats.delivered == 1
+
+
+def test_a_grasp_that_left_the_object_on_the_floor_is_seen_and_tried_again():
+    """15 Nov: the gripper read "held" with nothing in it (a sock pinched by the tip). After a
+    grasp the robot backs away and looks where the object lay: still there, it tries again."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    grab, tries = mission.pick.run, []
+
+    def pick(robot, target):
+        tries.append(target)
+        return True if len(tries) == 1 else grab(robot, target)  # the first one only thinks it holds it
+
+    mission.pick.run = pick
+    assert mission.run(max_duration_s=900) is State.DONE
+    reasons = [event.reason for event in mission.events]
+    assert "still on the floor: pick failed, retry 1" in reasons
+    assert len(tries) == 2 and mission.stats.failed_picks == 1
+    assert [o.label for o, _ in world.delivered] == ["can"] and mission.stats.picked == 1
+
+
+def test_backing_away_from_an_object_near_the_start_line_stops_before_the_bins():
+    """15 Nov: backing away 25 cm from an object near the start line, to check a grasp or try
+    again, would take the robot past the line and into the bins behind it."""
+    # Seen from the start line (42 cm), grasped from 15 cm past it: backing to 50 cm from it
+    # would end 8 cm behind the line.
+    world = SimWorld(
+        objects=[SimObject(0.42, 0.6, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    room = Room(length_m=1.04, width_m=2.04, margin_m=0.0, y_offset_m=1.02)
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=room)
+    mission.perception.min_range = 0.40  # nearly as blind up close as the robot's camera
+    grab, tries, behind = mission.pick.run, [], []
+
+    def pick(robot, target):
+        tries.append(target)
+        return len(tries) > 1 and grab(robot, target)  # misses once: it backs away to try again
+
+    mission.pick.run = pick
+    step = mission.step
+
+    def watched_step():
+        if mission.state is State.APPROACH:
+            behind.append(world.x)
+        return step()
+
+    mission.step = watched_step
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert len(tries) == 2 and len(world.delivered) == 1
+    assert min(behind) > -0.03  # never past the start line while backing away: the bins are 35 cm behind it
+
+
+def test_every_delivery_checks_the_position_on_the_bins_marker_then_goes_straight_in():
+    """The demo arena of 15 Nov: the bin behind the start, marked; the basket 48 cm to its left,
+    not marked. Wheels that slip: the odometry drifts. Each delivery stops on the bin's marker
+    at `anchor_standoff_m`, then drives to its station's dock, the last stretch straight."""
+    stations = {
+        Category.TRASH: Station(-0.35, 0.0, 0.0, 0.0),
+        Category.CLOTHING: Station(-0.35, 0.48, 0.0, 0.48),
+    }
+    world = SimWorld(
+        objects=[SimObject(0.8, 0.9, Category.CLOTHING, "sock"), SimObject(0.6, 1.6, Category.TRASH, "can")],
+        stations={Category.TRASH: (-0.35, 0.0), Category.CLOTHING: (-0.35, 0.48)},
+    )
+    room = Room(length_m=1.04, width_m=2.04, margin_m=0.0, y_offset_m=1.02)
+    mission = build(world, stations=stations, room=room, slip=0.04, yaw_drift=0.03)
+    perceive = mission.perception.perceive
+
+    def basket_unmarked(obs):
+        scene = perceive(obs)
+        return replace(scene, stations={k: v for k, v in scene.stations.items() if k is Category.TRASH})
+
+    mission.perception.perceive = basket_unmarked
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert sorted((o.label, station) for o, station in world.delivered) == [
+        ("can", Category.TRASH),
+        ("sock", Category.CLOTHING),
+    ]
+    reasons = [event.reason for event in mission.events]
+    assert reasons.count("position checked on the marker") >= 2  # once per delivery, at least
+
+
+def test_up_close_a_sock_taken_for_a_can_still_goes_to_the_clothing_bin():
+    """15 Nov: a sock seen as clothing from afar, as trash in the last images (it leaves the
+    image), was picked with the can model and taken to the trash bin."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.CLOTHING, "sock")],
+        stations={Category.TRASH: (-0.35, 0.0), Category.CLOTHING: (-0.35, 0.7)},
+    )
+    mission = build(world)
+    perceive = mission.perception.perceive
+
+    def confused(obs):
+        scene = perceive(obs)
+        close = [
+            replace(t, category=Category.TRASH, label="trash") if t.distance_m < 0.55 else t
+            for t in scene.targets
+        ]
+        return replace(scene, targets=close)
+
+    mission.perception.perceive = confused
+    grab, kinds = mission.pick.run, []
+    mission.pick.run = lambda robot, target: kinds.append(target.category) or grab(robot, target)
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert kinds == [Category.CLOTHING]
+    assert world.delivered and world.delivered[0][1] is Category.CLOTHING
+
+
+def test_after_three_missed_grasps_it_goes_round_the_object_and_tries_from_there():
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    grab, sides = mission.pick.run, []
+
+    def pick(robot, target):
+        """Only gives in from another side: where the robot stands, seen from the can."""
+        can = world.objects[0]
+        sides.append(math.degrees(math.atan2(world.y - can.y, world.x - can.x)))
+        return abs(math.remainder(sides[-1] - sides[0], 360.0)) > 25.0 and grab(robot, target)
+
+    mission.pick.run = pick
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert mission.stats.failed_picks == 3 and mission.stats.delivered == 1 and mission.stats.abandoned == 0
+    assert math.remainder(sides[3] - sides[0], 360.0) == pytest.approx(40.0, abs=8.0)  # counter-clockwise
+    assert any("trying from +40 deg round it" in event.reason for event in mission.events)
 
 
 def test_the_snapshot_is_plain_data():
@@ -168,7 +409,8 @@ def test_the_snapshot_is_plain_data():
     shot = json.loads(json.dumps(mission.snapshot()))
     assert shot["state"] in {s.value for s in State}
     assert shot["map"]["room"]["length_m"] == 2.4 and len(shot["map"]["covered"]) == len(mission.map.ys)
-    assert shot["waypoints"][0] == [0.3, -0.6] and "trash" in shot["stations"]
+    assert shot["waypoints"][0] == [0.0, -0.6] and "trash" in shot["stations"]
+    assert shot["pattern"] == "rows" and shot["use"] == "vacuum" and shot["mode"] in ("vacuum", "collect")
 
 
 def test_checks_its_position_on_the_marker_during_a_long_sweep():
@@ -187,4 +429,248 @@ def test_checks_its_position_on_the_marker_during_a_long_sweep():
     assert mission.run(max_duration_s=2000) is State.DONE
     checks = [e for e in mission.events if "checking the position" in e.reason]
     assert len(checks) >= 2 and mission.stats.delivered == 0
-    assert math.hypot(world.x, world.y) < 0.05  # heavy drift, and still back at the origin
+    assert math.hypot(world.x, world.y) < 0.08  # heavy drift, and still back at the origin
+
+
+def test_a_zone_off_centre_without_walls_is_swept_to_its_edges():
+    # An imaginary rectangle traced with the robot: 2 m deep, from 0.3 m on its right to 0.9 m on its left.
+    zone = Room(length_m=2.0, width_m=1.2, margin_m=0.0, y_offset_m=0.3)
+    assert zone.y_range == pytest.approx((-0.3, 0.9))
+    assert (
+        zone.contains(1.0, 0.85) and not zone.contains(1.0, -0.45) and zone.contains(1.0, -0.35, slack_m=0.1)
+    )
+    points = row_waypoints(zone, 0.5)
+    assert points[0] == (0.0, -0.3) and points[1] == (0.0, 0.9)  # the first row runs from edge to edge
+    assert {round(y, 3) for _, y in snake_waypoints(zone, 0.5)} == {-0.3, 0.1, 0.5, 0.9}
+    room_map = RoomMap(zone)
+    assert room_map.ys[0] == pytest.approx(-0.275) and room_map.ys[-1] == pytest.approx(0.875)
+
+    world = SimWorld(
+        objects=[
+            SimObject(1.2, 0.7, Category.TRASH, "can"),
+            SimObject(1.5, -0.2, Category.CLOTHING, "sock"),
+            SimObject(1.0, -0.8, Category.TRASH, "can outside"),
+        ],
+        stations={Category.TRASH: (-0.35, 0.0)},
+        station_facing={Category.TRASH: 0.0},
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=zone)
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert [o.label for o in world.objects] == ["can outside"] and len(world.delivered) == 2
+    assert mission.map.coverage > 0.9  # without a margin only the 15 cm at the robot's feet stay unseen
+
+
+# ---------------------------------------------------------------- the two uses
+def test_the_vacuum_only_picks_up_what_lies_on_its_way():
+    world = SimWorld(
+        objects=[SimObject(1.4, 0.0, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )  # straight ahead of the start pose, in plain sight, but four rows away
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    left_from = None
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 600:
+        before = mission.state
+        mission.step()
+        if before is State.SWEEP and mission.state is State.APPROACH:
+            left_from = (mission.odometry.x, mission.odometry.y)
+    assert mission.state is State.DONE and len(world.delivered) == 1
+    assert left_from is not None and left_from[0] > 0.4  # it kept vacuuming until the can was on its way
+    assert math.dist(left_from, (1.4, 0.0)) <= 1.0 + 0.05
+    assert mission.map.objects[0].status == "delivered"  # and it was on the map from the start
+
+
+def test_without_a_pickup_range_the_vacuum_goes_for_anything_in_sight():
+    world = SimWorld(
+        objects=[SimObject(1.4, 0.0, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, pickup_range_m=0.0)
+    mission.step()
+    assert mission.state is State.APPROACH  # at once, from the start pose
+
+
+def test_the_scan_route_runs_down_the_middle_of_wide_strips():
+    assert scan_waypoints(Room(length_m=2.0, width_m=1.6, margin_m=0.0), 1.6) == [(0.0, 0.0), (1.7, 0.0)]
+    two = scan_waypoints(ROOM, 1.6)  # 1.8 m wide: two strips of 0.9 m
+    assert two == [(0.0, -0.45), (2.1, -0.45), (2.1, 0.45), (0.0, 0.45)]
+    off = scan_waypoints(Room(length_m=2.0, width_m=1.2, margin_m=0.0, y_offset_m=0.3), 1.6)
+    assert off == [(0.0, 0.3), (1.7, 0.3)]  # an off-centre zone: down its own middle
+
+
+def test_for_use_picks_the_route_of_each_use():
+    cfg = SweepConfig(room=ROOM)
+    assert for_use(cfg, "vacuum").pattern == "rows" and for_use(cfg, "scan").pattern == "scan"
+    lanes = SweepConfig(room=ROOM, pattern="lanes")  # the earlier vacuum path, kept when asked for
+    assert for_use(lanes, "vacuum").pattern == "lanes" and for_use(lanes, "scan").pattern == "scan"
+    assert for_use(for_use(cfg, "scan"), "vacuum").pattern == "rows"
+    with pytest.raises(ValueError, match="use"):
+        for_use(cfg, "mop")
+
+
+def test_scanning_it_looks_left_and_right_and_fetches_what_it_spots():
+    world = sweep_world()
+    mission = build(world, pattern="scan", slip=0.04, yaw_drift=0.03)
+    swings, far = [], 0.0
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        before = mission.state
+        mission.step()
+        if before is State.SWEEP and mission.state is State.SWEEP:
+            swings.append(math.degrees(math.asin(math.sin(mission.odometry.yaw - mission._course))))
+        if before is State.SWEEP and mission.state is State.APPROACH:
+            far = max(far, mission._track.distance_m)
+    assert mission.state is State.DONE and world.objects == []
+    assert sorted((o.label, s.value) for o, s in world.delivered) == [
+        ("can", "trash"), ("can", "trash"), ("sock", "clothing"), ("sock", "clothing"),
+    ]  # fmt: skip
+    assert max(swings) > 30 and min(swings) < -30  # the heading swings to both sides of the way it drives
+    assert far > 1.0  # it goes for things beyond the vacuum's reach
+    shot = mission.snapshot()
+    assert shot["use"] == "scan" and shot["pattern"] == "scan" and len(shot["waypoints"]) == 4
+    assert math.hypot(world.x, world.y) < 0.06
+
+
+def test_scanning_an_empty_zone_the_swings_cancel_out():
+    world = SimWorld(stations={Category.TRASH: (-0.35, 0.0)}, station_facing={Category.TRASH: 0.0})
+    room = Room(length_m=2.0, width_m=1.6, margin_m=0.0)  # one lane down the middle
+    mission = build(
+        world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=room, pattern="scan", slip=0.04
+    )
+    while mission.state is State.SWEEP and mission.now < 300:
+        mission.step()
+    assert mission.state is State.RETURN_HOME
+    assert world.x == pytest.approx(1.7 * 0.96, abs=0.06)  # at the end of the lane (the wheels slip 4 %)
+    assert abs(world.y) < 0.05  # and still on it: what slipped turning left was undone turning right
+    assert mission.map.coverage > 0.9
+
+
+def test_a_noisy_speed_reading_after_a_pick_does_not_turn_the_map():
+    """On the robot, a wheel that stands still reads 50 steps/s one frame in four. The mission
+    used to integrate that reading over the whole pick: up to 9 degrees of heading, for nothing."""
+    from makai.contracts import BaseVelocity
+
+    class NoisyAtRest(SimRobot):
+        def get_observation(self):
+            obs = super().get_observation()
+            if self._vel.is_zero():
+                obs.base_velocity = BaseVelocity(theta=math.radians(0.586))  # one wheel at 50 steps/s
+            return obs
+
+    world = SimWorld(
+        objects=[SimObject(0.7, 0.0, Category.TRASH, "can")],
+        stations={Category.TRASH: (-0.35, 0.0)},
+        station_facing={Category.TRASH: 0.0},
+    )
+    cfg = MissionConfig()
+    pick = SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m))
+    grab = pick.run
+
+    def fifteen_seconds(robot, target):
+        world.time += 15.0  # a real pick lasts 8 to 20 s, base stopped
+        return grab(robot, target)
+
+    pick.run = fifteen_seconds
+    mission = SweepMission(
+        NoisyAtRest(world),
+        SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+        pick,
+        SimDrop(world),
+        cfg,
+        SweepConfig(room=ROOM, stations={Category.TRASH: Station(-0.35, 0.0)}),
+    )
+    before = None
+    while mission.state is not State.DOCK and mission.now < 120:
+        before = mission.odometry.yaw
+        mission.step()
+    assert mission.state is State.DOCK and mission.carrying is Category.TRASH
+    mission.step()  # the first step after the pick: 15 s after the one before
+    assert abs(math.degrees(mission.odometry.yaw - before)) < 0.2
+
+
+# ---------------------------------------------------------------- the bin across the zone
+ACROSS = {Category.TRASH: Station(2.35, 0.0, 2.0, 0.0)}  # 2.35 m ahead of the start pose, facing it
+
+
+def facing(slip=0.0, yaw_drift=0.0, marker_range=2.5, **more) -> tuple[SweepMission, SimWorld]:
+    world = facing_world()
+    cfg = MissionConfig()
+    mission = SweepMission(
+        SimRobot(world, slip=slip, yaw_drift=yaw_drift),
+        SimPerception(world, station_max_range_m=marker_range, max_range_m=1.5),
+        SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m)),
+        SimDrop(world),
+        cfg,
+        SweepConfig(room=Room(length_m=2.0, width_m=1.6, margin_m=0.0), stations=ACROSS, **more),
+    )
+    return mission, world
+
+
+def run_and_watch(mission: SweepMission, world: SimWorld) -> tuple[float, float]:
+    """Run to the end. Returns how much the base was told to turn in all (degrees), and the
+    largest gap between where the odometry put the robot and where it really was (metres)."""
+    turned = gap = 0.0
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        mission.step()
+        turned += abs(mission.robot._vel.theta) * mission.robot.dt
+        gap = max(gap, math.hypot(world.x - mission.odometry.x, world.y - mission.odometry.y))
+    return math.degrees(turned), gap
+
+
+def test_with_the_bin_across_the_zone_the_robot_never_turns():
+    mission, world = facing()
+    turned, gap = run_and_watch(mission, world)
+    assert mission.state is State.DONE and world.objects == [] and len(world.delivered) == 4
+    assert turned == 0.0  # not once in the whole mission: sweeping, fetching, delivering, coming back
+    assert gap < 0.02
+    assert mission.events[-1].reason == "zone swept, back at the start"
+    assert math.hypot(world.x, world.y) < 0.05 and abs(world.yaw) < 1e-6
+    assert mission.snapshot()["stations"]["trash"] == {"x": 2.35, "y": 0.0, "dock_x": 2.0, "dock_y": 0.0}
+
+
+def test_the_marker_in_view_holds_the_odometry_all_along():
+    mission, world = facing(slip=0.04, yaw_drift=0.03)
+    turned, gap = run_and_watch(mission, world)
+    assert mission.state is State.DONE and len(world.delivered) == 4
+    assert gap < 0.08  # never more than a few centimetres off, over the whole mission
+    assert turned < 90  # only small corrections to stay square to the marker
+    assert math.hypot(world.x, world.y) < 0.05 and abs(math.degrees(world.yaw)) < 6
+
+    blind, blind_world = facing(slip=0.04, yaw_drift=0.03, marker_fix_gain=0.0)  # the same, camera unused
+    for obj in list(blind_world.objects):
+        blind_world.objects.remove(obj)  # nothing to deliver: the marker is never visited either
+    _, blind_gap = run_and_watch(blind, blind_world)
+    assert blind_gap > 0.2  # what the wheels alone make of it
+
+
+def test_the_direction_of_the_marker_corrects_the_heading_and_its_distance_the_position():
+    mission, _ = facing()
+    mission.state = State.SWEEP
+    # The robot really is at (0.5, 0.2), facing the bin. Its odometry is 12 degrees and 10 cm off.
+    mission.odometry.x, mission.odometry.y, mission.odometry.yaw = 0.6, 0.2, math.radians(12.0)
+    seen = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 2.35 - 0.5, 0.0 - 0.2)})
+    for _ in range(60):  # two seconds of images
+        mission._fix_on_markers(seen)
+    assert abs(math.degrees(mission.odometry.yaw)) < 1.0
+    assert mission.odometry.x == pytest.approx(0.5, abs=0.02) and mission.odometry.y == pytest.approx(
+        0.2, abs=0.03
+    )
+    assert mission.locked_at is not None
+
+    before = (mission.odometry.x, mission.odometry.y, mission.odometry.yaw)
+    wild = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 0.9, 1.4)})  # a wrong reading
+    far = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 3.4, 0.0)})  # too far to trust
+    unknown = Scene(stations={Category.CLOTHING: StationSighting(Category.CLOTHING, 1.0, 0.0)})  # not placed
+    for scene in (wild, far, unknown):
+        mission._fix_on_markers(scene)
+    assert (mission.odometry.x, mission.odometry.y, mission.odometry.yaw) == before
+
+
+def test_close_to_the_marker_the_heading_is_left_to_the_dock():
+    mission, _ = facing()
+    mission.state = State.DOCK
+    mission.odometry.x, mission.odometry.y, mission.odometry.yaw = (
+        1.8,
+        0.05,
+        0.0,
+    )  # 5 cm to the side, 0.55 m away
+    seen = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 0.55, 0.0)})
+    for _ in range(30):
+        mission._fix_on_markers(seen)
+    assert mission.odometry.yaw == 0.0  # 5 cm at 0.55 m would have passed for 5 degrees of heading

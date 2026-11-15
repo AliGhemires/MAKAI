@@ -20,6 +20,13 @@ robot:
     base_radius_m: 0.125
     max_wheel_raw: 3000     # steps/s per wheel, about 0.23 m/s at the rim
     watchdog_s: 0.5         # wheels stop when no command came for this long
+  odometry:                 # through the host only: what the robot really does per measured unit of speed.
+    linear_scale: 0.978     # 15 Nov: 100 cm forward = 100.89 / 100.96 by odometry, 98.5 / 99.0 on the tape
+                            # (measured with the speed readings, before the wheel encoders: to check again)
+    angular_scale: 0.947    # 15 Nov evening, wheel encoders through the host, scripts/turn_check.py on the
+                            # camera: 9 full turns, left and right, 0.6 and 0.3 rad/s, all between 0.944 and
+                            # 0.953 (battery 10.8 V). A steady scale: the encoders count 359 deg for 339 real.
+                            # Only valid with the encoder host (scripts/lekiwi_host.py of #35 on the Pi).
 
 teleop:
   leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)
@@ -68,22 +75,41 @@ perception:
   prompts:                  # words the open-vocabulary detector looks for, per category
     clothing: [sock, t-shirt, towel, cloth, glove]
     trash: [can, plastic bottle, crumpled paper, paper cup, wrapper]
-  camera_model:             # MEASURE these on the robot once the front camera is fixed
+  camera_model:             # LeKiwi's stock front camera (USB "GENERAL WEBCAM"), measured 15 Nov with
+                            # scripts/camera_from_sheet.py: A4 sheet + tape marks; can at 57.5 cm read at 57.3
     width: 640
     height: 480
-    hfov_deg: 55.0          # Logitech C270: 55 deg diagonal-ish; refine if distances look off
-    height_m: 0.25
-    pitch_deg: 35.0
-    x_offset_m: 0.05
+    hfov_deg: 42.4
+    height_m: 0.075         # the lens is low and nearly level: distances beyond ~1 m are coarse
+    pitch_deg: 3.5
+    x_offset_m: 0.064       # marks at 0.46-0.97 m: within 1-2 cm along x, ~3 cm to the side (camera off-centre)
   ground_plane_file: ground_plane.yaml   # written by `makai-calibrate-ground`; used when present
   stations:
-    marker_size_m: 0.10
+    kind: tape              # tape: a strip of grey tape on each cardboard box | aruco: a printed marker
+    tape:                   # our two boxes (docs/figures/stations_tape.jpg): the strip's direction tells which box
+      horizontal: clothing  # the box with the strip lying across its front  <- CONFIRM which box takes what
+      vertical: trash       # the box with the strip standing upright
+      width_m: 0.048        # width of the tape roll
+      # Sizes of the strips as stuck on the boxes, read on a photo: MEASURE THEM with a ruler.
+      # The distance of a box is read from the length of its strip (from its width once the
+      # strip no longer fits in the image, close to the box).
+      horizontal_length_m: 0.41
+      horizontal_width_m: 0.030   # that strip is crumpled: it shows 3 cm, not 4.8. Stick it flat, then delete this line.
+      vertical_length_m: 0.21
+    pattern:                # kind: pattern - one station marked with a white U in a dark square (the
+      category: trash       # pattern lent by another team, 15 Nov; one can be made with black tape and paper).
+      u_width_m: 0.044      # outer width of the white U, from the floor distance at 1.21 m: MEASURE it.
+                            # Seen by the robot's camera (40/40 frames), where the tape is not. Stick it on
+                            # the bin's face, its centre about 10 cm above the floor: higher, it leaves the
+                            # image at the dock (35 cm).
+    marker_size_m: 0.10     # aruco
     marker_ids: {0: clothing, 1: trash}
 
 navigation:
   approach:                 # canonical pre-grasp pose: where the object must be, in the base frame
-    goal_x_m: 0.22
-    goal_y_m: 0.0
+    goal_x_m: 0.265         # median start position of the object in pick_sock_v1 / pick_can_v1 (28.3 / 27.3 cm),
+                            # 1.5 cm closer after the first picks in a mission (15 Nov evening: the can was a little far)
+    goal_y_m: -0.01         # measured with this detector and camera model (15 Nov): their biases cancel out
     tol_x_m: 0.01
     tol_y_m: 0.01
     max_lin: 0.15
@@ -91,14 +117,42 @@ navigation:
   mission:
     station_standoff_m: 0.35
     search_speed: 0.6
-  sweep:                    # the mission that sweeps the room in lanes (makai-mission --sweep)
-    # The map: its origin is where the robot starts, IN FRONT OF THE BIN, FACING THE ROOM.
+    back_off_s: 3.0         # after a drop, back off 30 cm (at 0.10 m/s) before turning: clear of the bins (15 Nov)
+    max_pick_attempts: 3    # grasps from one side; then it backs away to orbit_radius_m, goes round the
+    orbit_deg: [40, -40]    # object to each of these angles in turn (deg, + = counter-clockwise from above)
+    orbit_radius_m: 0.50    # and tries again from there; [] = give up after the first side
+  sweep:                    # the mission that sweeps the room like a vacuum (makai-mission --sweep)
+    # The map: its origin is where the robot starts, IN FRONT OF THE BIN, BACK TO IT, FACING THE ROOM.
     # x goes into the room, y to the left. The room's walls are x = 0 .. length, y = +-width/2.
-    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}   # margin: the robot's centre stays this far from the walls
-    lane_spacing_m: 0.5     # distance between two lanes of the snake path
-    sweep_speed: 0.15       # m/s along the lanes
+    # The zone is easier to trace than to measure: console, Mission tab, "Trace zone", then drive the
+    # robot around it. The traced zone is kept in configs/zone.yaml and replaces `room` below.
+    room: {length_m: 2.0, width_m: 1.6, margin_m: 0.30}   # margin: the robot's centre stays this far from the edges (0 without walls)
+    # rows  = vacuum mode: the robot never turns while it sweeps. It faces the room, square to the
+    #         wall behind it, and slides sideways along rows; the first row is the start line.
+    # lanes = the earlier path: it turns to follow lanes that run into the room.
+    pattern: rows
+    lane_spacing_m: 0.5     # distance between two rows (or two lanes); smaller = sees better, takes longer
+    sweep_speed: 0.15       # m/s along the route
+    # The two uses, chosen in the console (or makai-mission --sweep --use vacuum|scan):
+    # vacuum = pass over the whole floor (pattern above), pick up only what lies on the way;
+    # scan   = patrol wide lanes while the heading swings left and right, go to whatever is spotted.
+    pickup_range_m: 1.0     # vacuum: leaves its route only for an object this close (0 = anything in sight)
+    scan_swath_m: 1.6       # scan: width of floor looked at from one lane (smaller = more lanes)
+    scan_speed: 0.08        # scan: m/s along the lanes
+    scan_pan_deg: 60.0      # scan: the heading swings this far to each side of the way it drives
+    scan_period_s: 10.0     # scan: one swing left and right
     recheck_after_m: 0.0    # drive back to the bin's marker after this many metres without one (0 = only when delivering)
-    stations:               # where each station stands, and where the robot stops in front of it (its dock)
+    # Whenever a station's marker is in view, the camera corrects the odometry: the heading from
+    # the direction the marker is seen in, the position from its distance (docs/NAVIGATION.md).
+    marker_fix_range_m: 2.5 # markers further than this are not used for it
+    marker_fix_gain: 0.15   # share of the gap closed at each image (0 = no continuous correction)
+    # Where each station stands, and where the robot stops in front of it (its dock). Two layouts:
+    # - the bin ACROSS the zone, its marker facing the robot (recommended: no turn at all, marker
+    #   always in view). Do not type it: console, Mission tab, "Zone from marker" reads it with the
+    #   camera and keeps it in configs/zone.yaml. By hand it would be, for a bin 2.35 m ahead:
+    #     trash: {x: 2.35, y: 0.0, dock_x: 2.0, dock_y: 0.0}
+    # - the bin just BEHIND the start pose (below): two half turns at every delivery.
+    stations:
       trash: {x: -0.35, y: 0.0, dock_x: 0.0, dock_y: 0.0}   # the bin, just behind the start pose
       # clothing: {x: -0.35, y: 0.7, dock_x: 0.0, dock_y: 0.7}   # a basket beside it; without it, everything goes in the bin
 
@@ -111,8 +165,11 @@ manipulation:
     task: "Pick up the object from the floor"  # must be the task string used when recording
     duration_s: 20.0          # the longest a pick may take; it ends as soon as the arm is back home (demos: 8 to 18 s)
     device: null              # null = as trained; "mps" on the Macs
-    after: [home]             # poses played once the policy is done (carry pose)
+    after: [home]             # poses played once the policy is done; the grasp is checked there
+    carry: [[carry, 1.0]]     # then, only if the object is held: wrist raised, the camera sees the bins (15 Nov)
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
+    gripper_held_below: 20.0  # commanded closed, a hand still wider than this did not close: empty (15 Nov:
+                              # 33.9 read as "holding" a sock left on the floor; held objects read 3 to 12)
     n_action_steps: null      # actions played before looking at the cameras again (null = as trained; 30 = every second)
     # One model per kind of object. When set, `policy_path` above is only used for other kinds.
     # The two reference models of 15 Nov (docs/REGISTRY.md), to replace by the best ones once
@@ -126,6 +183,7 @@ manipulation:
       clothing: {policy_path: outputs/train/act_sock_v1/checkpoints/100000/pretrained_model, gripper_open_above: 3.0}
       trash: {policy_path: outputs/train/act_can_v1/checkpoints/100000/pretrained_model, gripper_open_above: 4.3}
     steps: [pick_above, [pick_down, 1.0], [pick_close, 0.8], home]   # used when kind: scripted
-  drop:                       # scripted, per category
-    clothing: [drop_reach, [drop_open, 0.6], home]
-    trash: [drop_reach, [drop_open, 0.6], home]
+  drop:                       # scripted, per category: [pose, seconds]. The path recorded by hand on
+    # 15 Nov (configs/arm_poses.yaml, drop_path_*): replayed 1.4 times slower, it never touches the box.
+    clothing: [[drop_path_01, 1.0], [drop_path_02, 0.21], [drop_path_03, 0.21], [drop_path_04, 0.21], [drop_path_05, 0.21], [drop_path_06, 0.21], [drop_path_07, 0.21], [drop_path_08, 0.21], [drop_path_09, 0.28], [drop_path_10, 0.21], [drop_path_11, 0.21], [drop_path_12, 0.21], [drop_path_13, 0.21], [drop_path_14, 0.21], [drop_path_15, 0.21], [drop_path_16, 0.28], [drop_path_17, 0.28], [drop_path_18, 0.28], [drop_path_19, 0.21], [drop_path_20, 0.21], [drop_path_21, 0.28], [drop_path_22, 1.12], [drop_path_23, 0.21], [drop_path_24, 0.21], [drop_path_25, 0.21], [drop_path_26, 0.15], [drop_path_27, 0.21], [drop_path_28, 0.21], [drop_path_29, 0.21], [drop_path_30, 0.28], [drop_path_31, 1.12], [drop_path_32, 0.70], [drop_path_33, 1.12], [drop_path_34, 0.22], [drop_path_35, 0.17], [drop_path_36, 0.16], [drop_path_37, 0.21], [drop_path_38, 0.28], [drop_path_39, 1.12], [drop_path_40, 0.91], [drop_path_41, 0.15], [drop_path_42, 0.21], [drop_path_43, 0.28], [drop_path_44, 0.49], [drop_path_45, 0.35], [drop_path_46, 1.12], [drop_path_47, 1.05], [drop_path_48, 0.35], [drop_path_49, 0.15], [drop_path_50, 0.21], [drop_path_51, 0.28], [drop_path_52, 0.21], [drop_path_53, 0.15], [drop_path_54, 0.15], [drop_path_55, 0.15], [drop_path_56, 0.15], [drop_path_57, 0.15], [drop_path_58, 0.15], [drop_path_59, 0.15], [drop_path_60, 0.15], [drop_path_61, 0.15], [drop_path_62, 0.15], [drop_path_63, 0.15], [drop_path_64, 1.05], [drop_path_65, 0.15], [drop_path_66, 0.15], [drop_path_67, 0.15], [drop_path_68, 0.15], [drop_path_69, 0.21], [drop_path_70, 0.21], [drop_path_71, 1.05], [drop_path_72, 0.28], [drop_path_73, 0.21], [drop_path_74, 0.15], [drop_path_75, 0.15], [drop_path_76, 0.15], [drop_path_77, 0.21], [drop_path_78, 0.28], [drop_path_79, 0.21], [drop_path_80, 0.70], [drop_path_81, 0.15], [home, 1.5]]
+    trash: [[drop_path_01, 1.0], [drop_path_02, 0.21], [drop_path_03, 0.21], [drop_path_04, 0.21], [drop_path_05, 0.21], [drop_path_06, 0.21], [drop_path_07, 0.21], [drop_path_08, 0.21], [drop_path_09, 0.28], [drop_path_10, 0.21], [drop_path_11, 0.21], [drop_path_12, 0.21], [drop_path_13, 0.21], [drop_path_14, 0.21], [drop_path_15, 0.21], [drop_path_16, 0.28], [drop_path_17, 0.28], [drop_path_18, 0.28], [drop_path_19, 0.21], [drop_path_20, 0.21], [drop_path_21, 0.28], [drop_path_22, 1.12], [drop_path_23, 0.21], [drop_path_24, 0.21], [drop_path_25, 0.21], [drop_path_26, 0.15], [drop_path_27, 0.21], [drop_path_28, 0.21], [drop_path_29, 0.21], [drop_path_30, 0.28], [drop_path_31, 1.12], [drop_path_32, 0.70], [drop_path_33, 1.12], [drop_path_34, 0.22], [drop_path_35, 0.17], [drop_path_36, 0.16], [drop_path_37, 0.21], [drop_path_38, 0.28], [drop_path_39, 1.12], [drop_path_40, 0.91], [drop_path_41, 0.15], [drop_path_42, 0.21], [drop_path_43, 0.28], [drop_path_44, 0.49], [drop_path_45, 0.35], [drop_path_46, 1.12], [drop_path_47, 1.05], [drop_path_48, 0.35], [drop_path_49, 0.15], [drop_path_50, 0.21], [drop_path_51, 0.28], [drop_path_52, 0.21], [drop_path_53, 0.15], [drop_path_54, 0.15], [drop_path_55, 0.15], [drop_path_56, 0.15], [drop_path_57, 0.15], [drop_path_58, 0.15], [drop_path_59, 0.15], [drop_path_60, 0.15], [drop_path_61, 0.15], [drop_path_62, 0.15], [drop_path_63, 0.15], [drop_path_64, 1.05], [drop_path_65, 0.15], [drop_path_66, 0.15], [drop_path_67, 0.15], [drop_path_68, 0.15], [drop_path_69, 0.21], [drop_path_70, 0.21], [drop_path_71, 1.05], [drop_path_72, 0.28], [drop_path_73, 0.21], [drop_path_74, 0.15], [drop_path_75, 0.15], [drop_path_76, 0.15], [drop_path_77, 0.21], [drop_path_78, 0.28], [drop_path_79, 0.21], [drop_path_80, 0.70], [drop_path_81, 0.15], [home, 1.5]]

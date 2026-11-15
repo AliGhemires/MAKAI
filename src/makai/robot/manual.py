@@ -30,6 +30,7 @@ from makai.robot.cameras import CameraHub
 from makai.robot.lekiwi import ARM_KEYS, BaseGeometry
 from makai.robot.moves import (
     MOVE_NAMES,
+    GoTo,
     MoveSpec,
     MoveTuning,
     Pose,
@@ -251,6 +252,7 @@ class DriveLoop:
         truth: Callable[[], Pose] | None = None,
         cameras: CameraHub | None = None,
         tuning: MoveTuning | None = None,
+        trace: Any = None,
     ):
         self.robot, self.driver, self.geometry = robot, driver, geometry
         self.period, self.telemetry_period, self.voltage_period = (
@@ -262,6 +264,8 @@ class DriveLoop:
         self.trials = trials if trials is not None else TrialLog()
         self.truth = truth  # simulation only: where the robot really is
         self.cameras = cameras  # images from the observations go there (host mode)
+        self.trace = trace  # robot/trace.py OdometryTrace: the flight recorder of the base, or None
+        self._traced: Any = None  # the last raw observation written to it
         self.tuning = tuning or MoveTuning()
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -279,6 +283,11 @@ class DriveLoop:
         self._move: PreciseMove | None = None
         self._cancel: str | None = None
         self.last_trial: dict[str, Any] | None = None
+        # Saved poses to drive back to ("1", "2"), each with the odometry epoch it belongs to:
+        # a reset of the odometry moves the origin, so an older base no longer means anything.
+        self.bases: dict[str, tuple[Pose, int]] = {}
+        self._goto: GoTo | None = None
+        self.last_goto: dict[str, Any] | None = None
         # Set while a mission drives (robot/autopilot.py): called every tick instead of the
         # sticks. The mission observes and commands the robot itself, on this loop's thread.
         self.autopilot: Callable[[], None] | None = None
@@ -317,9 +326,9 @@ class DriveLoop:
             self._attempt("motors", self._read_health)
 
     def reset_odometry(self) -> bool:
-        """Start the path from here. Refused (False) during a precise move."""
+        """Start the path from here. Refused (False) during a precise move or a go-to-base."""
         with self._lock:
-            if self._move is not None:
+            if self._move is not None or self._goto is not None:
                 return False
             self.odometry = WheelOdometry(self.geometry) if self._encoders and self.geometry else Odometry()
             self.odometry_epoch += 1
@@ -330,7 +339,7 @@ class DriveLoop:
         if self.driver.estopped:
             raise ValueError("Emergency stop is on: resume first.")
         with self._lock:
-            if self._move is not None:
+            if self._move is not None or self._goto is not None:
                 raise ValueError("A move is already running.")
             if not self.commanded.is_zero():
                 raise ValueError("The robot is still moving: let it stop first.")
@@ -346,8 +355,56 @@ class DriveLoop:
 
     def cancel_move(self) -> None:
         with self._lock:
-            if self._move is not None:
+            if self._move is not None or self._goto is not None:
                 self._cancel = "cancelled"
+
+    def define_base(self, name: str) -> None:
+        """Remember where the robot is now, heading included, as base `name`."""
+        with self._lock:
+            self.bases[name] = (self._pose(), self.odometry_epoch)
+
+    def go_base(self, client: str, name: str, now: float) -> None:
+        """Drive back to base `name` on odometry. ValueError, with the reason, if it cannot."""
+        with self._lock:
+            if name not in self.bases:
+                raise ValueError(f"Base {name} is not set: press Set base {name} first.")
+            goal, epoch = self.bases[name]
+            if epoch != self.odometry_epoch:
+                raise ValueError(f"The odometry was reset since base {name} was set: set it again.")
+        self._start_goto(client, name, lambda _pose: goal, now, f"go to base {name}")
+
+    def go_relative(self, client: str, dx: float, dy: float, dyaw: float, now: float) -> None:
+        """Move by (dx ahead, dy to the left, dyaw counter-clockwise) from where the robot is,
+        closed on odometry in both directions: unlike a precise move, an overshoot is driven
+        back, so it does not add up from one move to the next."""
+
+        def goal(pose: Pose) -> Pose:
+            x, y, yaw = pose
+            return (
+                x + math.cos(yaw) * dx - math.sin(yaw) * dy,
+                y + math.sin(yaw) * dx + math.cos(yaw) * dy,
+                yaw + dyaw,
+            )
+
+        self._start_goto(client, "move", goal, now, "exact move")
+
+    def _start_goto(self, client: str, name: str, goal_from, now: float, label: str) -> None:
+        if self.driver.estopped:
+            raise ValueError("Emergency stop is on: resume first.")
+        if self.autopilot is not None:
+            raise ValueError("A mission is running: stop it first.")
+        with self._lock:
+            if self._move is not None or self._goto is not None:
+                raise ValueError("A move is already running.")
+            if not self.commanded.is_zero():
+                raise ValueError("The robot is still moving: let it stop first.")
+        if not self.driver.claim(client, now, label):
+            raise ValueError("Another device is driving: take over first.")
+        self.driver.reset_motion()
+        with self._lock:
+            self._cancel = None
+            pose = self._pose()
+            self._goto = GoTo(name, goal_from(pose), pose, now)
 
     def snapshot(self) -> dict[str, Any]:
         """What the page shows, as JSON-ready values."""
@@ -372,7 +429,9 @@ class DriveLoop:
                     "yaw_deg": round(math.degrees(odo.yaw), 2),
                 },
                 "odometry_epoch": self.odometry_epoch,
-                "odometry_source": {True: "wheel encoders", False: "measured speed"}.get(self._encoders),
+                "odometry_source": {True: "wheel encoders"}.get(self._encoders)
+                or getattr(self.robot, "odometry_source", None)
+                or {False: "measured speed"}.get(self._encoders),
                 "battery_v": None if self.voltage is None else round(self.voltage, 2),
                 "motors": self.motors,
                 # Joint angles in degrees, gripper 0 (closed) to 100 (open); {} when unknown.
@@ -383,6 +442,24 @@ class DriveLoop:
                 "error": "; ".join(f"{what}: {message}" for what, message in self.errors.items()) or None,
                 "move": None if move is None else _move_dict(move),
                 "last_trial": self.last_trial,
+                "bases": {
+                    name: {
+                        "x": round(pose[0], 4),
+                        "y": round(pose[1], 4),
+                        "yaw_deg": round(math.degrees(pose[2]), 1),
+                        "valid": epoch == self.odometry_epoch,
+                    }
+                    for name, (pose, epoch) in sorted(self.bases.items())
+                },
+                "goto": None
+                if self._goto is None
+                else {
+                    "base": self._goto.name,
+                    "phase": self._goto.phase,
+                    "left_cm": round(self._goto.error[0] * 100, 1),
+                    "left_deg": round(math.degrees(self._goto.error[1]), 1),
+                },
+                "last_goto": self.last_goto,
                 "trials_version": self.trials.version,
             }
 
@@ -425,15 +502,28 @@ class DriveLoop:
             for name, image in obs.images.items():
                 self.cameras.put(name, image, rgb=True)  # LeRobot images are RGB
         with self._lock:
-            self.measured = obs.base_velocity
+            # For the page: the servos' own speed readings when the robot keeps them apart (through
+            # the host, the velocity of the observation is made of encoder steps and jumps about).
+            self.measured = getattr(self.robot, "speed_reading", obs.base_velocity)
             self.arm = {key: obs.arm[key] for key in ARM_KEYS if key in obs.arm}
             if not self._encoders:
                 self.odometry.update(obs.base_velocity, obs.stamp)
+            command, pose = self.commanded, self._pose()
+        if self.trace is not None:
+            raw = getattr(self.robot, "raw_observation", None)
+            if raw is None or raw is not self._traced:  # the client repeats the last one when nothing came
+                self._traced = raw
+                extras = getattr(getattr(self.robot, "client", None), "host_extras", None) or {}
+                positions = getattr(self.robot, "host_wheel_positions", lambda: None)()
+                speed = getattr(self.robot, "speed_reading", obs.base_velocity)
+                self.trace.note(obs.stamp, extras.get("host.time"), command, speed, positions, pose)
 
     def _next_velocity(self, now: float) -> BaseVelocity:
         with self._lock:
-            move, cancel, pose = self._move, self._cancel, self._pose()
+            move, goto, cancel, pose = self._move, self._goto, self._cancel, self._pose()
             self._cancel = None
+        if goto is not None:
+            return self._step_goto(goto, cancel, pose, now)
         if move is None:
             return self.driver.step(now)
         if move.truth_start is None and self.truth is not None:
@@ -447,6 +537,68 @@ class DriveLoop:
             return velocity
         self._finish_move(move)
         return BaseVelocity()
+
+    def _step_goto(self, goto: GoTo, cancel: str | None, pose: Pose, now: float) -> BaseVelocity:
+        if self.driver.estopped:
+            goto.cancel("stopped")
+        elif cancel:
+            goto.cancel(cancel)
+        velocity = goto.step(pose, now)
+        if velocity is not None:
+            return velocity
+        distance, turn = goto.error
+        result = {
+            "base": goto.name,
+            "status": goto.status,
+            "left_cm": round(distance * 100, 1),  # what odometry says is left: compare with the floor
+            "left_deg": round(math.degrees(turn), 1),
+        }
+        log.info(
+            "go to base %s: %s, %.1f cm and %.1f deg left by odometry",
+            goto.name,
+            goto.status,
+            result["left_cm"],
+            result["left_deg"],
+        )
+        self._log_goto(goto, pose, now)
+        self.driver.reset_motion()  # the sticks start again from standstill
+        with self._lock:
+            self._goto, self.last_goto = None, result
+        return BaseVelocity()
+
+    def _log_goto(self, goto: GoTo, pose: Pose, now: float) -> None:
+        """One line per exact move or go-to-base, next to the precise moves' log: where it
+        started, where it aimed, where odometry says it ended, and the true pose in simulation."""
+        if self.trials.path is None:
+            return
+        path = self.trials.path.with_name("goto_log.csv")
+
+        def three(p: Pose | None) -> list[str]:
+            return ["", "", ""] if p is None else [f"{p[0]:.4f}", f"{p[1]:.4f}", f"{math.degrees(p[2]):.2f}"]
+
+        truth = tuple(self.truth()) if self.truth is not None else None
+        cells = [
+            time.strftime("%Y-%m-%d %H:%M:%S"),
+            goto.name,
+            goto.status,
+            *three(goto.start),
+            *three(goto.goal),
+            *three(pose),
+            *three(truth),
+            f"{now - goto.started:.2f}",
+        ]
+        try:
+            new = not path.exists()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                if new:
+                    f.write(
+                        "time,name,status,start_x,start_y,start_yaw_deg,goal_x,goal_y,goal_yaw_deg,"
+                        "end_x,end_y,end_yaw_deg,true_x,true_y,true_yaw_deg,duration_s\n"
+                    )
+                f.write(",".join(cells) + "\n")
+        except OSError as error:  # a full disk must not stop the robot
+            log.warning("could not log the move: %s", error)
 
     def _finish_move(self, move: PreciseMove) -> None:
         truth = None

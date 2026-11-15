@@ -36,6 +36,8 @@ Protocole fixe : 10 essais, objet amené par l'approche autonome (`docs/TRAINING
 | | Approche : erreur finale sur 10 essais | |
 | | Détection : rappel et fausses alertes sur 30 images | |
 | | Mission complète : objets rangés, durée | |
+| dim. 15, après-midi | Caméra avant (caméra d'origine du LeKiwi), `scripts/camera_from_sheet.py`, feuille A4 29,7 × 14 cm (contour noir) et croix au mètre | Objectif à 7,5 cm du sol, incliné de 3,5°, champ 42,4°. Croix de 46 à 97 cm : 1 à 2 cm d'écart en distance, ~3 cm sur le côté (caméra décentrée). Canette à 57,5 cm lue à 57,3 cm par son point de contact ; le cadre du détecteur descend 13 px sous la canette (lue à 51 cm), effet ~1 cm près du bas de l'image. Le sol est vu à partir de 27 cm du centre de la base |
+| dim. 15, après-midi | Position de saisie dans les démonstrations (première image de chaque épisode, détecteur v2 + ce modèle de caméra) | Avant de l'objet à 28,3 cm (chaussette) et 27,3 cm (canette) du centre de la base, −0,2 et −2,5 cm sur le côté : `navigation.approach.goal_x_m: 0.28`, `goal_y_m: -0.01` (était 0,22 / 0) |
 | sam. 14, 21:10 | Entraînement ACT, HPC de DTU (V100 32 Go), batch 8, images de synthèse | 0,21 s par pas, 37 images/s, 3,7 Go de mémoire GPU, file d'attente 12 s |
 | sam. 14, 20:10 | Entraînement ACT, Mac M5, batch 8 | 1,9 s par pas (batch 16 : 3,8 s ; précision mixte : plante) |
 | sam. 14, 21:20 | Modèle du HPC rapatrié sur le laptop (207 Mo, partage de connexion) | 47 s |

@@ -10,6 +10,7 @@ build/
 
 # Per-machine config and secrets (never commit)
 configs/local.yaml
+configs/zone.yaml
 .env
 
 # Data, models, training outputs: these live on the Hugging Face Hub, NOT in git

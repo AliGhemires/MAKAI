@@ -231,6 +231,91 @@ FIELDS = (
     "wheel_radius_m",
     "base_radius_m",
 )
+
+
+def wrap_angle(angle: float) -> float:
+    """The same angle in [-pi, pi): the shortest way to turn."""
+    return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
+@dataclass(frozen=True)
+class GoToTuning:
+    """How the base drives back to a saved pose. Gentle, like the precise moves: less slip."""
+
+    max_lin_m_s: float = 0.15
+    max_ang_rad_s: float = 0.6
+    accel_m_s2: float = 0.3  # gentle start
+    # Gentle start in turns too, as the precise moves (120 deg/s2): without it the base jumped to
+    # full turning speed and the wheels slipped by a different amount at every turn (15 Nov).
+    ang_accel_rad_s2: float = math.radians(120.0)
+    gain_lin: float = 1.2  # 1/s: near the end, speed = gain x distance left
+    gain_ang: float = 1.5
+    creep_m_s: float = 0.015  # slowest useful speed; the servos stall well below
+    creep_rad_s: float = 0.05
+    tol_m: float = 0.01
+    tol_rad: float = math.radians(1.5)
+    settle_s: float = 0.4  # within tolerance this long before declaring arrival
+
+
+class GoTo:
+    """Drive back to a saved pose (x, y, yaw) on odometry. The base is omnidirectional: it
+    goes straight there while turning to the saved heading, slows down near the end and holds
+    still a moment. Call `step` at the control rate until it returns None, then read `status`
+    (done, cancelled, stopped, timeout) and `error` (what odometry says is left)."""
+
+    def __init__(self, name: str, goal: Pose, start: Pose, now: float, tuning: GoToTuning = GoToTuning()):
+        self.name, self.goal, self.tuning = name, goal, tuning
+        self.start, self.started = start, now
+        distance = math.hypot(goal[0] - start[0], goal[1] - start[1])
+        turn = abs(wrap_angle(goal[2] - start[2]))
+        self.deadline = now + 10.0 + 3 * distance / tuning.max_lin_m_s + 3 * turn / tuning.max_ang_rad_s
+        self.phase, self.status = "moving", ""
+        self.error: tuple[float, float] = (distance, turn)  # metres, radians: what is left
+        self._speed, self._turn_rate, self._last_t, self._settle_until = 0.0, 0.0, now, None
+
+    def cancel(self, status: str) -> None:
+        self.status = self.status or status
+
+    def step(self, pose: Pose, now: float) -> BaseVelocity | None:
+        t = self.tuning
+        dt, self._last_t = max(0.0, now - self._last_t), now
+        x, y, yaw = pose
+        dx, dy = self.goal[0] - x, self.goal[1] - y
+        distance, turn = math.hypot(dx, dy), wrap_angle(self.goal[2] - yaw)
+        self.error = (distance, turn)
+        if self.status:
+            return None
+        if now > self.deadline:
+            self.status = "timeout"
+            return None
+        if distance <= t.tol_m and abs(turn) <= t.tol_rad:
+            if self._settle_until is None:
+                self.phase, self._settle_until = "settling", now + t.settle_s
+            if now >= self._settle_until:
+                self.status = "done"
+                return None
+            return BaseVelocity()
+        self.phase, self._settle_until = "moving", None
+        vx = vy = 0.0
+        if distance > t.tol_m:
+            wanted = max(t.creep_m_s, min(t.max_lin_m_s, t.gain_lin * distance))
+            self._speed = min(wanted, self._speed + t.accel_m_s2 * dt)
+            # The way to the goal, seen from the robot: it turns while it drives.
+            ahead = math.cos(yaw) * dx + math.sin(yaw) * dy
+            left = -math.sin(yaw) * dx + math.cos(yaw) * dy
+            vx, vy = ahead / distance * self._speed, left / distance * self._speed
+        wanted = 0.0
+        if abs(turn) > t.tol_rad:
+            wanted = math.copysign(max(t.creep_rad_s, min(t.max_ang_rad_s, t.gain_ang * abs(turn))), turn)
+        # Speed up gently, slow down at once (the gain already brakes near the end).
+        if wanted * self._turn_rate < 0:
+            self._turn_rate = 0.0
+        if abs(wanted) > abs(self._turn_rate):
+            wanted = math.copysign(min(abs(wanted), abs(self._turn_rate) + t.ang_accel_rad_s2 * dt), wanted)
+        self._turn_rate = wanted
+        return BaseVelocity(vx, vy, wanted)
+
+
 MOVE_NAMES = {
     ("x", 1): "forward",
     ("x", -1): "back",

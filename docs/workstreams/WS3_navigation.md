@@ -56,11 +56,26 @@ depuis 1,5 m.
 **Dim. 15, 8 h. En simulation uniquement, rien sur le robot.** Mode d'emploi complet :
 `docs/NAVIGATION.md`.
 
-- Mission qui balaie en serpentin, quitte sa route pour un objet, le dépose, revient où elle
-  était : 4 objets sur 4 en simulation, sol vu à 100 %, retour à 1 cm de l'origine.
-- Glissement simulé (4 %, cap 1,7° par mètre) : le recalage sur le marqueur corrige 14 à
-  23 cm par visite ; retour à 3 cm de l'origine. Sans voir les marqueurs, la même mission
-  échoue après 2 déposes et finit à 90 cm de l'origine.
+- Mission qui balaie, quitte sa route pour un objet, le dépose, revient où elle était :
+  4 objets sur 4 en simulation, retour à 2 cm de l'origine.
+- Dim. 15, 14 h : deux modes. Aspirateur : le robot ne tourne plus, il reste perpendiculaire
+  au mur de la poubelle et glisse de côté le long de rangées (`pattern: rows`). Détection :
+  inchangé, il va chercher l'objet vu puis revient à sa place. Aucune rotation pendant le
+  balayage (700° avant), 3 min 19 au lieu de 3 min 47. Le balayage seul voit 91 % du sol :
+  il manque les deux coins près du mur de départ. L'ancien parcours reste : `pattern: lanes`.
+- Dim. 15, 19 h : la caméra corrige l'odométrie en continu sur le marqueur de la poubelle,
+  et nouvelle disposition « poubelle en face » (aucune rotation en Vacuum, bouton « Zone from
+  marker »). Simulation avec dérive : 4 cm d'écart au pire, contre 38 cm poubelle derrière.
+  L'approche continue vers l'objet quand il sort un instant de l'image, au lieu de s'arrêter.
+- Dim. 15, 15 h 30 : deux usages dans la console. Vacuum & collect (rangées, ramasse à
+  moins de 1 m sur son passage) et Scan & collect (larges couloirs, cap qui oscille de 60°,
+  va chercher tout ce qu'il voit). En simulation : 4 sur 4 dans les deux ; zone vide de
+  2,0 × 1,6 m parcourue en 59 s (Vacuum) et 26 s (Scan).
+- Dim. 15, 15 h : la zone à balayer se trace en conduisant le robot (console, « Trace
+  zone »), gardée dans `configs/zone.yaml`. Essayé dans la console simulée seulement.
+- Glissement simulé (4 %, cap 1,7° par mètre) : le recalage sur le marqueur corrige 4 à
+  46 cm par visite ; retour à 3 cm de l'origine. Sans voir les marqueurs, la même mission
+  échoue après 2 déposes et finit à 50 cm de l'origine.
 - Carte de couverture, objets suivis par leur état, objets hors zone ignorés, objet
   abandonné jamais réapproché.
 - Console à onglets (`scripts/drive.py`) : mission pilotée depuis la page, arrêt d'urgence

@@ -46,6 +46,19 @@ def test_observation_is_converted_from_lerobot_units():
     assert set(obs.arm) == set(ARM_KEYS) and list(obs.images) == ["front"]
 
 
+def test_the_odometry_correction_leaves_what_the_policies_see_untouched():
+    robot = LeKiwiRobot(FakeClient(), ("front",), speed_scale=(0.978, 0.961))
+    obs = robot.get_observation()
+    assert obs.base_velocity.x == pytest.approx(0.1 * 0.978)  # the odometry is corrected...
+    assert obs.base_velocity.theta == pytest.approx(math.radians(90.0) * 0.961)
+    assert (
+        robot.raw_observation["x.vel"] == 0.1 and robot.raw_observation["theta.vel"] == 90.0
+    )  # ...not the raw
+    cfg = load_config()
+    measured = cfg["robot"]["odometry"]
+    assert 0.9 < measured["linear_scale"] <= 1.1 and 0.9 < measured["angular_scale"] <= 1.1
+
+
 def test_lekiwi_robot_always_sends_the_three_base_keys():
     client = FakeClient()
     robot = LeKiwiRobot(client)
@@ -77,6 +90,35 @@ def test_scripted_skills_play_their_poses():
     assert ScriptedDrop({Category.TRASH: sequence}).run(robot, Category.TRASH)
     with pytest.raises(KeyError):
         ScriptedSequence(poses, ["missing"])
+
+
+def test_a_recorded_path_is_played_through_without_going_back_or_stopping():
+    """15 Nov: a path recorded by hand, 82 points 0.2 s apart, made the arm dance. Each step
+    started from the arm's reading, which lags the commands, and stopped smoothly."""
+    from types import SimpleNamespace
+
+    class LaggingArm:
+        def __init__(self):
+            self.sent = [{"arm_elbow_flex.pos": 0.0}]
+
+        def stop(self): ...
+
+        def get_observation(self):  # the arm is where it was sent 6 ticks ago
+            self.looked = getattr(self, "looked", 0) + 1
+            return SimpleNamespace(arm=self.sent[max(0, len(self.sent) - 7)])
+
+        def move_arm(self, pose):
+            self.sent.append(dict(pose))
+
+    poses = {f"p{i}": {"arm_elbow_flex.pos": 10.0 * i} for i in range(1, 11)}
+    robot = LaggingArm()
+    ScriptedSequence(poses, [(f"p{i}", 0.2) for i in range(1, 11)], sleep=lambda _: None).play(robot)
+    elbow = [pose["arm_elbow_flex.pos"] for pose in robot.sent]
+    steps = [b - a for a, b in zip(elbow, elbow[1:], strict=False)]
+    assert elbow[-1] == pytest.approx(100.0)
+    assert min(steps) > 0.0  # never sent back
+    assert max(steps) == pytest.approx(min(steps), rel=0.3)  # constant speed: no stop at each point
+    assert robot.looked >= len(robot.sent) - 1  # an observation every tick: the console keeps its images
 
 
 def test_shared_config_is_consistent():
@@ -119,6 +161,58 @@ def test_each_kind_of_object_gets_its_own_pick_skill():
     for category in (Category.TRASH, Category.CLOTHING, Category.UNKNOWN):
         assert skill.run(None, Target(category, "thing", 0.22, 0.0))
     assert used == ["can model", "sock model", "default"]
+
+
+def test_the_grasp_is_checked_once_the_hand_is_closed_in_the_carry_pose():
+    """After a miss the policy may come home with its hand half open (20): that is not holding.
+    Once the carry pose closes the hand, an empty one closes (2.4), a can stops it (6.0)."""
+    from types import SimpleNamespace
+
+    from makai.manipulation.skills import GRIPPER, PolicyPick
+
+    class Hand:
+        def __init__(self, holding: bool):
+            self.holding, self.gripper = holding, 20.0
+
+        def get_observation(self):
+            return SimpleNamespace(arm={GRIPPER: self.gripper})
+
+    class CarryPose:
+        def play(self, robot):
+            robot.gripper = 6.0 if robot.holding else 2.4
+
+    skill = PolicyPick.__new__(PolicyPick)  # the grasp check only: no model to load
+    skill.gripper_open_above, skill.gripper_at_stop, skill.after = 4.3, 20.0, CarryPose()
+    skill.gripper_held_below, skill.carry = 20.0, None
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is False and skill.last_gripper == 2.4
+    assert skill._holding(Hand(holding=True), settle_s=0.0) is True and skill.last_gripper == 6.0
+
+    class StuckOpen(CarryPose):  # 15 Nov: commanded closed, the hand stayed at 33.9, the sock on the floor
+        def play(self, robot):
+            robot.gripper = 33.9
+
+    skill.after = StuckOpen()
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is False
+    skill.after = CarryPose()
+
+    class WristUp:  # the carry pose that clears the camera: only once the object is held
+        def __init__(self):
+            self.played = 0
+
+        def play(self, robot):
+            self.played += 1
+
+    skill.carry = WristUp()
+    skill._holding(Hand(holding=False), settle_s=0.0)
+    assert skill.carry.played == 0  # missed: stays in home, where the demonstrations start
+    skill._holding(Hand(holding=True), settle_s=0.0)
+    assert skill.carry.played == 1
+    skill.carry = None
+    skill.after, skill.gripper_held_below = (
+        None,
+        None,
+    )  # no carry pose: the reading at the stop is all there is
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is True
 
 
 def test_a_pick_is_over_when_the_arm_is_back_home():

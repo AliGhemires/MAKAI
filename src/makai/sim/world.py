@@ -212,6 +212,21 @@ def demo_world() -> SimWorld:
     )
 
 
+def facing_world() -> SimWorld:
+    """The other way to set up the zone: the robot starts at its near edge and the bin stands
+    across it, 2.35 m ahead, its marker facing the robot. Nothing behind the start pose."""
+    return SimWorld(
+        objects=[
+            SimObject(1.25, -0.50, Category.TRASH, "can"),
+            SimObject(0.90, 0.15, Category.CLOTHING, "sock"),
+            SimObject(1.55, 0.55, Category.TRASH, "can"),
+            SimObject(0.60, 0.60, Category.CLOTHING, "sock"),
+        ],
+        stations={Category.TRASH: (2.35, 0.0)},
+        station_facing={Category.TRASH: math.pi},
+    )
+
+
 def sweep_world() -> SimWorld:
     """A room to sweep: the robot starts at the origin, the bin just behind it, a laundry
     basket beside the bin, and a few things on the floor."""

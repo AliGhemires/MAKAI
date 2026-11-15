@@ -34,6 +34,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 
 from makai.config import REPO_ROOT, load_config
@@ -42,9 +43,15 @@ from makai.robot.drive_server import DriveServer
 from makai.robot.lekiwi import LINKS, BaseGeometry, LeKiwiRobot
 from makai.robot.manual import DriveLimits, DriveLoop, ManualDriver
 from makai.robot.moves import TrialLog
+from makai.robot.trace import OdometryTrace
 
 TELEMETRY_HZ = 10.0
 SIM_HZ = 50.0  # the simulated robot gives no encoders: read its speed at the control rate
+# Through the host, read on every tick of the loop (50 Hz). The host sends 30 observations a
+# second and each read takes at most the 2 newest: at 10 Hz the rest piled up in the network
+# buffers (2.7 MB on the Pi, images 2.5 s late) and the odometry, fed by the same late stream,
+# counted the turns two or three times over (15 Nov).
+HOST_HZ = 50.0
 log = logging.getLogger("drive")
 
 
@@ -67,7 +74,7 @@ def lan_addresses() -> list[str]:
         return []
 
 
-def make_sim(scale: float):
+def make_sim(scale: float, ahead: bool = False):
     """Simulated base that really moves `scale` times what its wheels report (a wrong wheel
     radius, or slip). Returns the robot and where it really is, the "tape" of the simulation.
     It also fakes an arm moving slowly, a battery and motor measurements, to try the page."""
@@ -75,7 +82,7 @@ def make_sim(scale: float):
 
     from makai.contracts import BaseVelocity, Observation
     from makai.robot.lekiwi import ARM_KEYS
-    from makai.sim.world import SimRobot, sweep_world
+    from makai.sim.world import SimRobot, facing_world, sweep_world
 
     class MiscalibratedSim(SimRobot):
         def get_observation(self) -> Observation:
@@ -110,7 +117,8 @@ def make_sim(scale: float):
                 for i, name in enumerate(names)
             }
 
-    robot = MiscalibratedSim(sweep_world(), dt=1 / SIM_HZ)  # a room with a bin, a basket and things to pick
+    # A room with a bin, a basket and things to pick; `ahead`: the bin across the zone instead.
+    robot = MiscalibratedSim(facing_world() if ahead else sweep_world(), dt=1 / SIM_HZ)
     return robot, lambda: (robot.world.x, robot.world.y, robot.world.yaw)
 
 
@@ -121,17 +129,21 @@ def sim_things(world) -> list:
     return things + [(sx, sy, (230, 230, 230), 0.14) for sx, sy in world.stations.values()]
 
 
-def plan_of(sweep) -> dict:
-    """The room, the lanes and the stations, for the map of the console."""
-    from makai.navigation.coverage import snake_waypoints
+def plan_of(sweep, traced: bool = False) -> dict:
+    """The room, the route of the sweep and the stations, for the map of the console."""
+    from makai.orchestrator.sweep import USES, for_use, sweep_waypoints
 
     return {
+        "pattern": sweep.pattern,
+        "routes": {use: sweep_waypoints(for_use(sweep, use)) for use in USES},  # one per use
+        "traced": traced,  # the zone was traced by driving the robot around it
         "room": {
             "length_m": sweep.room.length_m,
             "width_m": sweep.room.width_m,
             "margin_m": sweep.room.margin_m,
+            "y_offset_m": sweep.room.y_offset_m,
         },
-        "waypoints": snake_waypoints(sweep.room, sweep.lane_spacing_m),
+        "waypoints": sweep_waypoints(sweep),
         "stations": {
             key.value: {"x": s.x, "y": s.y, "dock_x": s.dock_x, "dock_y": s.dock_y}
             for key, s in sweep.stations.items()
@@ -141,39 +153,69 @@ def plan_of(sweep) -> dict:
 
 def sim_runner(loop, driver, robot, cfg):
     """The sweeping mission on the simulated robot of the page: same code as on the real one."""
+    from dataclasses import replace
+
     from makai.app import mission_config
     from makai.contracts import Category
     from makai.navigation.coverage import Room
-    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
     from makai.robot.autopilot import MissionRunner
-    from makai.sim.world import SimDrop, SimPerception, SimPick, sweep_world
+    from makai.sim.world import SimDrop, SimPerception, SimPick, facing_world, sweep_world
 
     world = robot.world
     mission_cfg = mission_config(cfg)
-    stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
-    sweep = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    ahead = Category.CLOTHING not in world.stations  # the world with the bin across the zone
+    if ahead:
+        whole = SweepConfig(
+            room=Room(length_m=2.0, width_m=1.6, margin_m=0.0),
+            stations={Category.TRASH: Station(2.35, 0.0, 2.0, 0.0)},
+        )
+    else:
+        stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
+        whole = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    plan = {"sweep": whole, "traced": False}
+    fresh_world = facing_world if ahead else sweep_world
     goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
 
-    def build(tap):
+    def build(tap, use):
         # A mission always starts in front of the bin, facing the room: put the simulated robot there.
         world.x, world.y, world.yaw = 0.0, 0.0, 0.0
         return SweepMission(
             tap,
-            SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+            SimPerception(world, station_max_range_m=2.5 if ahead else 1.2, max_range_m=1.5),
             SimPick(world, goal_xy=goal, success_rate=0.85, duration_s=2.5, seed=runner.runs),
             SimDrop(world, duration_s=1.5),
             mission_cfg,
-            sweep,
+            for_use(plan["sweep"], use),
         )
 
     def reset() -> None:
-        fresh = sweep_world()
+        fresh = fresh_world()
         world.objects[:] = fresh.objects
         world.delivered.clear()
         world.carrying, world.x, world.y, world.yaw = None, 0.0, 0.0, 0.0
         loop.reset_odometry()
 
-    runner = MissionRunner(loop, driver, build, lambda: plan_of(sweep), reset, simulated=True)
+    def use_zone(room, stations=None) -> None:  # in simulation the zone is not written to configs/
+        sweep = replace(whole, room=Room(**room)) if room else whole
+        if stations:
+            placed = {Category(name): Station(**place) for name, place in stations.items()}
+            sweep = replace(sweep, stations={**sweep.stations, **placed})
+        plan["sweep"], plan["traced"] = sweep, room is not None
+
+    def see_markers() -> dict:  # what the simulated camera sees from where the robot stands
+        return dict(SimPerception(world, station_max_range_m=4.0).perceive(None).stations)
+
+    runner = MissionRunner(
+        loop,
+        driver,
+        build,
+        lambda: plan_of(plan["sweep"], plan["traced"]),
+        reset,
+        True,
+        use_zone,
+        see_markers=see_markers,
+    )
     return runner
 
 
@@ -181,13 +223,46 @@ def real_runner(loop, driver, cfg):
     """The sweeping mission on the real robot, through the host. The detector and the policies
     are loaded at the first start and kept."""
     from makai.app import mission_config, sweep_config
+    from makai.navigation.zone import forget_zone, load_zone, save_zone
     from makai.robot.autopilot import MissionRunner
 
-    sweep, parts = sweep_config(cfg), {}
+    plan, parts = {"sweep": sweep_config(cfg)}, {}
 
-    def build(tap):
+    def use_zone(room, stations=None) -> None:  # kept in configs/zone.yaml: it survives a restart
+        if room is None:
+            forget_zone()
+        else:
+            save_zone(room, stations=stations)
+        plan["sweep"] = sweep_config(cfg)
+
+    def see_markers() -> dict:
+        """The station markers in the front camera's latest images, where most of them agree."""
+        import statistics
+
+        from makai.contracts import StationSighting
+        from makai.perception.geometry import CameraModel
+        from makai.perception.stations import build_station_detector
+
+        if "markers" not in parts:
+            p = cfg["perception"]
+            parts["markers"] = build_station_detector(p, CameraModel(**p["camera_model"]))
+        seen: dict = {}
+        for _ in range(7):  # a third of a second of images
+            image = loop.robot.raw_observation.get("front")
+            for key, sighting in (parts["markers"].detect(image) if image is not None else {}).items():
+                seen.setdefault(key, []).append(sighting)
+            time.sleep(0.05)
+        return {
+            key: StationSighting(
+                key, statistics.median(s.x_m for s in found), statistics.median(s.y_m for s in found)
+            )
+            for key, found in seen.items()
+            if len(found) >= 4
+        }
+
+    def build(tap, use):
         from makai.manipulation.skills import build_drop_skill, build_pick_skill
-        from makai.orchestrator.sweep import SweepMission
+        from makai.orchestrator.sweep import SweepMission, for_use
         from makai.perception.pipeline import build_perception
 
         if not parts:
@@ -195,10 +270,31 @@ def real_runner(loop, driver, cfg):
                 perception=build_perception(cfg), pick=build_pick_skill(cfg), drop=build_drop_skill(cfg)
             )
         return SweepMission(
-            tap, parts["perception"], parts["pick"], parts["drop"], mission_config(cfg), sweep
+            tap,
+            parts["perception"],
+            parts["pick"],
+            parts["drop"],
+            mission_config(cfg),
+            for_use(plan["sweep"], use),
         )
 
-    return MissionRunner(loop, driver, build, lambda: plan_of(sweep))
+    def arm_home(robot) -> None:
+        """Every demonstration starts and ends in the home pose, and the arm must stay tucked in
+        while the base drives: put it there before the robot moves (2 s, smooth)."""
+        from makai.config import CONFIG_DIR
+        from makai.manipulation.skills import load_poses, move_to
+
+        move_to(robot, load_poses(CONFIG_DIR / cfg["manipulation"]["poses_file"])["home"], duration_s=2.0)
+
+    return MissionRunner(
+        loop,
+        driver,
+        build,
+        lambda: plan_of(plan["sweep"], load_zone() is not None),
+        use_zone=use_zone,
+        prepare=arm_home,
+        see_markers=see_markers,
+    )
 
 
 def _interrupt(signum, frame) -> None:
@@ -217,6 +313,11 @@ def main() -> None:
     parser.add_argument(
         "--sim-scale", type=float, default=1.0, help="simulated robot moves this times what its wheels say"
     )
+    parser.add_argument(
+        "--sim-ahead",
+        action="store_true",
+        help="with --sim: the bin stands across the zone, its marker facing the robot (no turn, marker in view)",
+    )
     parser.add_argument("--serial-port", help="motor board port in wired mode (default: robot.base.port)")
     parser.add_argument("--http-port", type=int, help="port of the page (default: teleop.drive.http_port)")
     parser.add_argument("--bind", default="0.0.0.0", help="listen address; 127.0.0.1 = this machine only")
@@ -232,7 +333,7 @@ def main() -> None:
     geometry = BaseGeometry.from_config(cfg["robot"]["base"])
     truth = None
     if args.sim:
-        (robot, truth), link, serial_port = make_sim(args.sim_scale), "sim", None
+        (robot, truth), link, serial_port = make_sim(args.sim_scale, args.sim_ahead), "sim", None
     else:
         link = args.link or cfg["robot"].get("link", "host")
         if args.serial_port:
@@ -271,10 +372,11 @@ def main() -> None:
         robot,
         driver,
         geometry,
-        telemetry_hz=SIM_HZ if args.sim else TELEMETRY_HZ,
+        telemetry_hz=SIM_HZ if args.sim else HOST_HZ if link == "host" else TELEMETRY_HZ,
         trials=trials,
         truth=truth,
         cameras=cameras,
+        trace=OdometryTrace.in_folder(REPO_ROOT / "data") if link == "host" else None,
     )
     info = {
         "link": link,
@@ -334,6 +436,9 @@ def main() -> None:
             loop.stop()  # stops the base
         finally:
             robot.disconnect()
+        if loop.trace is not None and loop.trace.rows:
+            loop.trace.close()
+            log.info("base trace: %s (uv run python scripts/odometry_report.py)", loop.trace.path)
         log.info("robot stopped")
 
 

@@ -202,7 +202,7 @@ Sources : github.com/Encrux/robohack26, boesch.dev/posts/robohack.
 
 ## 9. Naviguer et cartographier sans capteur de distance
 
-Le robot n'a que deux caméras et ses roues. Il balaie la pièce en serpentin, quitte sa route
+Le robot n'a que deux caméras et ses roues. Il balaie la pièce, quitte sa route
 pour un objet, le dépose à la poubelle et revient où il était. Sa carte : l'odométrie, plus
 l'empreinte au sol de la caméra avant. Le marqueur de la poubelle est son seul point fixe : à
 chaque visite, il y relit sa position et son cap.
@@ -212,18 +212,206 @@ Mesures en simulation, avec la machine à états et la navigation réelles, piè
 
 | Roues simulées | Avec les marqueurs | Marqueurs jamais vus |
 |---|---|---|
-| Parfaites | 4 déposés sur 4, sol vu à 100 %, retour à 1 cm de l'origine, 3 min 50 | — |
-| Glissent de 4 %, cap qui dérive de 1,7° par mètre | **4 sur 4**, retour à **3 cm** ; chaque visite corrige 14 à 23 cm | 2 sur 4 puis échec, fin à 90 cm de l'origine |
-| Glissent de 8 %, cap qui dérive de 3,4° par mètre | 4 sur 4, retour à 6 cm | 2 sur 4 puis échec, fin à 1 m de l'origine |
+| Parfaites | 4 déposés sur 4, retour à 2 cm de l'origine, 3 min 19 | — |
+| Glissent de 4 %, cap qui dérive de 1,7° par mètre | **4 sur 4**, retour à **3 cm** ; chaque visite corrige 4 à 46 cm | 2 sur 4 puis échec, fin à 50 cm de l'origine |
+| Glissent de 8 %, cap qui dérive de 3,4° par mètre | 4 sur 4, retour à 5 cm | pas mesuré |
+
+Ces chiffres sont ceux du parcours en rangées (ci-dessous).
+
+**Deux façons de balayer, comparées dans la même pièce simulée.** La base est holonome : elle
+peut glisser de côté. Premier parcours, en couloirs : le robot avance, tourne au bout, revient.
+Second, en rangées (le mode aspirateur retenu) : il ne tourne jamais, reste perpendiculaire au
+mur de la poubelle et glisse de côté ; la caméra regarde toujours la bande de sol suivante.
+
+| | En couloirs, en tournant | En rangées, sans tourner |
+|---|---|---|
+| Rotation pendant le balayage (pièce vide) | 700° | **0°** |
+| Longueur du parcours | 8,4 m | 7,9 m |
+| Mission complète, 4 objets, roues parfaites | 3 min 47 | **3 min 19** |
+| Sol vu par le balayage seul | 100 % | 91 % : les deux coins près du mur de départ manquent |
+| Avec des roues qui glissent de 4 % | 4 sur 4, retour à 3 cm | 4 sur 4, retour à 3 cm |
+
+Le gain en temps est modeste (12 %). Le gain attendu sur le robot est ailleurs : tourner est
+ce qui fausse le plus le cap d'une base à roues omnidirectionnelles. Ce n'est pas mesuré.
 
 Conclusion : sans point fixe, l'odométrie seule ne tient pas une mission ; un marqueur
 imprimé sur la poubelle suffit. Limite : aucun obstacle n'est vu, et rien de cela n'a encore
 tourné sur le robot. Image : `figures/console_mission.png` (la console pendant une mission
 simulée). Source : `docs/NAVIGATION.md`.
 
+## 10. Les deux datasets vérifiés épisode par épisode
+
+Collecte du 15 nov. sur un laptop Windows, robot en lien direct (option A, 30 images/s par
+caméra, aucun trou de plus de 53 ms).
+
+| Dataset | Enregistrés | Gardés | Images | Durée d'un épisode | Ratés trouvés |
+|---|---|---|---|---|---|
+| `pick_sock_v1` | 60 (02:00–03:08, 2 sessions) | 59 | 22 780 | 7,8 à 18,2 s | épisode 31 |
+| `pick_can_v1` | 70 (jusqu'à 05:38) | 68 | 22 118 | 8,1 à 14,6 s | épisodes 8 et 68 |
+
+- Comment on trouve un raté sans regarder 130 vidéos : la canette est rigide, la pince qui
+  la tient ne se ferme pas (5 à 8,5) ; vide, elle se ferme jusqu'à 2. Confirmé sur la dernière
+  image de la caméra de poignet de chaque épisode
+  (`docs/figures/can_v1_70_last_images_wrist_with_misses.jpg`).
+- Pour la chaussette, molle, la pince se ferme presque autant : seule l'image le montre
+  (l'épisode 31 a été trouvé ainsi).
+- Les ratés de la canette sont retirés du dataset (`lerobot-edit-dataset ... delete_episodes`),
+  celui de la chaussette exclu à l'entraînement.
+- Pose de départ identique d'un épisode à l'autre : ±9° (chaussette), ±13° (canette).
+
+Sources : `docs/logs/recordings/` (liste des épisodes, heure, durée), `docs/REGISTRY.md`.
+
+## 11. Calibrer la caméra avant sans imprimante
+
+Pas d'imprimante dans le hackerspace : une feuille A4 posée au sol (bords et contour noir
+au feutre, 29,7 × 14 cm) et cinq croix de scotch mesurées au mètre suffisent
+(`scripts/camera_from_sheet.py`). La caméra avant est la caméra d'origine du LeKiwi
+(« GENERAL WEBCAM »), sans fiche technique : son champ de vision est mesuré, pas lu.
+
+| Mesuré | Valeur |
+|---|---|
+| Hauteur de l'objectif | 7,5 cm |
+| Inclinaison | 3,5° vers le bas |
+| Champ de vision horizontal | 42,4° |
+| Sol visible | à partir de 27 cm devant le centre de la base |
+| Croix de 46 à 97 cm | 1 à 2 cm d'écart en distance, ~3 cm sur le côté (caméra décentrée) |
+| Canette posée à 57,5 cm | lue à 57,3 cm par son point de contact au sol |
+
+- Premier calcul faux de 13 % sur toutes les distances : le rectangle supposé de 26 cm faisait
+  en réalité 29,7 cm (bords de la feuille). Une erreur d'échelle constante pointe vers la
+  taille du rectangle.
+- La croix à 131,5 cm est inutilisable : caméra si basse que 1 pixel y vaut plus de 10 cm.
+- Le cadre du détecteur descend 13 pixels sous la canette : 6,5 cm d'erreur à 57 cm, mais
+  ~1 cm près du bas de l'image, là où se décide l'arrêt.
+
+Figures : `camera_calibration_grid.jpg` (quadrillage de 10 cm tracé avec le modèle),
+`camera_calibration_sheet_corners.jpg`, `camera_calibration_can_57cm.jpg`. Mesures :
+`docs/logs/camera_calibration_marks.csv`.
+
+## 12. Où s'arrêter devant l'objet : demandé aux démonstrations
+
+Au lieu de mesurer la zone de saisie, on la lit dans les données : première image de la
+caméra avant de chaque épisode, passée dans le même détecteur et le même modèle de caméra que
+pendant la mission. L'avant de l'objet était à **28,3 cm** (chaussette, médiane) et **27,3 cm**
+(canette) du centre de la base, à −0,2 et −2,5 cm sur le côté.
+
+- Cible d'approche : 0,28 / −0,01 m (elle était à 0,22 m : 6 cm trop près).
+- Mesurée par la même chaîne que la mission, la cible porte les mêmes biais (cadre du
+  détecteur, caméra décentrée) : ils s'annulent.
+
+Source : `docs/REGISTRY.md`, mesures système.
+
+## 13. Le retard des images et l'odométrie fausse (15 nov., en cours)
+
+Premier essai de navigation : la zone tracée en conduisant le robot dessinait un triangle au
+lieu d'un rectangle, le cap affiché valait 762° après un tour, et les images arrivaient avec
+2,5 s de retard.
+
+- Cause : le host envoie 30 observations par seconde, la console n'en lit que 10 hors mission
+  et ~18 pendant (une étape de mission prend 54 ms sur le processeur du laptop). Le surplus
+  s'empile dans les tampons réseau : 2,7 Mo en attente sur la Pi.
+- Les vitesses des roues arrivent par le même flux : tant que la file grossit, une seconde de
+  mouvement est rejouée sur deux ou trois, et l'odométrie compte deux fois les virages.
+- Pistes : host à 15 Hz pour la navigation, console qui lit le flux à chaque tour, modèles sur
+  la carte graphique du laptop pour repasser sous 33 ms.
+
+Suite : sections 14 à 17. La console lit maintenant le flux à chaque tour (`9a4666b`).
+
+## 14. D'où vient l'erreur de rotation : ce que disent nos propres données
+
+Après la correction du flux, les lignes droites étaient bonnes (2 cm d'écart sur 90 cm) mais
+quatre quarts de tour finissaient à 10, 15, 28 ou 32° de leur cible selon l'essai. Analyse
+faite sans le robot, sur les journaux et sur nos épisodes de saisie enregistrés.
+
+| Question | Réponse | Comment on le sait |
+|---|---|---|
+| Un facteur d'échelle suffit-il ? | Non | entre trois essais où seul le facteur change, l'angle réel ne suit pas l'odométrie : pente de 0,36 à 2,5 au lieu de 1, quel que soit le côté mesuré |
+| La vitesse lue sur les servos est-elle fine ? | Non : par pas de 50 pas/s | 44 526 images d'épisodes : les roues ne lisent que 0, ±50, ±100, ±150 |
+| Une roue immobile lit-elle zéro ? | Pas toujours | au moins une roue lit ±50 pas/s dans 26 à 28 % des images, base à l'arrêt |
+| Est-ce cela qui fausse les rotations ? | Non | chaîne de mesure simulée de bout en bout, roues parfaites : 0,4° d'écart sur 360°, 0,9° au pire |
+| Y avait-il un vrai défaut logiciel ? | Oui, ailleurs | après chaque saisie, la mission multipliait la vitesse lue à la reprise par toute la durée de la saisie : une roue à 50 pas/s pendant 15 s = 8,8° de cap d'un coup |
+
+Conclusion : la chaîne de mesure dit vrai à 1° près ; l'erreur de 10 à 32° vient du sol, de
+la mécanique ou du mètre. Corrigé au passage : l'odométrie compte les pas des codeurs de roues
+(exact, sans bruit à l'arrêt) et n'intègre plus à travers une saisie. Outils : un test de
+rotation lu à la caméra (`scripts/turn_check.py`) et un enregistreur de chaque déplacement.
+Pas encore refait sur le robot. Source : `docs/DEBUG_ODOMETRY.md`, section 10.
+
+## 15. L'odométrie est mauvaise : la caméra décide
+
+Plutôt que de chercher à rendre les rotations justes, on les évite et on regarde.
+
+- Le robot rejoint tout ce qu'il voit en le regardant : un objet est remesuré à chaque image,
+  une station est visée dès qu'elle entre dans l'image.
+- Dès qu'une station est dans l'image, sa direction corrige le cap du robot et sa distance
+  corrige sa position, un peu à chaque image.
+- La poubelle passe **en face** du robot, de l'autre côté de la zone. Il la garde alors sous
+  les yeux pendant qu'il balaie, et n'a plus un seul demi-tour à faire : il avance pour
+  déposer, puis revient à sa rangée en glissant.
+
+Même zone simulée de 2,0 × 1,6 m, 4 objets, roues qui glissent de 4 % et cap qui dérive de
+1,7° par mètre :
+
+| | Poubelle derrière le robot | Poubelle en face |
+|---|---|---|
+| Objets déposés | 4 sur 4 | 4 sur 4 |
+| Rotation sur toute la mission | 2 160° | **41°** (0° avec des roues parfaites) |
+| Station dans l'image | 23 % du temps | **93 %** |
+| Pire écart entre l'odométrie et la réalité | 38 cm | **4 cm** |
+| Avec une dérive doublée | 3 sur 4, 76 cm | 4 sur 4, 9 cm |
+
+Un piège trouvé en simulation : corriger la position à partir de la direction du repère,
+quand c'est le cap qui a dérivé, aggrave tout (60 cm d'écart à 2 m pour 18° d'erreur). C'est
+le cap que la direction doit corriger. Image : `figures/console_bin_ahead.png`. Simulation
+seulement. Source : `docs/NAVIGATION.md`, sections 1 et 2.
+
+## 16. Un robot, deux métiers
+
+La même mission, deux usages choisis dans la console avant de démarrer.
+
+| | Vacuum & collect (chambre d'hôtel) | Scan & collect (rue) |
+|---|---|---|
+| But | passer sur tout le sol | trouver les objets |
+| Parcours | rangées serrées, sans jamais tourner | larges couloirs, le regard qui balaie de 60° à gauche et à droite |
+| Ce qu'il ramasse | ce qui est sur son passage, à moins de 1 m | tout ce qu'il repère |
+| Pièce de 2,4 × 1,8 m, 4 objets | 4 sur 4 en 3 min 11 | 4 sur 4 en 4 min 16 |
+| Zone vide de 2,0 × 1,6 m | parcourue en 59 s, sol vu à 92 % | parcourue en 26 s, sol vu à 96 % |
+
+En rangées, le robot ne tourne plus pendant qu'il balaie : 0° de rotation contre 700° avec le
+premier parcours en couloirs. Images : `figures/console_mission.png`,
+`figures/console_scan.png`. Simulation seulement.
+
+## 17. Des stations sans imprimante : une bande de scotch gris
+
+Pas d'imprimante sur place, donc pas de marqueur ArUco. Nos deux stations sont des cartons
+marqués d'une bande de scotch gris : horizontale pour le linge, verticale pour les déchets.
+
+- La direction de la bande dit quel carton c'est ; sa taille dans l'image dit à quelle
+  distance il est (sa longueur de loin, sa largeur de près, quand la bande déborde de l'image).
+- Une bande est grise, plus sombre que le carton sans être noire, longue et fine, avec du
+  carton de chaque côté. La caméra est à 7,5 cm du sol : une bande collée en travers d'un
+  carton apparaît près de la ligne d'horizon où que soit le carton.
+
+| Essai | Résultat |
+|---|---|
+| La photo de nos deux cartons | les deux bandes trouvées et distinguées |
+| Scènes synthétiques vues par la caméra du robot, cartons de 0,8 à 2,6 m | distance à 6 % près ; 3 cm près à 35 cm |
+| Mur gris, objet gris au sol, chaussette noire, carton sans scotch | ignorés |
+| Scotch gris collé au sol, au-delà de 1,8 m | **pris pour un carton** dans la première version ; corrigé : vu de biais, il n'a ni les proportions ni la hauteur d'une bande sur un carton (ignoré de 0,6 à 5 m) |
+| Temps de calcul | 10 ms par image |
+
+Jamais essayé sur une image de la caméra du robot. Image : `figures/stations_tape.jpg`.
+Source : `docs/workstreams/WS2_perception.md`.
+
 ## Ce qui reste à mesurer
 
-- Le taux de réussite sur le robot : 10 essais par modèle (`scripts/try_pick.py`).
+- Sur le robot, tout ce que disent les sections 14 à 17 : la rotation réelle lue à la caméra
+  (`scripts/turn_check.py`), les bandes de scotch vues par la caméra du robot, la mission avec
+  la poubelle en face.
+
+- Le taux de réussite sur le robot : 10 essais par modèle (`scripts/try_pick.py`). Premiers
+  essais du 15 nov. (`act_sock_v1`, `act_can_v1`, modèles finaux) : saisies réussies presque
+  à chaque fois d'après l'équipe ; score exact non noté.
 - Le seuil de la pince qui sépare une saisie réussie d'une saisie vide.
 - L'effet de la salle de démo : référence contre caméra de poignet seule, dans cette salle.
 - Le détecteur réentraîné sur les images de la caméra du robot.

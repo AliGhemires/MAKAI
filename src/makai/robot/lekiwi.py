@@ -132,18 +132,85 @@ def to_lerobot_base(velocity: BaseVelocity) -> dict[str, float]:
 
 
 def from_lerobot_observation(
-    raw: Mapping[str, Any], camera_names: tuple[str, ...], stamp: float
+    raw: Mapping[str, Any],
+    camera_names: tuple[str, ...],
+    stamp: float,
+    speed_scale: tuple[float, float] = (1.0, 1.0),
 ) -> Observation:
+    """`speed_scale` (linear, angular): what the robot really does per measured unit of speed
+    (`robot.odometry`). It corrects the odometry only: `raw`, which the policies see, is unchanged."""
+    linear, angular = speed_scale
     return Observation(
         stamp=stamp,
         images={name: raw[name] for name in camera_names if raw.get(name) is not None},
         arm={key: float(raw[key]) for key in ARM_KEYS if key in raw},
         base_velocity=BaseVelocity(
-            x=float(raw.get("x.vel", 0.0)),
-            y=float(raw.get("y.vel", 0.0)),
-            theta=math.radians(float(raw.get("theta.vel", 0.0))),
+            x=linear * float(raw.get("x.vel", 0.0)),
+            y=linear * float(raw.get("y.vel", 0.0)),
+            theta=angular * math.radians(float(raw.get("theta.vel", 0.0))),
         ),
     )
+
+
+WHEEL_ENCODER_SUFFIX = ".enc"  # what scripts/lekiwi_host.py adds to the observation, per wheel
+HOST_CLOCK = "host.time"
+STEPS_PER_TURN = 4096
+
+
+def keep_host_extras(client) -> None:
+    """LeRobot's client only keeps the fields it knows from an observation. Our host adds the
+    wheel encoders and its clock (scripts/lekiwi_host.py): keep them, in `client.host_extras`.
+    Empty with a host that does not send them."""
+    parse = client._parse_observation
+    client.host_extras = {}
+
+    def parse_and_keep(frames):
+        observation = parse(frames)
+        if observation is not None:
+            client.host_extras = {
+                key: value
+                for key, value in observation.items()
+                if key.endswith(WHEEL_ENCODER_SUFFIX) or key == HOST_CLOCK
+            }
+        return observation
+
+    client._parse_observation = parse_and_keep
+
+
+class EncoderMotion:
+    """Base motion counted on the wheel encoders, handed out as a velocity.
+
+    Everything that tracks the robot here integrates `Observation.base_velocity` over the time
+    between two observations. This turns what the wheels really turned since the last
+    observation into the velocity that, integrated that way, gives exactly that motion: the
+    odometry then counts encoder steps, and is no longer an integral of the servos' speed
+    readings (50 steps/s resolution, noisy at rest).
+    """
+
+    def __init__(self, geometry: BaseGeometry, speed_scale: tuple[float, float] = (1.0, 1.0)):
+        self.geometry, self.speed_scale = geometry, speed_scale
+        self._last: dict[str, float] | None = None
+        self._stamp: float | None = None
+        self._pending = [0.0, 0.0, 0.0]  # motion not handed out yet (two reads in one clock tick)
+
+    def velocity(self, positions: Mapping[str, float], stamp: float) -> BaseVelocity:
+        if self._last is None or self._stamp is None:
+            self._last, self._stamp = dict(positions), stamp
+            return BaseVelocity()
+        delta = {
+            name: (positions[name] - self._last[name] + STEPS_PER_TURN / 2) % STEPS_PER_TURN
+            - STEPS_PER_TURN / 2
+            for name in self.geometry.names
+        }
+        self._last = dict(positions)
+        for i, moved in enumerate(self.geometry.wheel_steps_to_body(delta)):
+            self._pending[i] += moved
+        dt = stamp - self._stamp
+        if dt <= 0.0:  # same tick of the clock (Windows: 15.6 ms): kept for the next observation
+            return BaseVelocity()
+        (x, y, yaw), self._pending, self._stamp = self._pending, [0.0, 0.0, 0.0], stamp
+        linear, angular = self.speed_scale
+        return BaseVelocity(linear * x / dt, linear * y / dt, angular * yaw / dt)
 
 
 def make_client(cfg: dict):
@@ -162,9 +229,11 @@ def make_client(cfg: dict):
         )
         for name, cam in cfg["robot"]["cameras"].items()
     }
-    return LeKiwiClient(
+    client = LeKiwiClient(
         LeKiwiClientConfig(remote_ip=cfg["robot"]["remote_ip"], id=cfg["robot"]["id"], cameras=cameras)
     )
+    keep_host_extras(client)
+    return client
 
 
 def arm_calibration_path(robot_id: str) -> Path | None:
@@ -341,10 +410,21 @@ class WiredBase:
 class LeKiwiRobot:
     """Implements `makai.contracts.Robot` on the real LeKiwi."""
 
-    def __init__(self, client, camera_names: tuple[str, ...] = ("front", "wrist")):
+    def __init__(
+        self,
+        client,
+        camera_names: tuple[str, ...] = ("front", "wrist"),
+        speed_scale: tuple[float, float] = (1.0, 1.0),
+        geometry: BaseGeometry | None = None,
+    ):
         self.client = client  # LeKiwiClient (or WiredBase), for policies that need it
         self.camera_names = camera_names
-        self.raw_observation: dict[str, Any] = {}  # last LeRobot-format observation
+        self.speed_scale = speed_scale  # odometry correction through the host (`robot.odometry`)
+        self.raw_observation: dict[str, Any] = {}  # last LeRobot-format observation, uncorrected
+        # Through the host: the base motion counted on the wheel encoders, when the host sends them.
+        self._encoders = EncoderMotion(geometry, speed_scale) if geometry is not None else None
+        self.odometry_source: str | None = None  # what the base velocity of the observations is made of
+        self.speed_reading = BaseVelocity()  # the servos' own speed readings, kept for comparison
 
     @classmethod
     def from_config(cls, cfg: dict, link: str | None = None) -> LeKiwiRobot:
@@ -361,8 +441,11 @@ class LeKiwiRobot:
             base = WiredBase(bus, geometry, robot["base"].get("watchdog_s", 0.5), fallback_bus=fallback)
             base.calibration_file = calibration_file if arm_calibration else None
             return cls(base, camera_names=())
-        if link == "host":
-            return cls(make_client(cfg), tuple(robot["cameras"]))
+        if link == "host":  # the speeds come from LeRobot's built-in wheel sizes: corrected here
+            odometry = robot.get("odometry") or {}
+            scale = (float(odometry.get("linear_scale", 1.0)), float(odometry.get("angular_scale", 1.0)))
+            geometry = BaseGeometry.from_config(robot["base"])
+            return cls(make_client(cfg), tuple(robot["cameras"]), speed_scale=scale, geometry=geometry)
         raise ValueError(f"robot.link must be one of {LINKS}, got {link!r}")
 
     def connect(self) -> None:
@@ -374,7 +457,26 @@ class LeKiwiRobot:
 
     def get_observation(self) -> Observation:
         self.raw_observation = self.client.get_observation()
-        return from_lerobot_observation(self.raw_observation, self.camera_names, time.monotonic())
+        stamp = time.monotonic()
+        observation = from_lerobot_observation(
+            self.raw_observation, self.camera_names, stamp, self.speed_scale
+        )
+        self.speed_reading = observation.base_velocity
+        positions = self.host_wheel_positions()
+        if positions is not None and self._encoders is not None:
+            observation.base_velocity = self._encoders.velocity(positions, stamp)
+            self.odometry_source = "wheel encoders, through the host"
+        elif self._encoders is not None:
+            self.odometry_source = "speed readings (this host sends no wheel encoders: update it on the Pi)"
+        return observation
+
+    def host_wheel_positions(self) -> dict[str, float] | None:
+        """Wheel encoders of the latest observation, in steps, when the host sends them."""
+        extras = getattr(self.client, "host_extras", None) or {}
+        names = self._encoders.geometry.names if self._encoders is not None else ()
+        if not names or any(name + WHEEL_ENCODER_SUFFIX not in extras for name in names):
+            return None
+        return {name: float(extras[name + WHEEL_ENCODER_SUFFIX]) for name in names}
 
     def drive(self, velocity: BaseVelocity) -> None:
         self.client.send_action(to_lerobot_base(velocity))

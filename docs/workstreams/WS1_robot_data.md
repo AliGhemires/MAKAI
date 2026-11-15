@@ -63,6 +63,15 @@ minutes en suivant `docs/SETUP.md`.
 
 _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
 
+**Dim. 15, 18 h : odométrie (analyse sans le robot, `docs/DEBUG_ODOMETRY.md` section 10)**
+- Mesuré sur nos épisodes : les vitesses de roues ne valent qu'à 50 pas/s près, et une roue
+  immobile lit ±50 pas/s dans 26 à 28 % des images. Simulé : cela ne fait que 0,4° sur 360°,
+  donc les 10 à 32° ne viennent pas de la chaîne de mesure.
+- Corrigé : odométrie comptée sur les codeurs de roues (host à mettre à jour sur la Pi), saut
+  de cap de la mission après chaque saisie (jusqu'à 8,8°), `angular_scale` remis à 1.0.
+- À faire sur le robot : `scripts/turn_check.py` (rotation réelle lue à la caméra) et les
+  contrôles matériels de la section 10.4.
+
 **Sam. 14, soir**
 - Marche : 9 moteurs répondent (bras 1–6, roues 7–9), batterie 12,8 V ; bras calibré
   sur la Pi (`makai_kiwi`) ; leader calibré et dans le dépôt ; téléop bras + base depuis un
@@ -90,3 +99,11 @@ _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui blo
   Fait dans `docs/SETUP.md`, section 4 (commande à deux caméras), à valider au premier lancement.
 - À faire : calibrer le rayon des roues au mètre (onglet Measure, `docs/SETUP.md`) ; compenser
   cette calibration en mode host (le host garde ses valeurs intégrées).
+
+**Dim. 15, 16 h–17 h 40 · navigation sur le robot (laptop d'Amine, option A)**
+- Corrigé : flux lu à 10 Hz par la console (images 2,5 s en retard, virages comptés deux fois),
+  bras pas en home au départ d'une mission, dépassements des déplacements précis.
+- Lignes droites bonnes (2 cm sur 90 cm, distance corrigée de 2,2 %). **Rotations non
+  reproductibles** : 10 à 32° d'erreur sur 360° selon l'essai, alors que l'odométrie dit 360° à
+  1,5° près. Analyse complète, journaux et essais qui tranchent : `docs/DEBUG_ODOMETRY.md`.
+- `robot.odometry.angular_scale: 1.039` non validé. Batterie à recharger avant tout nouvel essai.

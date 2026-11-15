@@ -288,7 +288,9 @@ Le host exige les 9 moteurs : sans le bras, passer au
 [mode filaire](#base-seule-le-mode-filaire).
 
 Sur la Pi, avec notre host (`scripts/lekiwi_host.py`, copié sur la Pi sous
-`~/makai_host.py` ; après une modification : `scp scripts/lekiwi_host.py kiwi@<ip>:~/makai_host.py`) :
+`~/makai_host.py` ; après une modification : `scp scripts/lekiwi_host.py kiwi@<ip>:~/makai_host.py`.
+Depuis le 15 nov. au soir il envoie aussi les codeurs des roues : sans cette version sur la Pi,
+l'odométrie de la console reste sur les vitesses lues, moins fiables, et l'onglet Drive le dit) :
 
 ```bash
 conda activate lerobot && cd ~/lerobot

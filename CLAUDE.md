@@ -68,8 +68,28 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - La distance aux objets vient d'une homographie du sol (`perception/geometry.py`), pas
   d'un modèle de profondeur.
 - Mission qui balaie : le repère de la carte est celui de l'odométrie, origine à la pose de
-  départ, **devant la poubelle, dos à elle, face à la pièce** ; les stations sont placées
-  dans ce repère (`navigation.sweep.stations`). Détail : `docs/NAVIGATION.md`.
+  départ, **face à la zone** ; les stations sont placées dans ce repère
+  (`navigation.sweep.stations`). Deux dispositions : poubelle **en face**, de l'autre côté de
+  la zone, marqueur tourné vers le robot (recommandée : aucune rotation en Vacuum, et la
+  caméra corrige l'odométrie en continu sur le marqueur ; bouton « Zone from marker ») ; ou
+  poubelle derrière le robot, comme au début. Détail : `docs/NAVIGATION.md`, section 2.
+- Elle a deux usages, choisis dans la console ou avec `--use` (`orchestrator/sweep.py`,
+  `for_use`). **Vacuum & collect** (chambre d'hôtel) : le robot passe sur tout le sol en
+  rangées sans jamais tourner, perpendiculaire au mur de la poubelle (`pattern: rows`), et ne
+  ramasse que ce qui est sur son passage (`pickup_range_m`). **Scan & collect** (rue) : il
+  suit de larges couloirs en regardant à gauche et à droite (`pattern: scan`) et va chercher
+  tout ce qu'il repère. Dans les deux, il dépose l'objet puis revient où il était.
+  `pattern: lanes` rend l'ancien parcours de Vacuum, en couloirs, où le robot tourne.
+- La zone à balayer est un rectangle imaginaire, sans mur. Elle se trace en conduisant le
+  robot (console, onglet Mission, « Trace zone ») ; elle est gardée dans `configs/zone.yaml`
+  (hors git) et remplace alors `navigation.sweep.room` (`navigation/zone.py`).
+- Les stations sont deux cartons marqués d'une bande de scotch gris : horizontale pour le
+  linge, verticale pour les déchets (`perception.stations.kind: tape`, `TapeStationDetector`
+  dans `perception/stations.py`). La direction de la bande dit quel carton c'est, sa taille
+  dans l'image sa distance. Pas de marqueur ArUco imprimé (`kind: aruco` reste possible).
+- La caméra avant est à 7,5 cm du sol, presque à l'horizontale, 42° de champ : les distances
+  au sol sont grossières au-delà d'un mètre. **Partir du principe que l'odométrie est
+  mauvaise** : tout ce qui se voit (objet, station) se rejoint en le regardant.
 - Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
   `models/detector_v2.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
   Mesures et limites : `docs/workstreams/WS2_perception.md`.
@@ -85,6 +105,16 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   pour le host et la téléop ; état dans `docs/workstreams/WS1_robot_data.md`. Mots de
   passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
   `scripts/net_check.py` avant d'accuser le code.
+- **Odométrie du robot réel** : lignes droites bonnes. Rotations : **avec les codeurs de roues,
+  une échelle stable** (15 nov., 19 h 40, 9 tours mesurés à la caméra : réel / odométrie entre
+  0,944 et 0,953, à gauche, à droite, lent ou rapide ; `angular_scale: 0.947` donne 1,004, soit
+  ~1° par tour). Avec les vitesses lues par les servos, elles étaient non reproductibles (10 à
+  32° sur 360°). Avant de toucher à la navigation ou aux facteurs `robot.odometry`, lire
+  `docs/DEBUG_ODOMETRY.md` (section 11 : ces mesures ; section 10 : l'analyse). Par le host,
+  l'odométrie compte les codeurs de roues quand le host les envoie (`scripts/lekiwi_host.py` à
+  jour sur la Pi : c'est le cas depuis le 15 au soir) ; `angular_scale: 0.947` ne vaut qu'avec
+  ce host. Mesurer une rotation : `scripts/turn_check.py` (caméra sur un marqueur), jamais au
+  mètre. `linear_scale` date d'avant les codeurs : à revérifier.
 - Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
   qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
   installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
@@ -94,12 +124,19 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 
 ## Ce qui n'a pas encore tourné sur le vrai robot
 
-Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.py`
-(`make_client` marche, via la téléop), `scripts/preflight.py`, `build_real` dans
-`src/makai/app.py`.
+Jamais exécuté sur le matériel : `scripts/preflight.py`, `build_real` dans
+`src/makai/app.py`. `LeKiwiRobot` (`src/makai/robot/lekiwi.py`) a tourné le 15 au soir pour la
+base seulement (`scripts/turn_check.py` : conduite, images, odométrie par les codeurs), pas
+pour le bras.
 
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
-mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), la mission lancée
+mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), ses deux usages
+(Vacuum en rangées : la base n'a jamais glissé de côté sur une longue distance ; Scan : elle
+n'a jamais avancé en faisant osciller son cap), la correction de l'odométrie par la caméra
+sur le marqueur et la disposition « poubelle en face », la détection des cartons par leur
+bande de scotch (essayée le 15 au soir sur deux images de la caméra du robot : **elle ne trouve
+pas les bandes**, voir `docs/DEBUG_ODOMETRY.md` section 11.3), le tracé de la
+zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
 (`PickByCategory`), le détecteur v2 pendant un balayage. Mode d'emploi : `docs/NAVIGATION.md`.
@@ -125,10 +162,13 @@ cette liste une fois validé.
 ```bash
 make setup | setup-lite     # installer tout | le cœur seulement
 make check                  # lint + tests (ce que fait la CI)
-make sim                    # les deux missions simulées : recherche sur place, puis balayage en serpentin
+make sim                    # les missions simulées : recherche sur place, Vacuum, Scan, et Vacuum poubelle en face
+uv run python scripts/drive.py --sim --sim-ahead   # la console simulée avec la poubelle en face
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?
+uv run python scripts/turn_check.py         # de combien le robot tourne vraiment pour 360° d'odométrie (caméra + marqueur)
+uv run python scripts/odometry_report.py    # après des déplacements : vitesses lues, codeurs, roue par roue
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
 uv run python scripts/collect.py sock                   # LA commande de collecte : contrôle, enregistre, zippe

@@ -9,11 +9,96 @@
 #              the gripper as commanded on the rest (1.4 = closed). Closed is what we want:
 #              going home keeps squeezing the object after a pick, and closes the hand again
 #              after a drop, which is how every demonstration starts.
+# carry      : home with the wrist raised (24 instead of 74), read on the robot on 15 Nov, arm placed
+#              by hand: the held object no longer hides the front camera. Played once the object is held.
 # pick_*     : open-loop grasp at the canonical pre-grasp pose (fallback without policy).
-# drop_reach : gripper above the station opening. drop_open: same pose, gripper open.
+# drop_path_* : the drop into the bin, robot docked 35 cm from the bin's face (docs/NAVIGATION.md,
+#              demo arena). Recorded on the robot on 15 Nov evening: the arm guided by hand,
+#              torque off, read 20 times a second; a waypoint every 7 degrees (scratch tool
+#              path_to_poses.py, see docs/NAVIGATION.md). Up folded, over the bin, open, back, home.
 home: {arm_shoulder_pan.pos: -11.8, arm_shoulder_lift.pos: -102.5, arm_elbow_flex.pos: 94.7, arm_wrist_flex.pos: 74.2, arm_wrist_roll.pos: -2.7, arm_gripper.pos: 1.4}
+carry: {arm_shoulder_pan.pos: -11.8, arm_shoulder_lift.pos: -102.5, arm_elbow_flex.pos: 94.7, arm_wrist_flex.pos: 24.1, arm_wrist_roll.pos: -2.7, arm_gripper.pos: 1.4}
 pick_above: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_down: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_close: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
-drop_reach: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
-drop_open: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+drop_path_01: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -99.3, arm_elbow_flex.pos: 87.6, arm_wrist_flex.pos: 75.8, arm_wrist_roll.pos: 1.6, arm_gripper.pos: 1.4}
+drop_path_02: {arm_shoulder_pan.pos: -18.7, arm_shoulder_lift.pos: -90.0, arm_elbow_flex.pos: 84.8, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.5, arm_gripper.pos: 1.4}
+drop_path_03: {arm_shoulder_pan.pos: -18.8, arm_shoulder_lift.pos: -85.0, arm_elbow_flex.pos: 76.9, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.5, arm_gripper.pos: 1.4}
+drop_path_04: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -80.4, arm_elbow_flex.pos: 69.8, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.6, arm_gripper.pos: 1.4}
+drop_path_05: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -74.1, arm_elbow_flex.pos: 62.6, arm_wrist_flex.pos: 75.7, arm_wrist_roll.pos: 1.5, arm_gripper.pos: 1.4}
+drop_path_06: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -67.8, arm_elbow_flex.pos: 55.0, arm_wrist_flex.pos: 75.8, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_07: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -62.6, arm_elbow_flex.pos: 47.5, arm_wrist_flex.pos: 75.8, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_08: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -57.7, arm_elbow_flex.pos: 40.3, arm_wrist_flex.pos: 75.8, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_09: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -51.9, arm_elbow_flex.pos: 31.5, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_10: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -47.5, arm_elbow_flex.pos: 24.4, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_11: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -42.0, arm_elbow_flex.pos: 16.0, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_12: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -36.5, arm_elbow_flex.pos: 7.3, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_13: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -30.8, arm_elbow_flex.pos: -1.3, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_14: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -24.5, arm_elbow_flex.pos: -9.2, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_15: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -18.0, arm_elbow_flex.pos: -16.8, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_16: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: -10.8, arm_elbow_flex.pos: -25.8, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.4, arm_gripper.pos: 1.4}
+drop_path_17: {arm_shoulder_pan.pos: -18.6, arm_shoulder_lift.pos: -3.6, arm_elbow_flex.pos: -34.0, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.3, arm_gripper.pos: 1.4}
+drop_path_18: {arm_shoulder_pan.pos: -18.6, arm_shoulder_lift.pos: 4.5, arm_elbow_flex.pos: -43.4, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: 1.3, arm_gripper.pos: 1.4}
+drop_path_19: {arm_shoulder_pan.pos: -18.5, arm_shoulder_lift.pos: 11.9, arm_elbow_flex.pos: -50.5, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: 1.3, arm_gripper.pos: 1.4}
+drop_path_20: {arm_shoulder_pan.pos: -18.5, arm_shoulder_lift.pos: 18.5, arm_elbow_flex.pos: -57.7, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: 1.3, arm_gripper.pos: 1.4}
+drop_path_21: {arm_shoulder_pan.pos: -18.5, arm_shoulder_lift.pos: 24.9, arm_elbow_flex.pos: -65.2, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: 1.3, arm_gripper.pos: 1.5}
+drop_path_22: {arm_shoulder_pan.pos: -18.8, arm_shoulder_lift.pos: 29.8, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: -0.1, arm_gripper.pos: 1.5}
+drop_path_23: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.8, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -9.5, arm_gripper.pos: 1.5}
+drop_path_24: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -18.7, arm_gripper.pos: 1.5}
+drop_path_25: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -29.1, arm_gripper.pos: 1.5}
+drop_path_26: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -36.4, arm_gripper.pos: 1.5}
+drop_path_27: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -46.2, arm_gripper.pos: 1.5}
+drop_path_28: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -54.2, arm_gripper.pos: 1.5}
+drop_path_29: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.7, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -61.7, arm_gripper.pos: 1.5}
+drop_path_30: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.5, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -69.7, arm_gripper.pos: 1.5}
+drop_path_31: {arm_shoulder_pan.pos: -18.9, arm_shoulder_lift.pos: 29.5, arm_elbow_flex.pos: -67.7, arm_wrist_flex.pos: 75.8, arm_wrist_roll.pos: -71.3, arm_gripper.pos: 1.5}
+drop_path_32: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: 37.9, arm_elbow_flex.pos: -67.5, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 1.5}
+drop_path_33: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 9.1}
+drop_path_34: {arm_shoulder_pan.pos: -20.0, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 24.6}
+drop_path_35: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 36.7}
+drop_path_36: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 47.8}
+drop_path_37: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 61.4}
+drop_path_38: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: 42.1, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 71.5}
+drop_path_39: {arm_shoulder_pan.pos: -20.0, arm_shoulder_lift.pos: 42.0, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.1, arm_gripper.pos: 73.0}
+drop_path_40: {arm_shoulder_pan.pos: -19.9, arm_shoulder_lift.pos: 41.1, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 59.3}
+drop_path_41: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: 39.6, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 49.3}
+drop_path_42: {arm_shoulder_pan.pos: -19.7, arm_shoulder_lift.pos: 38.9, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 36.0}
+drop_path_43: {arm_shoulder_pan.pos: -19.7, arm_shoulder_lift.pos: 38.9, arm_elbow_flex.pos: -68.1, arm_wrist_flex.pos: 75.5, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 24.7}
+drop_path_44: {arm_shoulder_pan.pos: -19.7, arm_shoulder_lift.pos: 38.9, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: -71.2, arm_gripper.pos: 13.5}
+drop_path_45: {arm_shoulder_pan.pos: -19.7, arm_shoulder_lift.pos: 38.9, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 75.6, arm_wrist_roll.pos: -71.4, arm_gripper.pos: 3.4}
+drop_path_46: {arm_shoulder_pan.pos: -19.6, arm_shoulder_lift.pos: 36.0, arm_elbow_flex.pos: -67.6, arm_wrist_flex.pos: 75.9, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 1.2}
+drop_path_47: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: 27.7, arm_elbow_flex.pos: -68.0, arm_wrist_flex.pos: 76.0, arm_wrist_roll.pos: -71.3, arm_gripper.pos: 1.2}
+drop_path_48: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: 19.7, arm_elbow_flex.pos: -67.5, arm_wrist_flex.pos: 83.4, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 1.2}
+drop_path_49: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: 13.8, arm_elbow_flex.pos: -67.4, arm_wrist_flex.pos: 91.1, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 1.2}
+drop_path_50: {arm_shoulder_pan.pos: -19.9, arm_shoulder_lift.pos: 4.4, arm_elbow_flex.pos: -67.3, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -71.0, arm_gripper.pos: 1.2}
+drop_path_51: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -2.7, arm_elbow_flex.pos: -66.4, arm_wrist_flex.pos: 99.9, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_52: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -8.8, arm_elbow_flex.pos: -57.0, arm_wrist_flex.pos: 100.0, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_53: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -15.4, arm_elbow_flex.pos: -47.9, arm_wrist_flex.pos: 99.9, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_54: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -23.2, arm_elbow_flex.pos: -39.0, arm_wrist_flex.pos: 99.8, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_55: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -30.9, arm_elbow_flex.pos: -30.2, arm_wrist_flex.pos: 99.7, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_56: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -38.9, arm_elbow_flex.pos: -21.5, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_57: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -46.8, arm_elbow_flex.pos: -13.3, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_58: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -55.0, arm_elbow_flex.pos: -5.5, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.2}
+drop_path_59: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -63.9, arm_elbow_flex.pos: 1.8, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.3}
+drop_path_60: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -73.5, arm_elbow_flex.pos: 9.0, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.3}
+drop_path_61: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -83.3, arm_elbow_flex.pos: 16.2, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.3}
+drop_path_62: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -93.1, arm_elbow_flex.pos: 22.5, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.3}
+drop_path_63: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -101.0, arm_elbow_flex.pos: 27.1, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -70.9, arm_gripper.pos: 1.3}
+drop_path_64: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: -104.5, arm_elbow_flex.pos: 22.8, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -59.4, arm_gripper.pos: 1.3}
+drop_path_65: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -104.5, arm_elbow_flex.pos: 22.8, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -48.9, arm_gripper.pos: 1.3}
+drop_path_66: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: -104.4, arm_elbow_flex.pos: 22.9, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -39.1, arm_gripper.pos: 1.3}
+drop_path_67: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: -104.4, arm_elbow_flex.pos: 22.9, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -30.4, arm_gripper.pos: 1.3}
+drop_path_68: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: -104.4, arm_elbow_flex.pos: 22.8, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -22.7, arm_gripper.pos: 1.3}
+drop_path_69: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -104.5, arm_elbow_flex.pos: 22.8, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -13.0, arm_gripper.pos: 1.3}
+drop_path_70: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 22.5, arm_wrist_flex.pos: 99.5, arm_wrist_roll.pos: -5.8, arm_gripper.pos: 1.3}
+drop_path_71: {arm_shoulder_pan.pos: -20.4, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 31.0, arm_wrist_flex.pos: 99.6, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_72: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 38.2, arm_wrist_flex.pos: 95.5, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_73: {arm_shoulder_pan.pos: -20.3, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 46.6, arm_wrist_flex.pos: 87.4, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_74: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 53.4, arm_wrist_flex.pos: 80.0, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_75: {arm_shoulder_pan.pos: -20.2, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 60.4, arm_wrist_flex.pos: 72.4, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_76: {arm_shoulder_pan.pos: -20.1, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 68.2, arm_wrist_flex.pos: 66.9, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_77: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: -104.9, arm_elbow_flex.pos: 76.2, arm_wrist_flex.pos: 65.1, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_78: {arm_shoulder_pan.pos: -20.0, arm_shoulder_lift.pos: -104.8, arm_elbow_flex.pos: 84.7, arm_wrist_flex.pos: 65.1, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_79: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: -104.8, arm_elbow_flex.pos: 92.1, arm_wrist_flex.pos: 65.0, arm_wrist_roll.pos: -1.8, arm_gripper.pos: 1.3}
+drop_path_80: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: -104.6, arm_elbow_flex.pos: 95.6, arm_wrist_flex.pos: 74.6, arm_wrist_roll.pos: -1.7, arm_gripper.pos: 1.3}
+drop_path_81: {arm_shoulder_pan.pos: -19.8, arm_shoulder_lift.pos: -104.6, arm_elbow_flex.pos: 95.6, arm_wrist_flex.pos: 74.6, arm_wrist_roll.pos: -1.7, arm_gripper.pos: 1.3}

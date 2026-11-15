@@ -12,11 +12,16 @@ Endpoints, all JSON:
 - `POST /api/stop`, `POST /api/release`: emergency stop and release, from any page;
 - `POST /api/reset_odometry`;
 - `POST /api/move` {client, axis, target, speed}: precise move (m or rad, m/s or rad/s),
-  `POST /api/move/cancel`;
+  `POST /api/move/cancel` (also stops a go-to-base);
+- `POST /api/goto` {client, dx, dy, dyaw}: move by that much (m ahead, m left, rad
+  counter-clockwise), closed on odometry both ways: an overshoot is driven back;
+- `POST /api/base/set` {base: "1"|"2"}: remember where the robot is, heading included;
+  `POST /api/base/go` {client, base}: drive back there on odometry;
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
   `GET /api/camera/<name>.jpg` (`?download=1` to save it): the latest image;
 - `GET /api/mission`: the sweeping mission (status, map, events) and its plan;
-  `POST /api/mission/start`, `/stop`, `/reset` (simulation only). Only with a mission runner,
+  `POST /api/mission/start` (body `use`: "vacuum" or "scan"), `/stop`, `/reset` (simulation only); `/trace`, `/trace_done`,
+  `/trace_cancel`, `/zone_forget` to trace the zone to sweep by driving the robot around it. Only with a mission runner,
   i.e. through the host or in simulation: then `/` is the console (`console_page.html`) and
   the driving page moves to `/drive`;
 - `GET /api/figures`: the figures of docs/figures and the training runs they come from;
@@ -32,6 +37,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
 import threading
 import time
@@ -49,6 +55,7 @@ PAGE = Path(__file__).with_name("drive_page.html")
 CONSOLE = Path(__file__).with_name("console_page.html")
 FIGURES = Path(__file__).resolve().parents[3] / "docs" / "figures"
 MAX_BODY_BYTES = 4096
+BASE_NAMES = ("1", "2")  # saved poses to drive back to
 CAMERA_PATH = re.compile(r"^/api/camera/([A-Za-z0-9_-]+)\.(mjpg|jpg)$")
 FIGURE_PATH = re.compile(r"^/figures/([A-Za-z0-9_-]+\.(png|jpg|csv))$")
 FIGURE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "csv": "text/csv; charset=utf-8"}
@@ -70,6 +77,19 @@ def figures() -> dict[str, Any]:
             if step >= run["steps"]:
                 run["steps"], run["last"], run["seconds_per_step"] = step, error, row.get("step_s")
     return {"images": images, "runs": list(runs.values())}
+
+
+# POST /api/mission/<action>: the mission, and the zone traced by driving (robot/autopilot.py).
+MISSION_ACTIONS = (
+    "start",
+    "stop",
+    "reset",
+    "trace",
+    "trace_done",
+    "trace_cancel",
+    "zone_forget",
+    "zone_from_marker",
+)
 
 
 class DriveServer(ThreadingHTTPServer):
@@ -173,7 +193,7 @@ class DriveHandler(BaseHTTPRequestHandler):
         client = str(body.get("client", ""))[:64] or None
         driver = self.server.driver
         if path.startswith("/api/mission/"):
-            self._mission(path.removeprefix("/api/mission/"))
+            self._mission(path.removeprefix("/api/mission/"), body)
             return
         if path == "/api/drive":
             if client is None:
@@ -213,6 +233,38 @@ class DriveHandler(BaseHTTPRequestHandler):
                 return
         elif path == "/api/move/cancel":
             self.server.loop.cancel_move()
+        elif path == "/api/goto":
+            if client is None:
+                self._error(HTTPStatus.BAD_REQUEST, "missing client id")
+                return
+            try:
+                dx, dy, dyaw = (float(body.get(key) or 0.0) for key in ("dx", "dy", "dyaw"))
+                if (
+                    not all(math.isfinite(v) for v in (dx, dy, dyaw))
+                    or max(abs(dx), abs(dy)) > 3.0
+                    or abs(dyaw) > 2 * math.pi
+                ):
+                    raise ValueError("dx and dy at most 3 m, dyaw at most one turn")
+                self.server.loop.go_relative(client, dx, dy, dyaw, time.monotonic())
+            except (TypeError, ValueError) as exc:
+                self._error(HTTPStatus.CONFLICT, str(exc))
+                return
+        elif path in ("/api/base/set", "/api/base/go"):
+            name = str(body.get("base", ""))
+            if name not in BASE_NAMES:
+                self._error(HTTPStatus.BAD_REQUEST, f"base must be one of {', '.join(BASE_NAMES)}")
+                return
+            if path == "/api/base/set":
+                self.server.loop.define_base(name)
+            else:
+                if client is None:
+                    self._error(HTTPStatus.BAD_REQUEST, "missing client id")
+                    return
+                try:
+                    self.server.loop.go_base(client, name, time.monotonic())
+                except ValueError as exc:
+                    self._error(HTTPStatus.CONFLICT, str(exc))
+                    return
         elif path == "/api/trials/measure":
             try:
                 tape = body.get("tape")
@@ -232,15 +284,19 @@ class DriveHandler(BaseHTTPRequestHandler):
             return
         self._json(self.server.state(client))
 
-    def _mission(self, action: str) -> None:
+    def _mission(self, action: str, body: dict) -> None:
         runner = self.server.runner
-        if runner is None or action not in ("start", "stop", "reset"):
+        if runner is None or action not in MISSION_ACTIONS:
             self._error(
                 HTTPStatus.NOT_FOUND, "No mission here: start the page through the host, or with --sim."
             )
             return
         try:
-            getattr(runner, action)()
+            if action == "start":
+                use = body.get("use")
+                runner.start(use if isinstance(use, str) else None)  # "vacuum" or "scan"
+            else:
+                getattr(runner, action)()
         except ValueError as exc:
             self._error(HTTPStatus.CONFLICT, str(exc))
             return

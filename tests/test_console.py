@@ -13,7 +13,7 @@ from makai.config import CONFIG_DIR
 from makai.contracts import BaseVelocity, Category
 from makai.navigation.coverage import Room, snake_waypoints
 from makai.orchestrator.mission import MissionConfig
-from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
 from makai.robot.autopilot import MissionRunner
 from makai.robot.drive_server import DriveServer
 from makai.robot.lekiwi import BaseGeometry
@@ -35,10 +35,10 @@ def make(build=None):
     robot, driver = SimRobot(world), ManualDriver(LIMITS)
     loop = DriveLoop(robot, driver, GEOMETRY)
 
-    def default(tap):
+    def default(tap, use):
         return SweepMission(
             tap, SimPerception(world, station_max_range_m=1.2, max_range_m=1.5), SimPick(world), SimDrop(world),
-            MissionConfig(), SWEEP,
+            MissionConfig(), for_use(SWEEP, use),
         )  # fmt: skip
 
     plan = {
@@ -46,7 +46,23 @@ def make(build=None):
         "waypoints": snake_waypoints(SWEEP.room),
         "stations": {},
     }
-    runner = MissionRunner(loop, driver, build or default, lambda: plan, reset=lambda: None, simulated=True)
+    zones = []  # every zone the runner was told to use, None = forget it
+    seen = {}  # the station markers the camera sees
+
+    def use_zone(room, stations=None):
+        zones.append(room if stations is None else (room, stations))
+
+    runner = MissionRunner(
+        loop,
+        driver,
+        build or default,
+        lambda: plan,
+        reset=lambda: None,
+        simulated=True,
+        use_zone=use_zone,
+        see_markers=lambda: seen,
+    )
+    runner.zones, runner.seen = zones, seen
     return world, loop, driver, runner
 
 
@@ -83,7 +99,23 @@ def test_the_page_sees_what_the_mission_sees_and_commands():
     started(runner, loop)
     ticks(loop, 60)
     assert not loop.commanded.is_zero()  # the mission is driving, and the page knows it
-    assert loop.snapshot()["cmd"]["x"] != 0 or loop.snapshot()["cmd"]["theta_deg"] != 0
+    assert any(loop.snapshot()["cmd"][axis] != 0 for axis in ("x", "y", "theta_deg"))  # sliding along a row
+
+
+def test_the_arm_is_put_home_once_before_the_mission_moves():
+    _, loop, _, runner = make()
+    calls = []
+    runner._prepare = lambda robot: calls.append((robot, loop.commanded.is_zero()))
+    started(runner, loop)
+    ticks(loop, 60)
+    assert len(calls) == 1  # once per mission, on the first tick
+    assert calls[0][1]  # before the base was given any speed
+    assert calls[0][0] is runner._tap  # with the mission's robot, so that stop and e-stop apply
+    runner.stop()
+    ticks(loop, 5)
+    started(runner, loop)
+    ticks(loop, 5)
+    assert len(calls) == 2  # and again for the next mission
 
 
 def test_emergency_stop_ends_the_mission_at_once():
@@ -99,6 +131,90 @@ def test_emergency_stop_ends_the_mission_at_once():
     assert (world.x, world.y, world.yaw) == before  # the wheels really are stopped
     with pytest.raises(ValueError, match="Emergency stop"):
         runner.start()
+
+
+def test_the_zone_is_traced_by_driving_the_robot_around_it():
+    _, loop, _, runner = make()
+    assert runner.snapshot()["zone"] == {"tracing": False}
+    runner.trace()
+    with pytest.raises(ValueError, match="being traced"):
+        runner.start()
+    for x, y in [(0.0, -0.4), (0.3, -0.4)]:  # the pilot has barely moved
+        loop.odometry.x, loop.odometry.y = x, y
+        runner.trace_sample()
+    with pytest.raises(ValueError, match="deep"):
+        runner.trace_done()
+    shot = runner.snapshot()["zone"]
+    assert shot["tracing"] and shot["size"]["length_m"] == 0.3  # refused, and the trace goes on
+    assert shot["box"]["length_m"] == 1.0  # room to draw around a trace that has barely begun
+    for x, y in [(1.6, -0.4), (1.6, 0.8), (0.0, 0.8), (0.0, 0.0)]:  # the other corners, and back
+        loop.odometry.x, loop.odometry.y = x, y
+        runner.trace_sample()
+    shot = json.loads(json.dumps(runner.snapshot()))["zone"]
+    assert shot["pose"]["x"] == 0.0 and [1.6, 0.8] in shot["trail"]
+    runner.trace_done()
+    assert runner.zones == [{"length_m": 1.6, "width_m": 1.2, "margin_m": 0.0, "y_offset_m": 0.2}]
+    assert runner.snapshot()["zone"] == {"tracing": False} and "1.60 m deep" in runner.message
+    with pytest.raises(ValueError, match="No trace"):
+        runner.trace_done()
+    runner.trace()
+    runner.trace_cancel()
+    assert runner.snapshot()["zone"] == {"tracing": False} and len(runner.zones) == 1  # nothing changed
+    runner.zone_forget()
+    assert runner.zones[-1] is None
+
+
+def test_the_zone_is_read_on_the_bins_marker_without_driving():
+    from makai.contracts import StationSighting
+
+    _, loop, _, runner = make()
+    with pytest.raises(ValueError, match="across the zone"):
+        runner.zone_from_marker()  # no marker in view
+    runner.seen[Category.TRASH] = StationSighting(Category.TRASH, 2.2, 0.0)
+    runner.zone_from_marker()
+    room, stations = runner.zones[-1]
+    assert room == {"length_m": 1.85, "width_m": 1.8, "margin_m": 0.0, "y_offset_m": 0.0}
+    assert stations == {"trash": {"x": 2.2, "y": 0.0, "dock_x": 1.85, "dock_y": 0.0}}
+    assert "2.20 m ahead" in runner.message and "1.85 m deep" in runner.message
+    started(runner, loop)
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.zone_from_marker()
+    runner.stop()
+
+
+def test_the_zone_cannot_be_traced_during_a_mission():
+    _, loop, _, runner = make()
+    started(runner, loop)
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.trace()
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.zone_forget()
+    runner.stop()
+
+
+def test_each_use_starts_its_own_mission():
+    _, loop, _, runner = make()
+    assert runner.snapshot()["use"] == "vacuum"  # the default
+    with pytest.raises(ValueError, match="vacuum, scan"):
+        runner.start("mop")
+    assert runner.status == "idle"
+    runner.start("scan")
+    deadline = time.monotonic() + 5
+    while runner.status == "loading" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    shot = runner.snapshot()
+    assert shot["status"] == "running" and shot["use"] == "scan"
+    assert shot["mission"]["use"] == "scan" and shot["mission"]["pattern"] == "scan"
+    runner.stop()
+    ticks(loop, 2)
+    started(runner, loop)  # no use given: the same as last time
+    assert runner.snapshot()["mission"]["use"] == "scan"
+    runner.stop()
+    ticks(loop, 2)
+    runner.start("vacuum")
+    while runner.status == "loading" and time.monotonic() < deadline + 5:
+        time.sleep(0.01)
+    assert runner.snapshot()["mission"]["pattern"] == "rows"
 
 
 def test_stop_then_start_again():
@@ -117,7 +233,7 @@ def test_stop_then_start_again():
 
 
 def test_a_mission_that_cannot_be_prepared_says_why():
-    def broken(tap):
+    def broken(tap, use):
         raise FileNotFoundError("no model at outputs/train/act_can_v1")
 
     _, loop, _, runner = make(broken)
@@ -186,6 +302,16 @@ def test_the_routes_start_and_stop_a_mission(console):
     call(console, "/api/mission/stop", {"client": "t"})
     time.sleep(0.3)
     assert call(console, "/api/mission")["status"] == "stopped"
+    with pytest.raises(urllib.error.HTTPError) as wrong:
+        call(console, "/api/mission/start", {"client": "t", "use": "mop"})
+    assert wrong.value.code == 409 and "vacuum, scan" in json.loads(wrong.value.read())["error"]
+    assert call(console, "/api/mission/start", {"client": "t", "use": "scan"})["use"] == "scan"
+    deadline = time.monotonic() + 5
+    while call(console, "/api/mission")["status"] == "loading" and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert call(console, "/api/mission")["mission"]["use"] == "scan"
+    call(console, "/api/mission/stop", {"client": "t"})
+    time.sleep(0.3)
     with pytest.raises(urllib.error.HTTPError) as unknown:
         call(console, "/api/mission/fly", {"client": "t"})
     assert unknown.value.code == 404

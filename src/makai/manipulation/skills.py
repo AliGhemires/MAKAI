@@ -10,6 +10,7 @@ Poses live in configs/arm_poses.yaml and are captured on the robot with
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +22,7 @@ from makai.contracts import Category, Robot, Target
 
 Pose = Mapping[str, float]
 GRIPPER = "arm_gripper.pos"
+log = logging.getLogger("makai.pick")
 
 
 def load_poses(path: str | Path) -> dict[str, dict[str, float]]:
@@ -68,7 +70,16 @@ class BackHome:
 
 
 class ScriptedSequence:
-    """Play poses in order. Each step is a pose name or (pose name, seconds)."""
+    """Play poses in order. Each step is a pose name or (pose name, seconds).
+
+    Each step starts where the previous one was sent, not where the arm is read: the arm lags its
+    commands, and starting from the reading sent it back a little at every step. A step shorter
+    than `PATH_STEP_S` is a point of a path recorded by hand (`drop_path_*`): the arm goes
+    through it at constant speed. A longer one starts and stops smoothly. (15 Nov: a recorded
+    path of 82 points, each started from the reading and stopped smoothly, made the arm dance.)
+    """
+
+    PATH_STEP_S = 0.5
 
     def __init__(
         self,
@@ -85,8 +96,21 @@ class ScriptedSequence:
 
     def play(self, robot: Robot) -> None:
         robot.stop()
+        sent = dict(robot.get_observation().arm)
         for name, duration in self.steps:
-            move_to(robot, self.poses[name], duration, self.rate_hz, self.sleep)
+            pose = self.poses[name]
+            start = {key: sent.get(key, goal) for key, goal in pose.items()}
+            steps = max(1, int(round(duration * self.rate_hz)))
+            for i in range(1, steps + 1):
+                tick = time.perf_counter()
+                # An observation every tick: it feeds the console (its cameras froze for the 28 s
+                # of a drop, 15 Nov) and lets a stop from the page cut the sequence short.
+                robot.get_observation()
+                s = i / steps
+                blend = s if duration < self.PATH_STEP_S else s * s * (3 - 2 * s)  # through, or smoothstep
+                robot.move_arm({key: start[key] + (goal - start[key]) * blend for key, goal in pose.items()})
+                self.sleep(max(0.0, 1.0 / self.rate_hz - (time.perf_counter() - tick)))
+            sent.update(pose)
 
 
 class ScriptedPick:
@@ -128,6 +152,8 @@ class PolicyPick:
         gripper_open_above: float | None = None,
         n_action_steps: int | None = None,
         revision: str | None = None,
+        gripper_held_below: float | None = None,
+        carry: ScriptedSequence | None = None,
     ):
         """`n_action_steps`: how many predicted actions to play before looking at the cameras
         again (the model plans `chunk_size` ahead; default: as trained). Lower is more reactive.
@@ -138,6 +164,13 @@ class PolicyPick:
 
         self.task, self.duration_s, self.fps, self.after = task, duration_s, fps, after
         self.gripper_open_above = gripper_open_above
+        # Commanded closed, a hand still wider than this is not holding: it did not close at all
+        # (15 Nov: 33.9 read as "holding" a sock that stayed on the floor; held objects read <= 12).
+        self.gripper_held_below = gripper_held_below
+        # Played only once the object is held: the wrist raised, so that the object no longer
+        # hides the front camera (15 Nov: a sock held in home hid the bin's marker). A missed
+        # grasp stays in home, where every demonstration starts.
+        self.carry = carry
         self.policy = get_policy_class(policy_type).from_pretrained(policy_path, revision=revision)
         if device:
             self.policy.to(device)
@@ -153,7 +186,8 @@ class PolicyPick:
         )
         self._features = None
         self.last_rate_hz = 0.0
-        self.last_gripper: float | None = None  # gripper reading when the policy stopped
+        self.gripper_at_stop: float | None = None  # gripper reading when the policy stopped
+        self.last_gripper: float | None = None  # the reading the grasp check used (carry pose, if any)
 
     def run(self, robot: Robot, target: Target) -> bool:
         from lerobot.common.control_utils import predict_action
@@ -212,13 +246,36 @@ class PolicyPick:
         # the demonstrations: inference is too slow for this laptop.
         self.last_rate_hz = ticks / (time.perf_counter() - start)
 
-        gripper = self.last_gripper = robot.get_observation().arm.get(GRIPPER)
+        self.gripper_at_stop = robot.get_observation().arm.get(GRIPPER)
+        return self._holding(robot)
+
+    def _holding(self, robot: Robot, settle_s: float = 0.4) -> bool:
+        """Carry pose, then: is the hand holding something?
+
+        Read once the carry pose (home, hand commanded closed) is reached, not when the policy
+        stops: after a missed grasp the policy may come home with its hand still half open, which
+        read as "holding" (15 Nov, on the robot). Hand commanded closed is how the recordings end,
+        where `gripper_open_above` was measured: an empty hand closes, a held object stops it.
+        """
+        gripper = self.gripper_at_stop
         if self.after:
             self.after.play(robot)
+            time.sleep(settle_s)  # the gripper servo lags its command a little
+            gripper = robot.get_observation().arm.get(GRIPPER)
+        self.last_gripper = gripper
         if self.gripper_open_above is None or gripper is None:
             return True
-        # A gripper that could not close completely is holding something.
-        return gripper > self.gripper_open_above
+        held = gripper > self.gripper_open_above  # a gripper that could not close is holding something
+        if self.gripper_held_below is not None and gripper >= self.gripper_held_below:
+            held = False  # ... unless it did not close at all
+        log.info(
+            "grasp check: gripper %s when the policy stopped, %.1f in the carry pose -> %s (threshold %.1f)",
+            "?" if self.gripper_at_stop is None else f"{self.gripper_at_stop:.1f}",
+            gripper, "holding" if held else "empty", self.gripper_open_above,
+        )  # fmt: skip
+        if held and self.carry is not None:
+            self.carry.play(robot)
+        return held
 
 
 class PickByCategory:
@@ -241,6 +298,7 @@ def build_pick_skill(cfg: dict):
     if pick["kind"] == "scripted":
         return ScriptedPick(ScriptedSequence(poses, pick["steps"], cfg["robot"]["fps"]))
     after = ScriptedSequence(poses, pick["after"], cfg["robot"]["fps"]) if pick.get("after") else None
+    carry = ScriptedSequence(poses, pick["carry"], cfg["robot"]["fps"]) if pick.get("carry") else None
 
     def policy(entry: Mapping) -> PolicyPick:
         return PolicyPick(
@@ -253,6 +311,8 @@ def build_pick_skill(cfg: dict):
             after,
             entry.get("gripper_open_above", pick.get("gripper_open_above")),
             entry.get("n_action_steps", pick.get("n_action_steps")),
+            gripper_held_below=entry.get("gripper_held_below", pick.get("gripper_held_below")),
+            carry=carry,
         )
 
     # One policy per kind of object when `policies` lists them; `policy_path` is then the
