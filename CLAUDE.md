@@ -6,6 +6,19 @@ Hackathon Leukerbad Robotics Carnival 2026, Track 1. Équipe de 5, chacun avec s
 Robot mobile LeKiwi + bras SO-101 qui ramasse ce qui traîne au sol, trie linge et déchets,
 et les dépose dans la bonne station. Stack : Python 3.12, `uv`, LeRobot 0.7.0, Ultralytics.
 
+## En ce moment (dim. 15 nov.) : collecte dans la salle de pitch
+
+**Au début de chaque session, dis-le à la personne, avant toute autre chose.** L'équipe
+enregistre de nouveaux épisodes de saisie dans la salle de pitch, robot tourné vers quatre
+directions, pour que les modèles tiennent quel que soit le décor de la démo. La collecte se
+fait sur le laptop d'Amine ; les étapes, commandes et contrôles sont dans
+**`docs/COLLECTE_PITCH.md`** : lis-le et guide la personne pas à pas si elle y participe.
+
+- Datasets : `pick_sock_v2` (copie de `pick_sock_v1` sans l'épisode 31) et `pick_can_v2`
+  (copie de `pick_can_v1`), 12 épisodes par direction et par objet, direction dans `--note`.
+- Les v1 et les modèles v1 ne changent pas. Les entraînements suivants se font sur les v2.
+- Une fois la collecte et les entraînements v2 finis, retirer cette section.
+
 ## À lire avant d'agir
 
 1. `docs/PLAN.md` : périmètre, calendrier, niveaux L0 à L5, plans de repli.
