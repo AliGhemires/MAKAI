@@ -235,6 +235,30 @@ def test_gives_up_on_an_object_and_does_not_come_back_to_it():
     assert sorted(o.status for o in mission.map.objects) == ["abandoned", "delivered"]
 
 
+def test_a_missed_pick_is_tried_again_though_the_pick_took_its_time():
+    """15 Nov: a real pick blocks the mission for 10 to 20 s. After a miss the object was then
+    "lost" at once (not seen for 20 s), and the retry never happened."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    mission.perception.min_range = 0.45  # as the robot's camera: blind to the object at the pre-grasp pose
+    grab, tries = mission.pick.run, []
+
+    def slow_pick(robot, target):
+        world.time += 20.0
+        tries.append(target)
+        return len(tries) > 1 and grab(robot, target)
+
+    mission.pick.run = slow_pick
+    assert mission.run(max_duration_s=900) is State.DONE
+    reasons = [event.reason for event in mission.events]
+    retry = reasons.index("pick failed, retry 1")
+    assert mission.events[retry + 1].state is State.PICK  # tried again from where it was
+    assert "lost the object" not in reasons[retry : retry + 2]
+    assert mission.stats.delivered == 1
+
+
 def test_after_three_missed_grasps_it_goes_round_the_object_and_tries_from_there():
     world = SimWorld(
         objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}

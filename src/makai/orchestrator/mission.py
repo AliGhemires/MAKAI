@@ -152,8 +152,14 @@ class Mission:
         obs = self.robot.get_observation()
         self.scene = self.perception.perceive(obs)
         now = self.now = obs.stamp
+        gap = 0.0 if self._prev_stamp is None else now - self._prev_stamp
         self.odometry.update(obs.base_velocity, now)
         self._predict_track(obs.base_velocity, now)
+        if gap > MAX_GAP_S and self._entered is not None:
+            # A blocking skill (a pick, 10 to 20 s; a drop) just ended. That time was not spent
+            # looking for anything: without this, a missed pick read as "lost the object" (15 Nov).
+            self._entered += gap
+            self._last_seen += gap
         if self._entered is None:
             self._entered = self._last_seen = now
         getattr(self, f"_on_{self.state.value}")(self.scene, now)
