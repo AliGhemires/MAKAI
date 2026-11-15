@@ -34,6 +34,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 
 from makai.config import REPO_ROOT, load_config
@@ -73,7 +74,7 @@ def lan_addresses() -> list[str]:
         return []
 
 
-def make_sim(scale: float):
+def make_sim(scale: float, ahead: bool = False):
     """Simulated base that really moves `scale` times what its wheels report (a wrong wheel
     radius, or slip). Returns the robot and where it really is, the "tape" of the simulation.
     It also fakes an arm moving slowly, a battery and motor measurements, to try the page."""
@@ -81,7 +82,7 @@ def make_sim(scale: float):
 
     from makai.contracts import BaseVelocity, Observation
     from makai.robot.lekiwi import ARM_KEYS
-    from makai.sim.world import SimRobot, sweep_world
+    from makai.sim.world import SimRobot, facing_world, sweep_world
 
     class MiscalibratedSim(SimRobot):
         def get_observation(self) -> Observation:
@@ -116,7 +117,8 @@ def make_sim(scale: float):
                 for i, name in enumerate(names)
             }
 
-    robot = MiscalibratedSim(sweep_world(), dt=1 / SIM_HZ)  # a room with a bin, a basket and things to pick
+    # A room with a bin, a basket and things to pick; `ahead`: the bin across the zone instead.
+    robot = MiscalibratedSim(facing_world() if ahead else sweep_world(), dt=1 / SIM_HZ)
     return robot, lambda: (robot.world.x, robot.world.y, robot.world.yaw)
 
 
@@ -158,13 +160,21 @@ def sim_runner(loop, driver, robot, cfg):
     from makai.navigation.coverage import Room
     from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
     from makai.robot.autopilot import MissionRunner
-    from makai.sim.world import SimDrop, SimPerception, SimPick, sweep_world
+    from makai.sim.world import SimDrop, SimPerception, SimPick, facing_world, sweep_world
 
     world = robot.world
     mission_cfg = mission_config(cfg)
-    stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
-    whole = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    ahead = Category.CLOTHING not in world.stations  # the world with the bin across the zone
+    if ahead:
+        whole = SweepConfig(
+            room=Room(length_m=2.0, width_m=1.6, margin_m=0.0),
+            stations={Category.TRASH: Station(2.35, 0.0, 2.0, 0.0)},
+        )
+    else:
+        stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
+        whole = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
     plan = {"sweep": whole, "traced": False}
+    fresh_world = facing_world if ahead else sweep_world
     goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
 
     def build(tap, use):
@@ -172,7 +182,7 @@ def sim_runner(loop, driver, robot, cfg):
         world.x, world.y, world.yaw = 0.0, 0.0, 0.0
         return SweepMission(
             tap,
-            SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+            SimPerception(world, station_max_range_m=2.5 if ahead else 1.2, max_range_m=1.5),
             SimPick(world, goal_xy=goal, success_rate=0.85, duration_s=2.5, seed=runner.runs),
             SimDrop(world, duration_s=1.5),
             mission_cfg,
@@ -180,18 +190,31 @@ def sim_runner(loop, driver, robot, cfg):
         )
 
     def reset() -> None:
-        fresh = sweep_world()
+        fresh = fresh_world()
         world.objects[:] = fresh.objects
         world.delivered.clear()
         world.carrying, world.x, world.y, world.yaw = None, 0.0, 0.0, 0.0
         loop.reset_odometry()
 
-    def use_zone(room) -> None:  # in simulation the traced zone is not written to configs/
-        plan["sweep"] = replace(whole, room=Room(**room)) if room else whole
-        plan["traced"] = room is not None
+    def use_zone(room, stations=None) -> None:  # in simulation the zone is not written to configs/
+        sweep = replace(whole, room=Room(**room)) if room else whole
+        if stations:
+            placed = {Category(name): Station(**place) for name, place in stations.items()}
+            sweep = replace(sweep, stations={**sweep.stations, **placed})
+        plan["sweep"], plan["traced"] = sweep, room is not None
+
+    def see_markers() -> dict:  # what the simulated camera sees from where the robot stands
+        return dict(SimPerception(world, station_max_range_m=4.0).perceive(None).stations)
 
     runner = MissionRunner(
-        loop, driver, build, lambda: plan_of(plan["sweep"], plan["traced"]), reset, True, use_zone
+        loop,
+        driver,
+        build,
+        lambda: plan_of(plan["sweep"], plan["traced"]),
+        reset,
+        True,
+        use_zone,
+        see_markers=see_markers,
     )
     return runner
 
@@ -205,12 +228,40 @@ def real_runner(loop, driver, cfg):
 
     plan, parts = {"sweep": sweep_config(cfg)}, {}
 
-    def use_zone(room) -> None:  # kept in configs/zone.yaml: it survives a restart of the page
+    def use_zone(room, stations=None) -> None:  # kept in configs/zone.yaml: it survives a restart
         if room is None:
             forget_zone()
         else:
-            save_zone(room)
+            save_zone(room, stations=stations)
         plan["sweep"] = sweep_config(cfg)
+
+    def see_markers() -> dict:
+        """The station markers in the front camera's latest images, where most of them agree."""
+        import statistics
+
+        from makai.contracts import Category, StationSighting
+        from makai.perception.geometry import CameraModel
+        from makai.perception.stations import StationDetector
+
+        if "markers" not in parts:
+            p = cfg["perception"]
+            ids = {int(marker): Category(name) for marker, name in p["stations"]["marker_ids"].items()}
+            parts["markers"] = StationDetector(
+                CameraModel(**p["camera_model"]), ids, p["stations"]["marker_size_m"]
+            )
+        seen: dict = {}
+        for _ in range(7):  # a third of a second of images
+            image = loop.robot.raw_observation.get("front")
+            for key, sighting in (parts["markers"].detect(image) if image is not None else {}).items():
+                seen.setdefault(key, []).append(sighting)
+            time.sleep(0.05)
+        return {
+            key: StationSighting(
+                key, statistics.median(s.x_m for s in found), statistics.median(s.y_m for s in found)
+            )
+            for key, found in seen.items()
+            if len(found) >= 4
+        }
 
     def build(tap, use):
         from makai.manipulation.skills import build_drop_skill, build_pick_skill
@@ -245,6 +296,7 @@ def real_runner(loop, driver, cfg):
         lambda: plan_of(plan["sweep"], load_zone() is not None),
         use_zone=use_zone,
         prepare=arm_home,
+        see_markers=see_markers,
     )
 
 
@@ -264,6 +316,11 @@ def main() -> None:
     parser.add_argument(
         "--sim-scale", type=float, default=1.0, help="simulated robot moves this times what its wheels say"
     )
+    parser.add_argument(
+        "--sim-ahead",
+        action="store_true",
+        help="with --sim: the bin stands across the zone, its marker facing the robot (no turn, marker in view)",
+    )
     parser.add_argument("--serial-port", help="motor board port in wired mode (default: robot.base.port)")
     parser.add_argument("--http-port", type=int, help="port of the page (default: teleop.drive.http_port)")
     parser.add_argument("--bind", default="0.0.0.0", help="listen address; 127.0.0.1 = this machine only")
@@ -279,7 +336,7 @@ def main() -> None:
     geometry = BaseGeometry.from_config(cfg["robot"]["base"])
     truth = None
     if args.sim:
-        (robot, truth), link, serial_port = make_sim(args.sim_scale), "sim", None
+        (robot, truth), link, serial_port = make_sim(args.sim_scale, args.sim_ahead), "sim", None
     else:
         link = args.link or cfg["robot"].get("link", "host")
         if args.serial_port:

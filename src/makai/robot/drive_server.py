@@ -80,7 +80,16 @@ def figures() -> dict[str, Any]:
 
 
 # POST /api/mission/<action>: the mission, and the zone traced by driving (robot/autopilot.py).
-MISSION_ACTIONS = ("start", "stop", "reset", "trace", "trace_done", "trace_cancel", "zone_forget")
+MISSION_ACTIONS = (
+    "start",
+    "stop",
+    "reset",
+    "trace",
+    "trace_done",
+    "trace_cancel",
+    "zone_forget",
+    "zone_from_marker",
+)
 
 
 class DriveServer(ThreadingHTTPServer):

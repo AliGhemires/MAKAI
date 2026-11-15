@@ -47,6 +47,11 @@ def make(build=None):
         "stations": {},
     }
     zones = []  # every zone the runner was told to use, None = forget it
+    seen = {}  # the station markers the camera sees
+
+    def use_zone(room, stations=None):
+        zones.append(room if stations is None else (room, stations))
+
     runner = MissionRunner(
         loop,
         driver,
@@ -54,9 +59,10 @@ def make(build=None):
         lambda: plan,
         reset=lambda: None,
         simulated=True,
-        use_zone=zones.append,
+        use_zone=use_zone,
+        see_markers=lambda: seen,
     )
-    runner.zones = zones
+    runner.zones, runner.seen = zones, seen
     return world, loop, driver, runner
 
 
@@ -156,6 +162,24 @@ def test_the_zone_is_traced_by_driving_the_robot_around_it():
     assert runner.snapshot()["zone"] == {"tracing": False} and len(runner.zones) == 1  # nothing changed
     runner.zone_forget()
     assert runner.zones[-1] is None
+
+
+def test_the_zone_is_read_on_the_bins_marker_without_driving():
+    from makai.contracts import StationSighting
+
+    _, loop, _, runner = make()
+    with pytest.raises(ValueError, match="across the zone"):
+        runner.zone_from_marker()  # no marker in view
+    runner.seen[Category.TRASH] = StationSighting(Category.TRASH, 2.2, 0.0)
+    runner.zone_from_marker()
+    room, stations = runner.zones[-1]
+    assert room == {"length_m": 1.85, "width_m": 1.8, "margin_m": 0.0, "y_offset_m": 0.0}
+    assert stations == {"trash": {"x": 2.2, "y": 0.0, "dock_x": 1.85, "dock_y": 0.0}}
+    assert "2.20 m ahead" in runner.message and "1.85 m deep" in runner.message
+    started(runner, loop)
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.zone_from_marker()
+    runner.stop()
 
 
 def test_the_zone_cannot_be_traced_during_a_mission():

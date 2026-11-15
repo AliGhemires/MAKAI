@@ -120,7 +120,17 @@ navigation:
     scan_pan_deg: 60.0      # scan: the heading swings this far to each side of the way it drives
     scan_period_s: 10.0     # scan: one swing left and right
     recheck_after_m: 0.0    # drive back to the bin's marker after this many metres without one (0 = only when delivering)
-    stations:               # where each station stands, and where the robot stops in front of it (its dock)
+    # Whenever a station's marker is in view, the camera corrects the odometry: the heading from
+    # the direction the marker is seen in, the position from its distance (docs/NAVIGATION.md).
+    marker_fix_range_m: 2.5 # markers further than this are not used for it
+    marker_fix_gain: 0.15   # share of the gap closed at each image (0 = no continuous correction)
+    # Where each station stands, and where the robot stops in front of it (its dock). Two layouts:
+    # - the bin ACROSS the zone, its marker facing the robot (recommended: no turn at all, marker
+    #   always in view). Do not type it: console, Mission tab, "Zone from marker" reads it with the
+    #   camera and keeps it in configs/zone.yaml. By hand it would be, for a bin 2.35 m ahead:
+    #     trash: {x: 2.35, y: 0.0, dock_x: 2.0, dock_y: 0.0}
+    # - the bin just BEHIND the start pose (below): two half turns at every delivery.
+    stations:
       trash: {x: -0.35, y: 0.0, dock_x: 0.0, dock_y: 0.0}   # the bin, just behind the start pose
       # clothing: {x: -0.35, y: 0.7, dock_x: 0.0, dock_y: 0.7}   # a basket beside it; without it, everything goes in the bin
 

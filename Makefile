@@ -26,6 +26,7 @@ sim:             ## run the missions in the 2D simulator (no robot): looking aro
 	uv run --no-sync makai-mission --sim
 	uv run --no-sync makai-mission --sim --sweep
 	uv run --no-sync makai-mission --sim --sweep --use scan
+	uv run --no-sync makai-mission --sim --sweep --ahead
 
 mission:         ## run the mission on the real robot (host must run on the Pi)
 	uv run --no-sync makai-mission

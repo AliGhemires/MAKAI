@@ -3,6 +3,7 @@
 uv run makai-mission --sim            # no hardware needed
 uv run makai-mission --sim --sweep    # a robot vacuum: rows over the whole floor, picks up what lies on its way
 uv run makai-mission --sim --sweep --use scan   # a patrol: looks left and right, goes to whatever it spots
+uv run makai-mission --sim --sweep --ahead      # the bin across the zone: no turn at all, marker always in view
 uv run makai-mission --sweep          # real robot, settings from configs/
 """
 
@@ -33,23 +34,36 @@ def build_sim(mission_cfg: MissionConfig, pick_success: float) -> tuple[Mission,
 
 
 def build_sweep_sim(
-    mission_cfg: MissionConfig, pick_success: float, slip: float = 0.04, use: str = "vacuum"
+    mission_cfg: MissionConfig,
+    pick_success: float,
+    slip: float = 0.04,
+    use: str = "vacuum",
+    ahead: bool = False,
 ) -> tuple[Mission, object]:
-    """The sweeping mission in a simulated room, with wheels that slip a little."""
+    """The sweeping mission in a simulated room, with wheels that slip a little.
+    `ahead`: the bin stands across the zone, its marker facing the robot, instead of behind it."""
     from makai.navigation.coverage import Room
     from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
-    from makai.sim.world import SimDrop, SimPerception, SimPick, SimRobot, sweep_world
+    from makai.sim.world import SimDrop, SimPerception, SimPick, SimRobot, facing_world, sweep_world
 
-    world = sweep_world()
     goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
-    stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
+    if ahead:
+        world = facing_world()
+        sweep = SweepConfig(
+            room=Room(length_m=2.0, width_m=1.6, margin_m=0.0),
+            stations={Category.TRASH: Station(2.35, 0.0, 2.0, 0.0)},
+        )
+    else:
+        world = sweep_world()
+        stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
+        sweep = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
     mission = SweepMission(
         SimRobot(world, slip=slip, yaw_drift=0.75 * slip),
-        SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+        SimPerception(world, station_max_range_m=2.5 if ahead else 1.2, max_range_m=1.5),
         SimPick(world, goal_xy=goal, success_rate=pick_success),
         SimDrop(world),
         mission_cfg,
-        for_use(SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations), use),
+        for_use(sweep, use),
     )
     return mission, world
 
@@ -73,13 +87,14 @@ def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False, use: 
 def sweep_config(cfg: dict):
     """`navigation.sweep` of the config: the room, the route, where the stations stand."""
     from makai.navigation.coverage import Room
-    from makai.navigation.zone import load_zone
+    from makai.navigation.zone import load_zone, load_zone_stations
     from makai.orchestrator.sweep import Station, SweepConfig
 
     sweep = dict(cfg.get("navigation", {}).get("sweep", {}))
     configured = sweep.pop("room", {})
     room = Room(**(load_zone() or configured))  # a zone traced with the robot replaces the config's
-    stations = {Category(name): Station(**place) for name, place in sweep.pop("stations", {}).items()}
+    places = sweep.pop("stations", {}) | load_zone_stations()  # read on the markers: they win
+    stations = {Category(name): Station(**place) for name, place in places.items()}
     if "marker_scan_deg" in sweep:
         sweep["marker_scan_deg"] = tuple(sweep["marker_scan_deg"])
     return SweepConfig(room=room, **({"stations": stations} if stations else {}), **sweep)
@@ -107,6 +122,11 @@ def main() -> None:
         help="with --sweep. vacuum: pass over the whole floor, pick up what lies on the way. "
         "scan: patrol the zone looking left and right, go to whatever is spotted",
     )
+    parser.add_argument(
+        "--ahead",
+        action="store_true",
+        help="with --sim --sweep: the bin stands across the zone, facing the robot, instead of behind it",
+    )
     parser.add_argument("--pick-success", type=float, default=0.8, help="simulated grasp success rate")
     parser.add_argument("--max-duration", type=float, default=600.0, help="seconds")
     args = parser.parse_args()
@@ -116,7 +136,7 @@ def main() -> None:
     mission_cfg = mission_config(cfg)
     if args.sim:
         if args.sweep:
-            mission, world = build_sweep_sim(mission_cfg, args.pick_success, use=args.use)
+            mission, world = build_sweep_sim(mission_cfg, args.pick_success, use=args.use, ahead=args.ahead)
         else:
             mission, world = build_sim(mission_cfg, args.pick_success)
         final = mission.run(max_duration_s=args.max_duration)

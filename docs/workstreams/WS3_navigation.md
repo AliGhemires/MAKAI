@@ -63,6 +63,10 @@ depuis 1,5 m.
   inchangé, il va chercher l'objet vu puis revient à sa place. Aucune rotation pendant le
   balayage (700° avant), 3 min 19 au lieu de 3 min 47. Le balayage seul voit 91 % du sol :
   il manque les deux coins près du mur de départ. L'ancien parcours reste : `pattern: lanes`.
+- Dim. 15, 19 h : la caméra corrige l'odométrie en continu sur le marqueur de la poubelle,
+  et nouvelle disposition « poubelle en face » (aucune rotation en Vacuum, bouton « Zone from
+  marker »). Simulation avec dérive : 4 cm d'écart au pire, contre 38 cm poubelle derrière.
+  L'approche continue vers l'objet quand il sort un instant de l'image, au lieu de s'arrêter.
 - Dim. 15, 15 h 30 : deux usages dans la console. Vacuum & collect (rangées, ramasse à
   moins de 1 m sur son passage) et Scan & collect (larges couloirs, cap qui oscille de 60°,
   va chercher tout ce qu'il voit). En simulation : 4 sur 4 dans les deux ; zone vide de

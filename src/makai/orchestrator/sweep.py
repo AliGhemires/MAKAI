@@ -103,6 +103,16 @@ class SweepConfig:
     room_slack_m: float = 0.10  # an object this far outside the walls is still accepted
     abandon_radius_m: float = 0.30  # do not go back to an object that was given up
     max_yaw_fix_deg: float = 75.0  # a larger heading correction is a bad marker reading
+    # Whenever a station's marker is in view, the camera corrects the odometry, a little at
+    # every image: the heading from the direction the marker is seen in, the position from its
+    # distance. With the bin across the zone, facing the robot, this goes on all along the sweep.
+    marker_fix_range_m: float = 2.5  # markers further than this are not trusted for it
+    marker_fix_gain: float = 0.15  # share of the gap closed at each image
+    marker_fix_gate_m: float = 0.6  # a larger gap in distance is a bad reading, or a marker moved
+    marker_fix_gate_deg: float = 35.0  # the same for the heading
+    # Closer than this, a few centimetres of sideways error look like degrees of heading: the
+    # heading is then left to the reading made at the dock, where the marker's own tilt shows.
+    marker_fix_heading_from_m: float = 0.8
     camera_range_m: float = 1.5  # how far the camera is trusted, for the coverage map
 
 
@@ -176,6 +186,14 @@ class SweepMission(Mission):
         # Following the route: the same gains, but translating only, never turning towards the point.
         speed = self.sweep.scan_speed if self.sweep.pattern == "scan" else self.sweep.sweep_speed
         self._slide = ApproachController(replace(self._nav.cfg, near_radius_m=math.inf, max_lin=speed))
+        self._slide_exact = ApproachController(
+            replace(self._slide.cfg, tol_x_m=self.sweep.dock_tol_m, tol_y_m=self.sweep.dock_tol_m)
+        )
+        if self.sweep.pattern == "rows":
+            # Vacuum: the base never turns towards what it goes to, object or marker. It slides.
+            self._object_ctrl = ApproachController(replace(self._object_ctrl.cfg, near_radius_m=math.inf))
+            self._station_ctrl = ApproachController(replace(self._station_ctrl.cfg, near_radius_m=math.inf))
+        self.locked_at: float | None = None  # when a marker last told the robot where it is
         self._nav_target: tuple[float, float, object] | None = None
         self._course = SWEEP_HEADING  # scan: the way the current leg of the route goes
         self._leg_started = 0.0  # scan: when the robot set off on this leg (or came back to it)
@@ -195,6 +213,7 @@ class SweepMission(Mission):
     # ------------------------------------------------------------------ loop
     def step(self) -> State:
         state = super().step()
+        self._fix_on_markers(self.scene)
         pose = self.odometry
         self._since_anchor_m += math.dist(self._last_xy, (pose.x, pose.y))
         self._last_xy = (pose.x, pose.y)
@@ -226,7 +245,8 @@ class SweepMission(Mission):
         elif self.sweep.pattern == "scan":
             yaw = self._course  # back to scanning: facing the way the route goes
         if not self._arrived:
-            self._arrived = self._drive_to(x, y) or now - self._entered > self.sweep.travel_timeout_s
+            late = now - self._entered > self.sweep.travel_timeout_s
+            self._arrived = self._travel(x, y, heading=yaw) or late
         elif self._face(yaw):
             self._go(State.SWEEP, now, "back on the route")
 
@@ -236,12 +256,21 @@ class SweepMission(Mission):
         if self._home_step == 0 and self._leave_route_for_object(scene, now):
             return
         station = self.sweep.stations[self._home_key]
+        if self.starts_away_from_dock:
+            # The bin stands across the zone: home is the start pose, at the near edge. The
+            # marker, in view on the way back, keeps the position right.
+            late = now - self._entered > self.sweep.travel_timeout_s
+            if self._home_step == 0 and (self._travel(0.0, 0.0, exact=True) or late):
+                self._home_step = 1
+            elif self._home_step == 1 and self._face(SWEEP_HEADING):
+                self._go(State.DONE, now, "zone swept, back at the start")
+            return
         if self._home_step in (
             0,
             3,
         ):  # 0: to the dock on odometry; 3: again, once the marker has put it right
             late = now - self._entered > self.sweep.travel_timeout_s
-            if self._drive_to(station.dock_x, station.dock_y, exact=True) or late:
+            if self._travel(station.dock_x, station.dock_y, exact=True, heading=station.heading) or late:
                 self._home_step, self._faced_at, self._scan = self._home_step + 1, None, 0
         elif self._home_step == 1:  # face the station and look for its marker
             found = self._find_marker(self._home_key, scene, now, station.heading)
@@ -268,7 +297,7 @@ class SweepMission(Mission):
         """Drive to the station's dock on odometry, face the station, then look for its marker."""
         station = self.sweep.stations[self._station_key]
         if not self._arrived:
-            self._arrived = self._drive_to(station.dock_x, station.dock_y, exact=True)
+            self._arrived = self._travel(station.dock_x, station.dock_y, exact=True, heading=station.heading)
             if not self._arrived and now - self._entered > self.sweep.travel_timeout_s:
                 self._go(State.FAILED, now, "could not reach the station")
             return
@@ -460,18 +489,66 @@ class SweepMission(Mission):
         self.robot.drive(replace(velocity, theta=turn))
         return False
 
-    def _slide_to(self, x: float, y: float) -> bool:
-        """One tick towards a point of the map without turning: the base keeps facing the room,
-        square to the wall behind the start pose, and only translates. True once there."""
-        if abs(_wrap(SWEEP_HEADING - self.odometry.yaw)) > math.radians(self.sweep.heading_tol_deg):
-            self._face(SWEEP_HEADING)  # not square (a marker just corrected the heading): square up first
+    def _slide_to(self, x: float, y: float, exact: bool = False, heading: float = SWEEP_HEADING) -> bool:
+        """One tick towards a point of the map without turning towards it: the base keeps
+        `heading` (facing the zone, unless told otherwise) and only translates. True once there."""
+        if abs(_wrap(heading - self.odometry.yaw)) > math.radians(self.sweep.heading_tol_deg):
+            self._face(heading)  # not square (a marker just corrected the heading): square up first
             return False
-        if self._nav_target != (x, y, "slide"):
-            self._nav_target = (x, y, "slide")
-            self._slide.reset()
-        velocity, arrived = self._slide.step(*self._to_base(x, y))
+        slide = self._slide_exact if exact else self._slide
+        if self._nav_target != (x, y, "slide", exact):
+            self._nav_target = (x, y, "slide", exact)
+            slide.reset()
+        velocity, arrived = slide.step(*self._to_base(x, y))
         self.robot.drive(velocity)
         return arrived
+
+    def _travel(self, x: float, y: float, exact: bool = False, heading: float = SWEEP_HEADING) -> bool:
+        """One tick towards a point off the route (a dock, the spot to resume from, the start).
+        Vacuum: sliding, with the base kept at `heading`. Otherwise: facing the way it goes."""
+        if self.sweep.pattern == "rows":
+            return self._slide_to(x, y, exact, heading)
+        return self._drive_to(x, y, exact)
+
+    @property
+    def starts_away_from_dock(self) -> bool:
+        """The bin does not stand behind the start pose but somewhere else, as across the zone:
+        the mission then ends back at the start pose, not at the bin's dock."""
+        home = self.sweep.stations[self._home_key]
+        return math.hypot(home.dock_x, home.dock_y) > 0.3
+
+    def _fix_on_markers(self, scene: Scene) -> None:
+        """A station's marker in view corrects the odometry, a little at every image.
+
+        One marker gives two things well: the direction it is seen in, and its distance. What
+        drifts most is the heading (it then drags the position along), so the direction corrects
+        the heading, and the distance corrects the position along the line of sight. Doing it
+        the other way round, the position from the direction, moved the robot sideways by as
+        much as its heading was wrong: 60 cm at 2 m for 18 degrees.
+        The marker's own tilt, which would give the heading directly, only shows up close: it is
+        read when the robot arrives at the dock (`_anchor`).
+        """
+        if self.state in (State.PICK, State.DROP, State.DONE, State.FAILED):
+            return
+        pose, cfg = self.odometry, self.sweep
+        for key, sighting in scene.stations.items():
+            station = cfg.stations.get(key)
+            if station is None or not 0.3 <= sighting.distance_m <= cfg.marker_fix_range_m:
+                continue
+            expected = math.atan2(station.y - pose.y, station.x - pose.x) - pose.yaw
+            turn = _wrap(expected - math.atan2(sighting.y_m, sighting.x_m))
+            if abs(turn) > math.radians(cfg.marker_fix_gate_deg):
+                continue
+            if sighting.distance_m >= cfg.marker_fix_heading_from_m:
+                pose.yaw += cfg.marker_fix_gain * turn
+            # Towards or away from the marker, by what its distance says.
+            gap = math.hypot(station.x - pose.x, station.y - pose.y) - sighting.distance_m
+            if abs(gap) <= cfg.marker_fix_gate_m:
+                towards = math.atan2(station.y - pose.y, station.x - pose.x)
+                pose.x += cfg.marker_fix_gain * gap * math.cos(towards)
+                pose.y += cfg.marker_fix_gain * gap * math.sin(towards)
+            self._last_xy = (pose.x, pose.y)
+            self._since_anchor_m, self.locked_at = 0.0, self.now
 
     def _face(self, yaw: float) -> bool:
         """One tick of turning on the spot towards a heading of the map. True once aligned."""
@@ -552,6 +629,8 @@ class SweepMission(Mission):
             "target": target,
             "resume": [round(v, 3) for v in self._resume] if self._resume and self.state in AWAY else None,
             "anchor_m": None if self.last_correction_m is None else round(self.last_correction_m, 3),
+            # A marker is in view and holds the position right now.
+            "locked": self.locked_at is not None and self.now - self.locked_at < 0.5,
             "events": [
                 {"t": round(e.stamp, 1), "from": e.previous.value, "to": e.state.value, "why": e.reason}
                 for e in self.events[-16:]
