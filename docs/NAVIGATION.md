@@ -92,7 +92,11 @@ navigation:
 1. Robot à la pose de départ : devant la poubelle, dos à elle, face à la pièce.
 2. Bouton **Trace zone**. La pose de départ devient l'origine.
 3. Onglet Drive : conduire le robot le long du bord de la zone, ou seulement jusqu'à ses
-   coins. Sans tourner, c'est plus précis.
+   coins. Sans tourner, c'est plus précis. Pour tourner à un coin : boutons **⟲ 90°** et
+   **⟳ 90°** de l'onglet Mission (visibles pendant le tracé). Le robot se cale sur le quart
+   suivant de son cap de départ (0, 90, 180, 270°), pas seulement 90° de plus : la petite
+   dérive de la conduite à la main est rattrapée à chaque coin et la zone sort carrée.
+   Attendre une seconde après avoir lâché les commandes, sinon « Another device is driving ».
 4. Retour à l'onglet Mission : la carte montre le chemin et la taille de la zone. Bouton
    **Use this zone**.
 5. Remettre le robot à la pose de départ avant **Start mission**.
