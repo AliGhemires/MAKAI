@@ -85,6 +85,22 @@ ne garde que les moments marqués RECORDING. Un épisode, c'est une saisie compl
 au repos. Entre deux épisodes rien n'est enregistré : tu as tout ton temps pour replacer
 l'objet, souffler, ou régler la scène.
 
+**La pose `home`.** C'est la pose du bras quand le leader est posé sur son support. Chaque
+épisode en part et y revient.
+
+- **Elle se définit au lancement** : leader sur son support, mains écartées, Entrée.
+  L'enregistreur mesure la pose du bras pendant une seconde et l'affiche (`Home pose: ...`).
+  Il n'y a rien d'autre à régler.
+- **Laquelle choisir** : bras replié, pince ouverte, hors du champ de la caméra avant. Le
+  robot roule, cherche les objets et transporte sa prise dans cette pose.
+- **Elle ne doit plus bouger** : fixer le support du leader (scotch) et le laisser là. La
+  première session d'un dataset garde sa pose dans le dossier du dataset (`makai_home.yaml`).
+  Une session suivante qui part de plus de 6° ailleurs affiche HOME POSE DIFFERS : remettre le
+  support en place et relancer.
+- **Pour la mission** : l'enregistreur affiche la ligne `home: {...}` à copier dans
+  `configs/arm_poses.yaml`, sans la pince. Le robot se met dans cette pose avant chaque
+  saisie, et le modèle doit partir de la pose de ses démonstrations.
+
 **Où regarder.** Il n'y a pas de fenêtre à boutons : l'interface, c'est le terminal et la
 fenêtre Rerun.
 

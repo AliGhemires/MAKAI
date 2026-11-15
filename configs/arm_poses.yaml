@@ -3,6 +3,9 @@
 #
 # home       : arm folded, out of the front camera's view. Pose while driving, start pose of
 #              every demonstration, and carry pose. NEVER change it once data collection started.
+#              It is the pose of the arm when the leader sits on its rest: scripts/record.py
+#              measures it and prints the line to put here. Leave the gripper out of it: going
+#              home after a pick must not open the hand that holds the object.
 # pick_*     : open-loop grasp at the canonical pre-grasp pose (fallback without policy).
 # drop_reach : gripper above the station opening. drop_open: same pose, gripper open.
 home: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
