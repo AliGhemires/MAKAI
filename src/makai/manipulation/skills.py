@@ -189,6 +189,19 @@ class PolicyPick:
         return gripper > self.gripper_open_above
 
 
+class PickByCategory:
+    """One pick skill per kind of object: the policy trained on socks for clothing, the one
+    trained on cans for trash. An object of any other kind gets the default skill."""
+
+    def __init__(self, skills: Mapping[Category, object], default):
+        self.skills, self.default = dict(skills), default
+        self.last_category: Category | None = None
+
+    def run(self, robot: Robot, target: Target) -> bool:
+        self.last_category = target.category
+        return self.skills.get(target.category, self.default).run(robot, target)
+
+
 def build_pick_skill(cfg: dict):
     m = cfg["manipulation"]
     poses = load_poses(CONFIG_DIR / m["poses_file"])
@@ -196,16 +209,27 @@ def build_pick_skill(cfg: dict):
     if pick["kind"] == "scripted":
         return ScriptedPick(ScriptedSequence(poses, pick["steps"], cfg["robot"]["fps"]))
     after = ScriptedSequence(poses, pick["after"], cfg["robot"]["fps"]) if pick.get("after") else None
-    return PolicyPick(
-        pick["policy_type"],
-        pick["policy_path"],
-        pick["task"],
-        pick["duration_s"],
-        cfg["robot"]["fps"],
-        pick.get("device"),
-        after,
-        pick.get("gripper_open_above"),
-    )
+
+    def policy(entry: Mapping) -> PolicyPick:
+        return PolicyPick(
+            pick["policy_type"],
+            entry["policy_path"],
+            entry.get("task", pick["task"]),
+            pick["duration_s"],
+            cfg["robot"]["fps"],
+            pick.get("device"),
+            after,
+            entry.get("gripper_open_above", pick.get("gripper_open_above")),
+            entry.get("n_action_steps", pick.get("n_action_steps")),
+        )
+
+    # One policy per kind of object when `policies` lists them; `policy_path` is then the
+    # one used for any other kind, if it is set.
+    by_category = {Category(name): policy(entry) for name, entry in (pick.get("policies") or {}).items()}
+    if not by_category:
+        return policy(pick)
+    default_set = pick.get("policy_path") and not str(pick["policy_path"]).startswith("CHANGE_ME")
+    return PickByCategory(by_category, policy(pick) if default_set else next(iter(by_category.values())))
 
 
 def build_drop_skill(cfg: dict) -> ScriptedDrop:
