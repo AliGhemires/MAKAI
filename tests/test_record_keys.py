@@ -95,13 +95,18 @@ def test_one_home_pose_per_dataset(tmp_path, capsys):
         said.append(text)
 
     first = dict.fromkeys(record.ARM, 20.0)
-    record.check_home(first, tmp_path, 6.0, say)
+    record.check_home(first, 1.4, tmp_path, 6.0, say)
     kept = tmp_path / record.HOME_FILE
     assert kept.exists()
-    assert "home: {" in capsys.readouterr().out  # the line for configs/arm_poses.yaml, still a placeholder
+    shown = capsys.readouterr().out
+    assert "home: {" in shown and "arm_gripper.pos: 1.4" in shown  # the line for configs/arm_poses.yaml
+    assert "Careful" not in shown  # a leader that rests closed: going home keeps hold of the object
 
-    record.check_home({**first, record.ARM[0]: 23.0}, tmp_path, 6.0, say)  # within the tolerance
+    record.check_home({**first, record.ARM[0]: 23.0}, 1.4, tmp_path, 6.0, say)  # within the tolerance
     assert said == []
-    record.check_home({**first, record.ARM[0]: 40.0}, tmp_path, 6.0, say)  # the rest has moved
+    record.check_home({**first, record.ARM[0]: 40.0}, 1.4, tmp_path, 6.0, say)  # the rest has moved
     assert said == ["Home pose differs"]
     assert f"{record.ARM[0]}: 20.0" in kept.read_text()  # the first session's pose stays the reference
+
+    record.check_home(first, 40.0, tmp_path, 6.0, say)  # a leader that rests open
+    assert "Careful: the gripper is open on the rest" in capsys.readouterr().out

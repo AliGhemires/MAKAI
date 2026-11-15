@@ -1,14 +1,17 @@
-# Named arm poses (degrees, LeRobot joint keys). PLACEHOLDERS: capture the real ones on the
+# Named arm poses (degrees, LeRobot joint keys). `home` is real; the others are PLACEHOLDERS: capture them on the
 # robot with `uv run python scripts/teleop.py`, key `p`, then paste them here and commit.
 #
 # home       : arm folded, out of the front camera's view. Pose while driving, start pose of
 #              every demonstration, and carry pose. NEVER change it once data collection started.
 #              It is the pose of the arm when the leader sits on its rest: scripts/record.py
-#              measures it and prints the line to put here. Leave the gripper out of it: going
-#              home after a pick must not open the hand that holds the object.
+#              measures it and prints the line to put here.
+#              Set on 15 Nov from pick_sock_v1: the median first frame of its 59 episodes, and
+#              the gripper as commanded on the rest (1.4 = closed). Closed is what we want:
+#              going home keeps squeezing the object after a pick, and closes the hand again
+#              after a drop, which is how every demonstration starts.
 # pick_*     : open-loop grasp at the canonical pre-grasp pose (fallback without policy).
 # drop_reach : gripper above the station opening. drop_open: same pose, gripper open.
-home: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
+home: {arm_shoulder_pan.pos: -11.8, arm_shoulder_lift.pos: -102.5, arm_elbow_flex.pos: 94.7, arm_wrist_flex.pos: 74.2, arm_wrist_roll.pos: -2.7, arm_gripper.pos: 1.4}
 pick_above: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_down: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_close: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}

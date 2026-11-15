@@ -69,6 +69,7 @@ ARM = [key for key in ARM_KEYS if "gripper" not in key]
 
 
 HOME_FILE = "makai_home.yaml"  # in the dataset folder: the home pose of its first session
+OPEN_GRIPPER = 10.0  # gripper command above this on the rest = open (closed is about 1.5, wide open 35)
 KEY_PAUSE_S = 0.7  # after a key or a save, ignore the keys this long: a key held down repeats
 MIN_KEY_EPISODE_S = 1.0  # an episode stopped by the key sooner than this is a double press
 
@@ -269,21 +270,27 @@ def status_panel(headline: str, detail: str, last: str, recorded: int, asked: in
     return {TransitionKey.PREDICTION: {"language": {"status": [text]}}}
 
 
-def check_home(pose: dict[str, float], dataset_root: Path, tol: float, say) -> None:
+def check_home(
+    pose: dict[str, float], gripper: float, dataset_root: Path, tol: float, say, mission: bool = True
+) -> None:
     """One home pose per dataset, and the same one on the robot.
 
     "Home" is where the arm is when the leader sits on its rest: the pose every episode starts
     from and comes back to. Each session measures it again. The first session of a dataset
     writes it into the dataset folder and later sessions are compared with it: a rest that has
     moved would make the new episodes start from another pose. It is also compared with `home`
-    in the poses file, the pose the mission puts the arm in before every pick.
+    in the poses file, the pose the mission puts the arm in before every pick. The gripper
+    is part of it, as commanded on the rest: with a leader that rests closed, going home keeps
+    squeezing the object after a pick and closes the hand again after a drop, which is how the
+    demonstrations start.
     """
 
     def gap(reference: dict) -> tuple[str, float]:  # the joint that differs most, and by how much
         key = max(ARM, key=lambda k: abs(pose[k] - float(reference.get(k, 0.0))))
         return key, pose[key] - float(reference.get(key, 0.0))
 
-    line = yaml.safe_dump(pose, default_flow_style=True, width=1000).strip()
+    whole = {**pose, "arm_gripper.pos": round(gripper, 1)}  # the gripper as commanded on the rest
+    line = yaml.safe_dump(whole, default_flow_style=True, width=1000).strip()
     kept = dataset_root / HOME_FILE
     if not kept.exists():
         kept.write_text(line + "\n")
@@ -304,7 +311,7 @@ def check_home(pose: dict[str, float], dataset_root: Path, tol: float, say) -> N
     poses_file = CONFIG_DIR / load_config()["manipulation"]["poses_file"]
     robot_home = load_poses(poses_file).get("home", {})
     key, degrees = gap(robot_home)
-    if abs(degrees) > tol:
+    if mission and abs(degrees) > tol:  # not in a rehearsal: the fake arm rests at zero
         unset = not any(abs(float(value)) > 1e-6 for value in robot_home.values())
         print(
             f"The mission does not know this home pose yet ({poses_file.name} still holds the placeholder)."
@@ -315,7 +322,9 @@ def check_home(pose: dict[str, float], dataset_root: Path, tol: float, say) -> N
             f"  The policy must start every pick from the pose it was trained from. In configs/{poses_file.name}:"
         )
         print(f"  home: {line}")
-        print("  (no gripper in it: going home must not open the hand that holds the object)")
+    if gripper > OPEN_GRIPPER:
+        print("  Careful: the gripper is open on the rest. Going home after a pick would let go of the")
+        print("  object: give the carry its own pose (manipulation.pick.after in configs/makai.yaml).")
 
 
 def session(robot, leader, dataset, events, args, fps, task, display, say, screen, save, on_saved, on_bad):
@@ -381,7 +390,7 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, scree
     deadline = time.perf_counter() + 10.0
     while still_seconds() < 1.0 and time.perf_counter() < deadline:
         start = time.perf_counter()
-        _, _, arm, hand = tick()
+        _, action, arm, hand = tick()
         recent.append(arm)
         hands.append(hand)
         precise_sleep(max(0.0, 1.0 / fps - (time.perf_counter() - start)))
@@ -393,9 +402,11 @@ def session(robot, leader, dataset, events, args, fps, task, display, say, scree
     print("Home pose:", ", ".join(f"{name} {value:.0f}" for name, value in zip(names, home_arm, strict=True)))
     check_home(
         {key: round(float(value), 1) for key, value in zip(ARM, home_arm, strict=True)},
+        float(action["arm_gripper.pos"]),
         Path(dataset.root),
         args.home_tol,
         say,
+        mission=not args.dry_run,
     )
     print()
 
