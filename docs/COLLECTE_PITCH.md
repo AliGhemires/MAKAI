@@ -58,6 +58,14 @@ sous l'objet et devant le robot (la caméra de poignet ne doit voir que lui). De
 différentes ; si on connaît le sol de la salle de pitch, en prendre un qui lui ressemble.
 12 épisodes par session et par objet ; 6 au minimum si le temps manque.
 
+**Des gens derrière le robot, dans chaque session** : c'est ce qui fait rater la saisie
+aujourd'hui (constaté le 15), et il y aura du public demain. En plus du décor de la session,
+sur les 12 épisodes : les 4 premiers sans personne dans le champ de la caméra avant ; les 4
+suivants avec 1 à 3 personnes debout ou assises à 1–3 m, qui changent de place entre deux
+épisodes ; les 4 derniers avec des gens qui passent ou bougent **pendant** l'épisode. Changer de
+tenue d'une session à l'autre (claire, sombre, sac à dos). Personne n'entre dans la zone de
+saisie, et aucune autre chaussette ni canette dans le champ. Ajouter `personnes` à `--note`.
+
 **On tourne le robot, pas l'objet.** Les caméras sont sur le robot : en le faisant pivoter,
 c'est le fond qui change, la zone de saisie reste la même. Pivoter le robot à la main entre
 deux sessions, bras en `home`, sans toucher aux caméras.
