@@ -81,6 +81,9 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   pour le host et la téléop ; état dans `docs/workstreams/WS1_robot_data.md`. Mots de
   passe dans le chat d'équipe, jamais dans le dépôt. Mesurer le réseau avec
   `scripts/net_check.py` avant d'accuser le code.
+- **Odométrie du robot réel** : lignes droites bonnes, **rotations non reproductibles** (10 à
+  32° d'erreur sur 360° selon l'essai, 15 nov.). Avant de toucher à la navigation ou aux
+  facteurs `robot.odometry`, lire `docs/DEBUG_ODOMETRY.md` (essais, journaux, hypothèses).
 - Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
   qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
   installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
