@@ -28,11 +28,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Room:
-    """The floor to sweep, in the map frame. The walls are at x = 0 .. length, y = -width/2 .. +width/2."""
+    """The floor to sweep, in the map frame: x = 0 .. length, y = y_offset -+ width/2.
+
+    It may be a real room or an imaginary rectangle on the floor (`navigation.zone`)."""
 
     length_m: float = 2.0
     width_m: float = 1.6
-    margin_m: float = 0.30  # the centre of the robot keeps this far from the walls
+    margin_m: float = 0.30  # the centre of the robot keeps this far from the edges (0 without walls)
+    y_offset_m: float = 0.0  # centre of the zone, to the left of the start pose (0 = centred on it)
 
     @property
     def x_range(self) -> tuple[float, float]:
@@ -41,11 +44,12 @@ class Room:
     @property
     def y_range(self) -> tuple[float, float]:
         half = max(0.0, self.width_m / 2 - self.margin_m)
-        return -half, half
+        return self.y_offset_m - half, self.y_offset_m + half
 
     def contains(self, x: float, y: float, slack_m: float = 0.0) -> bool:
         """Is this point on the floor of the room (walls included, plus `slack_m`)?"""
-        return -slack_m <= x <= self.length_m + slack_m and abs(y) <= self.width_m / 2 + slack_m
+        inside_y = abs(y - self.y_offset_m) <= self.width_m / 2 + slack_m
+        return -slack_m <= x <= self.length_m + slack_m and inside_y
 
 
 def snake_waypoints(room: Room, lane_spacing_m: float = 0.5) -> list[tuple[float, float]]:
@@ -58,7 +62,7 @@ def snake_waypoints(room: Room, lane_spacing_m: float = 0.5) -> list[tuple[float
     lanes = max(1, math.ceil((y1 - y0) / lane_spacing_m - 1e-9)) + 1 if y1 > y0 else 1
     points: list[tuple[float, float]] = []
     for lane in range(lanes):
-        y = y0 + lane * (y1 - y0) / (lanes - 1) if lanes > 1 else 0.0
+        y = y0 + lane * (y1 - y0) / (lanes - 1) if lanes > 1 else y0 + 0.0
         ends = [(round(x0, 3), round(y, 3)), (round(x1, 3), round(y, 3))]  # to the millimetre
         points.extend(ends if lane % 2 == 0 else ends[::-1])
     return points

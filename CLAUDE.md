@@ -61,6 +61,9 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   long de rangées (`navigation.sweep.pattern: rows`). **Détection** (tous les autres états) :
   il va chercher l'objet vu, le dépose, revient où il était et se remet perpendiculaire.
   `pattern: lanes` rend l'ancien parcours en couloirs, où le robot tourne.
+- La zone à balayer est un rectangle imaginaire, sans mur. Elle se trace en conduisant le
+  robot (console, onglet Mission, « Trace zone ») ; elle est gardée dans `configs/zone.yaml`
+  (hors git) et remplace alors `navigation.sweep.room` (`navigation/zone.py`).
 - Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
   `models/detector_v2.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
   Mesures et limites : `docs/workstreams/WS2_perception.md`.
@@ -91,7 +94,8 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
 mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), son mode aspirateur
-en rangées (la base n'a jamais glissé de côté sur une longue distance), la mission lancée
+en rangées (la base n'a jamais glissé de côté sur une longue distance), le tracé de la
+zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
 (`PickByCategory`), le détecteur v2 pendant un balayage. Mode d'emploi : `docs/NAVIGATION.md`.

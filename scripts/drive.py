@@ -121,16 +121,18 @@ def sim_things(world) -> list:
     return things + [(sx, sy, (230, 230, 230), 0.14) for sx, sy in world.stations.values()]
 
 
-def plan_of(sweep) -> dict:
+def plan_of(sweep, traced: bool = False) -> dict:
     """The room, the route of the sweep and the stations, for the map of the console."""
     from makai.orchestrator.sweep import sweep_waypoints
 
     return {
         "pattern": sweep.pattern,
+        "traced": traced,  # the zone was traced by driving the robot around it
         "room": {
             "length_m": sweep.room.length_m,
             "width_m": sweep.room.width_m,
             "margin_m": sweep.room.margin_m,
+            "y_offset_m": sweep.room.y_offset_m,
         },
         "waypoints": sweep_waypoints(sweep),
         "stations": {
@@ -142,6 +144,8 @@ def plan_of(sweep) -> dict:
 
 def sim_runner(loop, driver, robot, cfg):
     """The sweeping mission on the simulated robot of the page: same code as on the real one."""
+    from dataclasses import replace
+
     from makai.app import mission_config
     from makai.contracts import Category
     from makai.navigation.coverage import Room
@@ -152,7 +156,8 @@ def sim_runner(loop, driver, robot, cfg):
     world = robot.world
     mission_cfg = mission_config(cfg)
     stations = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
-    sweep = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    whole = SweepConfig(room=Room(length_m=2.4, width_m=1.8), stations=stations)
+    plan = {"sweep": whole, "traced": False}
     goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
 
     def build(tap):
@@ -164,7 +169,7 @@ def sim_runner(loop, driver, robot, cfg):
             SimPick(world, goal_xy=goal, success_rate=0.85, duration_s=2.5, seed=runner.runs),
             SimDrop(world, duration_s=1.5),
             mission_cfg,
-            sweep,
+            plan["sweep"],
         )
 
     def reset() -> None:
@@ -174,7 +179,13 @@ def sim_runner(loop, driver, robot, cfg):
         world.carrying, world.x, world.y, world.yaw = None, 0.0, 0.0, 0.0
         loop.reset_odometry()
 
-    runner = MissionRunner(loop, driver, build, lambda: plan_of(sweep), reset, simulated=True)
+    def use_zone(room) -> None:  # in simulation the traced zone is not written to configs/
+        plan["sweep"] = replace(whole, room=Room(**room)) if room else whole
+        plan["traced"] = room is not None
+
+    runner = MissionRunner(
+        loop, driver, build, lambda: plan_of(plan["sweep"], plan["traced"]), reset, True, use_zone
+    )
     return runner
 
 
@@ -182,9 +193,17 @@ def real_runner(loop, driver, cfg):
     """The sweeping mission on the real robot, through the host. The detector and the policies
     are loaded at the first start and kept."""
     from makai.app import mission_config, sweep_config
+    from makai.navigation.zone import forget_zone, load_zone, save_zone
     from makai.robot.autopilot import MissionRunner
 
-    sweep, parts = sweep_config(cfg), {}
+    plan, parts = {"sweep": sweep_config(cfg)}, {}
+
+    def use_zone(room) -> None:  # kept in configs/zone.yaml: it survives a restart of the page
+        if room is None:
+            forget_zone()
+        else:
+            save_zone(room)
+        plan["sweep"] = sweep_config(cfg)
 
     def build(tap):
         from makai.manipulation.skills import build_drop_skill, build_pick_skill
@@ -196,10 +215,12 @@ def real_runner(loop, driver, cfg):
                 perception=build_perception(cfg), pick=build_pick_skill(cfg), drop=build_drop_skill(cfg)
             )
         return SweepMission(
-            tap, parts["perception"], parts["pick"], parts["drop"], mission_config(cfg), sweep
+            tap, parts["perception"], parts["pick"], parts["drop"], mission_config(cfg), plan["sweep"]
         )
 
-    return MissionRunner(loop, driver, build, lambda: plan_of(sweep))
+    return MissionRunner(
+        loop, driver, build, lambda: plan_of(plan["sweep"], load_zone() is not None), use_zone=use_zone
+    )
 
 
 def _interrupt(signum, frame) -> None:

@@ -16,7 +16,8 @@ Endpoints, all JSON:
 - `GET /api/camera/<name>.mjpg?fps=10`: live camera, as an MJPEG stream an <img> can show;
   `GET /api/camera/<name>.jpg` (`?download=1` to save it): the latest image;
 - `GET /api/mission`: the sweeping mission (status, map, events) and its plan;
-  `POST /api/mission/start`, `/stop`, `/reset` (simulation only). Only with a mission runner,
+  `POST /api/mission/start`, `/stop`, `/reset` (simulation only); `/trace`, `/trace_done`,
+  `/trace_cancel`, `/zone_forget` to trace the zone to sweep by driving the robot around it. Only with a mission runner,
   i.e. through the host or in simulation: then `/` is the console (`console_page.html`) and
   the driving page moves to `/drive`;
 - `GET /api/figures`: the figures of docs/figures and the training runs they come from;
@@ -70,6 +71,10 @@ def figures() -> dict[str, Any]:
             if step >= run["steps"]:
                 run["steps"], run["last"], run["seconds_per_step"] = step, error, row.get("step_s")
     return {"images": images, "runs": list(runs.values())}
+
+
+# POST /api/mission/<action>: the mission, and the zone traced by driving (robot/autopilot.py).
+MISSION_ACTIONS = ("start", "stop", "reset", "trace", "trace_done", "trace_cancel", "zone_forget")
 
 
 class DriveServer(ThreadingHTTPServer):
@@ -234,7 +239,7 @@ class DriveHandler(BaseHTTPRequestHandler):
 
     def _mission(self, action: str) -> None:
         runner = self.server.runner
-        if runner is None or action not in ("start", "stop", "reset"):
+        if runner is None or action not in MISSION_ACTIONS:
             self._error(
                 HTTPStatus.NOT_FOUND, "No mission here: start the page through the host, or with --sim."
             )

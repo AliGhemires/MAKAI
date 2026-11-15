@@ -248,3 +248,31 @@ def test_checks_its_position_on_the_marker_during_a_long_sweep():
     checks = [e for e in mission.events if "checking the position" in e.reason]
     assert len(checks) >= 2 and mission.stats.delivered == 0
     assert math.hypot(world.x, world.y) < 0.08  # heavy drift, and still back at the origin
+
+
+def test_a_zone_off_centre_without_walls_is_swept_to_its_edges():
+    # An imaginary rectangle traced with the robot: 2 m deep, from 0.3 m on its right to 0.9 m on its left.
+    zone = Room(length_m=2.0, width_m=1.2, margin_m=0.0, y_offset_m=0.3)
+    assert zone.y_range == pytest.approx((-0.3, 0.9))
+    assert (
+        zone.contains(1.0, 0.85) and not zone.contains(1.0, -0.45) and zone.contains(1.0, -0.35, slack_m=0.1)
+    )
+    points = row_waypoints(zone, 0.5)
+    assert points[0] == (0.0, -0.3) and points[1] == (0.0, 0.9)  # the first row runs from edge to edge
+    assert {round(y, 3) for _, y in snake_waypoints(zone, 0.5)} == {-0.3, 0.1, 0.5, 0.9}
+    room_map = RoomMap(zone)
+    assert room_map.ys[0] == pytest.approx(-0.275) and room_map.ys[-1] == pytest.approx(0.875)
+
+    world = SimWorld(
+        objects=[
+            SimObject(1.2, 0.7, Category.TRASH, "can"),
+            SimObject(1.5, -0.2, Category.CLOTHING, "sock"),
+            SimObject(1.0, -0.8, Category.TRASH, "can outside"),
+        ],
+        stations={Category.TRASH: (-0.35, 0.0)},
+        station_facing={Category.TRASH: 0.0},
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=zone)
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert [o.label for o in world.objects] == ["can outside"] and len(world.delivered) == 2
+    assert mission.map.coverage > 0.9  # without a margin only the 15 cm at the robot's feet stay unseen

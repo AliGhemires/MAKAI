@@ -46,7 +46,17 @@ def make(build=None):
         "waypoints": snake_waypoints(SWEEP.room),
         "stations": {},
     }
-    runner = MissionRunner(loop, driver, build or default, lambda: plan, reset=lambda: None, simulated=True)
+    zones = []  # every zone the runner was told to use, None = forget it
+    runner = MissionRunner(
+        loop,
+        driver,
+        build or default,
+        lambda: plan,
+        reset=lambda: None,
+        simulated=True,
+        use_zone=zones.append,
+    )
+    runner.zones = zones
     return world, loop, driver, runner
 
 
@@ -99,6 +109,47 @@ def test_emergency_stop_ends_the_mission_at_once():
     assert (world.x, world.y, world.yaw) == before  # the wheels really are stopped
     with pytest.raises(ValueError, match="Emergency stop"):
         runner.start()
+
+
+def test_the_zone_is_traced_by_driving_the_robot_around_it():
+    _, loop, _, runner = make()
+    assert runner.snapshot()["zone"] == {"tracing": False}
+    runner.trace()
+    with pytest.raises(ValueError, match="being traced"):
+        runner.start()
+    for x, y in [(0.0, -0.4), (0.3, -0.4)]:  # the pilot has barely moved
+        loop.odometry.x, loop.odometry.y = x, y
+        runner.trace_sample()
+    with pytest.raises(ValueError, match="deep"):
+        runner.trace_done()
+    shot = runner.snapshot()["zone"]
+    assert shot["tracing"] and shot["size"]["length_m"] == 0.3  # refused, and the trace goes on
+    assert shot["box"]["length_m"] == 1.0  # room to draw around a trace that has barely begun
+    for x, y in [(1.6, -0.4), (1.6, 0.8), (0.0, 0.8), (0.0, 0.0)]:  # the other corners, and back
+        loop.odometry.x, loop.odometry.y = x, y
+        runner.trace_sample()
+    shot = json.loads(json.dumps(runner.snapshot()))["zone"]
+    assert shot["pose"]["x"] == 0.0 and [1.6, 0.8] in shot["trail"]
+    runner.trace_done()
+    assert runner.zones == [{"length_m": 1.6, "width_m": 1.2, "margin_m": 0.0, "y_offset_m": 0.2}]
+    assert runner.snapshot()["zone"] == {"tracing": False} and "1.60 m deep" in runner.message
+    with pytest.raises(ValueError, match="No trace"):
+        runner.trace_done()
+    runner.trace()
+    runner.trace_cancel()
+    assert runner.snapshot()["zone"] == {"tracing": False} and len(runner.zones) == 1  # nothing changed
+    runner.zone_forget()
+    assert runner.zones[-1] is None
+
+
+def test_the_zone_cannot_be_traced_during_a_mission():
+    _, loop, _, runner = make()
+    started(runner, loop)
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.trace()
+    with pytest.raises(ValueError, match="Stop the mission first"):
+        runner.zone_forget()
+    runner.stop()
 
 
 def test_stop_then_start_again():

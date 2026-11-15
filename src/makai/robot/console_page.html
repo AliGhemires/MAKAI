@@ -61,6 +61,10 @@
   .map-card { display: flex; flex-direction: column; min-height: 0; }
   .map-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px 8px; }
   .map-head .where { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .mini { border: 1px solid var(--line); background: var(--sunken); border-radius: 8px; padding: 4px 11px; font-size: 12.5px; font-weight: 650; }
+  .mini.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mini:disabled { opacity: .45; cursor: default; }
+  .zone-note { color: var(--muted); font-size: 12.5px; }
   #map { flex: 1; min-height: 0; width: 100%; display: block; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px 12px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
@@ -153,6 +157,11 @@
     <div class="card map-card">
       <div class="map-head">
         <h2>Room map</h2>
+        <button class="mini" id="trace" title="Define the zone to sweep by driving the robot around it">Trace zone</button>
+        <button class="mini primary" id="trace-done" hidden>Use this zone</button>
+        <button class="mini" id="trace-cancel" hidden>Cancel</button>
+        <button class="mini" id="zone-forget" hidden title="Go back to the room of the config">Forget traced zone</button>
+        <span class="zone-note num" id="zone-note"></span>
         <span class="where num" id="where"></span>
       </div>
       <canvas id="map" aria-label="Map of the room: covered floor, path of the robot, objects and stations"></canvas>
@@ -228,6 +237,7 @@ const $ = (s) => document.querySelector(s);
 const CLIENT = "console-" + Math.random().toString(36).slice(2, 8);
 let tab = "mission";
 let mission = null;          // latest GET /api/mission
+let notice = null;           // why the last button press was refused, shown for a few seconds
 let poseA = null, poseB = null;  // the two latest poses, to draw the robot moving smoothly between them
 let colors = {};
 
@@ -300,18 +310,29 @@ function progress(m) {
 
 function renderText() {
   if (!mission) return;
-  const m = mission.mission, status = mission.status;
+  const zone = mission.zone, tracing = !!(zone && zone.tracing);
+  const m = tracing ? null : mission.mission, status = mission.status;
+  const busy = status === "running" || status === "loading";
+  // The zone to sweep: traced by driving the robot around it, or the room of the config.
+  $("#trace").hidden = !zone || tracing; $("#trace").disabled = busy;
+  $("#trace-done").hidden = $("#trace-cancel").hidden = !tracing;
+  $("#zone-forget").hidden = !zone || tracing || !mission.plan.traced; $("#zone-forget").disabled = busy;
+  const size = tracing ? zone.size : mission.plan.room;
+  $("#zone-note").textContent = tracing ? `${size.length_m.toFixed(2)} m deep · ${size.width_m.toFixed(2)} m wide`
+    : mission.plan.traced ? `traced zone · ${size.length_m.toFixed(2)} × ${size.width_m.toFixed(2)} m` : "";
   const [dot, word] = STATUS[status] || ["", status];
   $("#dot-status").className = "dot " + dot;
   $("#txt-status").textContent = word + (mission.simulated ? " · simulation" : "");
   $("#reset").hidden = !mission.simulated;
-  $("#start").disabled = status === "running" || status === "loading";
+  $("#start").disabled = busy || tracing;
   $("#stop").disabled = !(status === "running" || status === "loading");
   $("#reset").disabled = status === "running" || status === "loading";
   $("#start").textContent = status === "loading" ? "Loading…" : m && status !== "running" ? "Start again" : "Start mission";
 
   let title = "Ready", why = "Robot in front of the bin, facing the room.", step = "";
-  if (status === "loading") { title = "Loading"; why = "Loading the detector and the policies."; }
+  if (!m && mission.message && status === "idle") why = mission.message;
+  if (tracing) { title = "Tracing the zone"; why = "The start pose is the origin. Drive the robot around the edge of the zone, or to its corners (Drive tab), then come back here and press Use this zone."; }
+  else if (status === "loading") { title = "Loading"; why = "Loading the detector and the policies."; }
   else if (status === "failed" && !m) { title = "Could not start"; why = mission.message; }
   else if (m) {
     [title, why, step] = STATES[m.state] || [m.state, "", ""];
@@ -330,7 +351,7 @@ function renderText() {
     : mode === "vacuum" ? "Vacuum mode" + (m.pattern === "rows" ? " · heading locked" : "")
     : (m ? m.pattern : mission.plan.pattern) === "rows" ? "Vacuum mode · rows, heading locked" : "Vacuum mode · lanes";
   $("#state").textContent = title;
-  $("#why").textContent = why;
+  $("#why").textContent = notice && performance.now() < notice.until ? notice.text : why;  // a refusal stays readable
   for (const d of document.querySelectorAll("#pipe div")) d.classList.toggle("on", d.dataset.step === step && status === "running");
 
   const stats = m ? m.stats : { delivered: 0, picked: 0, failed_picks: 0, abandoned: 0 };
@@ -341,7 +362,8 @@ function renderText() {
   $("#t-time").textContent = clock(m ? m.time_s : 0);
   $("#t-time-s").textContent = m && m.carrying ? `carrying ${m.carrying}` : "";
   $("#t-fix").innerHTML = m && m.anchor_m !== null ? `${(100 * m.anchor_m).toFixed(1)}<small>cm</small>` : "–";
-  $("#where").textContent = m ? `x ${m.pose.x.toFixed(2)} m · y ${m.pose.y.toFixed(2)} m · ${Math.round(((m.pose.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180)}°` : "";
+  const at = tracing ? zone.pose : m ? m.pose : null;
+  $("#where").textContent = at ? `x ${at.x.toFixed(2)} m · y ${at.y.toFixed(2)} m · ${Math.round(((at.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180)}°` : "";
 
   const events = m ? m.events.slice(-12).reverse() : [];
   $("#events").innerHTML = events.length
@@ -360,21 +382,25 @@ function drawMap(now) {
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const m = mission.mission, plan = mission.plan, room = plan.room;
+  const zone = mission.zone, tracing = !!(zone && zone.tracing);
+  const m = tracing ? null : mission.mission, plan = mission.plan;
+  // The zone drawn: the one being traced, the one of the mission shown, or the one planned.
+  const room = tracing ? zone.box : m ? m.map.room : plan.room, yc = room.y_offset_m || 0;
   const stations = Object.entries(m ? m.stations : plan.stations);
   // World window: the room, the stations behind the origin, a little air around.
   const minX = Math.min(-0.2, ...stations.map(([, s]) => s.x - 0.24)), maxX = room.length_m + 0.08;
-  const half = Math.max(room.width_m / 2, ...stations.map(([, s]) => Math.abs(s.y) + 0.2)) + 0.14;
-  const scale = Math.min((w - 28) / (maxX - minX), (h - 24) / (2 * half));
-  const left = (w - scale * (maxX - minX)) / 2, top = (h - scale * 2 * half) / 2;
-  const X = (x) => left + (x - minX) * scale, Y = (y) => top + (half - y) * scale;
+  const yTop = Math.max(yc + room.width_m / 2, ...stations.map(([, s]) => s.y + 0.2)) + 0.14;
+  const yBottom = Math.min(yc - room.width_m / 2, ...stations.map(([, s]) => s.y - 0.2)) - 0.14;
+  const scale = Math.min((w - 28) / (maxX - minX), (h - 24) / (yTop - yBottom));
+  const left = (w - scale * (maxX - minX)) / 2, top = (h - scale * (yTop - yBottom)) / 2;
+  const X = (x) => left + (x - minX) * scale, Y = (y) => top + (yTop - y) * scale;
 
   // Floor the camera has looked at.
   if (m) {
     const cell = m.map.cell_m, px = cell * scale + 0.6;
     ctx.fillStyle = colors.covered;
     m.map.covered.forEach((row, r) => {
-      const y = -room.width_m / 2 + (r + 1) * cell;
+      const y = yc - room.width_m / 2 + (r + 1) * cell;
       for (let c = 0; c < row.length; c++) {
         if (row[c] !== "1") continue;
         let end = c; while (end + 1 < row.length && row[end + 1] === "1") end++;
@@ -385,22 +411,30 @@ function drawMap(now) {
   }
   // Grid every half metre, then the walls.
   ctx.strokeStyle = colors.line; ctx.lineWidth = 1; ctx.beginPath();
-  for (let x = 0.5; x < room.length_m; x += 0.5) { ctx.moveTo(X(x), Y(room.width_m / 2)); ctx.lineTo(X(x), Y(-room.width_m / 2)); }
-  for (let y = -Math.floor(room.width_m) / 2; y < room.width_m / 2; y += 0.5) { if (Math.abs(y) < room.width_m / 2) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(room.length_m), Y(y)); } }
+  const yLow = yc - room.width_m / 2, yHigh = yc + room.width_m / 2;
+  if (!tracing) {
+    for (let x = 0.5; x < room.length_m; x += 0.5) { ctx.moveTo(X(x), Y(yHigh)); ctx.lineTo(X(x), Y(yLow)); }
+    for (let y = Math.ceil(yLow / 0.5) * 0.5; y < yHigh; y += 0.5) { if (y > yLow) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(room.length_m), Y(y)); } }
+  }
   ctx.stroke();
-  ctx.strokeStyle = colors.text; ctx.lineWidth = 1.5;
-  ctx.strokeRect(X(0), Y(room.width_m / 2), room.length_m * scale, room.width_m * scale);
+  // While tracing, the rectangle is the zone so far: it grows with the path.
+  const edge = tracing ? zone.size : room;
+  ctx.strokeStyle = tracing ? colors.accent : colors.text; ctx.lineWidth = 1.5;
+  if (tracing) ctx.setLineDash([7, 5]);
+  ctx.strokeRect(X(0), Y((edge.y_offset_m || 0) + edge.width_m / 2), edge.length_m * scale, edge.width_m * scale);
+  ctx.setLineDash([]);
 
   // Route planned (dashed).
-  const way = m ? m.waypoints : plan.waypoints;
+  const way = tracing ? [] : m ? m.waypoints : plan.waypoints;
   ctx.setLineDash([5, 5]); ctx.strokeStyle = colors.muted; ctx.lineWidth = 1.25; ctx.beginPath();
   way.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
   ctx.stroke(); ctx.setLineDash([]);
 
-  // Path driven.
-  if (m && m.map.trail.length > 1) {
+  // Path driven (by the mission, or by the pilot while tracing the zone).
+  const trail = tracing ? zone.trail : m ? m.map.trail : [];
+  if (trail.length > 1) {
     ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.beginPath();
-    m.map.trail.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    trail.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
     ctx.stroke();
   }
 
@@ -430,7 +464,7 @@ function drawMap(now) {
   }
 
   // The robot, moving smoothly between the two latest poses.
-  let pose = m ? m.pose : { x: 0, y: 0, yaw: 0 };
+  let pose = tracing ? zone.pose : m ? m.pose : { x: 0, y: 0, yaw: 0 };
   if (poseA && poseB && poseB.at > poseA.at) {
     const t = Math.min(1.3, (now - poseB.at) / (poseB.at - poseA.at));
     pose = { x: poseB.x + (poseB.x - poseA.x) * t, y: poseB.y + (poseB.y - poseA.y) * t, yaw: lerpAngle(poseA.yaw, poseB.yaw, 1 + t) };
@@ -474,7 +508,7 @@ function drawMap(now) {
 
   // Scale: half a metre.
   ctx.strokeStyle = colors.muted; ctx.lineWidth = 2; ctx.beginPath();
-  const barY = Math.min(h - 10, Y(-room.width_m / 2) + 16);
+  const barY = Math.min(h - 10, Y(yc - room.width_m / 2) + 16);
   ctx.moveTo(X(room.length_m) - 0.5 * scale, barY); ctx.lineTo(X(room.length_m), barY); ctx.stroke();
   ctx.fillStyle = colors.muted; ctx.textAlign = "right"; ctx.fillText("0.5 m", X(room.length_m) - 0.5 * scale - 8, barY);
 }
@@ -483,7 +517,7 @@ requestAnimationFrame(drawMap);
 // ---- Mission: buttons and polling --------------------------------------------------------------
 function take(data) {
   mission = data;
-  const m = data.mission;
+  const m = data.zone && data.zone.tracing ? null : data.mission;  // while tracing, the robot is drawn where it is
   if (m) {
     const at = performance.now();
     if (!poseB || Math.hypot(m.pose.x - poseB.x, m.pose.y - poseB.y) > 0.5) poseA = poseB = { ...m.pose, at };  // a jump (reset): no glide
@@ -492,12 +526,16 @@ function take(data) {
   renderText();
 }
 async function act(action) {
-  try { take(await api("POST", "/api/mission/" + action, { client: CLIENT })); }
-  catch (error) { $("#why").textContent = error.message; }
+  try { notice = null; take(await api("POST", "/api/mission/" + action, { client: CLIENT })); }
+  catch (error) { notice = { text: error.message, until: performance.now() + 7000 }; renderText(); }
 }
 $("#start").addEventListener("click", () => act("start"));
 $("#stop").addEventListener("click", () => act("stop"));
 $("#reset").addEventListener("click", () => act("reset"));
+$("#trace").addEventListener("click", () => act("trace"));
+$("#trace-done").addEventListener("click", () => act("trace_done"));
+$("#trace-cancel").addEventListener("click", () => act("trace_cancel"));
+$("#zone-forget").addEventListener("click", () => act("zone_forget"));
 
 async function pollMission() {
   try { if (tab === "mission" || (mission && mission.status === "running")) take(await api("GET", "/api/mission")); }

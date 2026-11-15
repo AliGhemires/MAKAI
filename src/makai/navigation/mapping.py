@@ -42,7 +42,8 @@ class RoomMap:
 
     def __post_init__(self) -> None:
         self.xs = np.arange(self.cell_m / 2, self.room.length_m, self.cell_m)
-        self.ys = np.arange(-self.room.width_m / 2 + self.cell_m / 2, self.room.width_m / 2, self.cell_m)
+        low = self.room.y_offset_m - self.room.width_m / 2
+        self.ys = np.arange(low + self.cell_m / 2, low + self.room.width_m, self.cell_m)
         self._grid_x, self._grid_y = np.meshgrid(self.xs, self.ys)  # rows are y, columns are x
         self.covered = np.zeros(self._grid_x.shape, dtype=bool)
         self._next_id = 1
@@ -98,6 +99,7 @@ class RoomMap:
                 "length_m": self.room.length_m,
                 "width_m": self.room.width_m,
                 "margin_m": self.room.margin_m,
+                "y_offset_m": self.room.y_offset_m,
             },
             "cell_m": self.cell_m,
             "covered": ["".join("1" if cell else "0" for cell in row) for row in self.covered],

@@ -72,10 +72,12 @@ def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False) -> Mi
 def sweep_config(cfg: dict):
     """`navigation.sweep` of the config: the room, the route, where the stations stand."""
     from makai.navigation.coverage import Room
+    from makai.navigation.zone import load_zone
     from makai.orchestrator.sweep import Station, SweepConfig
 
     sweep = dict(cfg.get("navigation", {}).get("sweep", {}))
-    room = Room(**sweep.pop("room", {}))
+    configured = sweep.pop("room", {})
+    room = Room(**(load_zone() or configured))  # a zone traced with the robot replaces the config's
     stations = {Category(name): Station(**place) for name, place in sweep.pop("stations", {}).items()}
     if "marker_scan_deg" in sweep:
         sweep["marker_scan_deg"] = tuple(sweep["marker_scan_deg"])
