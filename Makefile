@@ -22,7 +22,7 @@ fmt:             ## fix style automatically
 	uv run --no-sync ruff check --fix .
 	uv run --no-sync ruff format .
 
-sim:             ## run both missions in the 2D simulator (no robot): looking around, then sweeping in lanes
+sim:             ## run both missions in the 2D simulator (no robot): looking around, then sweeping in rows like a vacuum
 	uv run --no-sync makai-mission --sim
 	uv run --no-sync makai-mission --sim --sweep
 

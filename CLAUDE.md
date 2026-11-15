@@ -56,6 +56,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - Mission qui balaie : le repère de la carte est celui de l'odométrie, origine à la pose de
   départ, **devant la poubelle, dos à elle, face à la pièce** ; les stations sont placées
   dans ce repère (`navigation.sweep.stations`). Détail : `docs/NAVIGATION.md`.
+- Elle a deux modes et passe de l'un à l'autre seule. **Aspirateur** (état `SWEEP`) : le
+  robot ne tourne jamais, il reste perpendiculaire au mur de la poubelle et glisse de côté le
+  long de rangées (`navigation.sweep.pattern: rows`). **Détection** (tous les autres états) :
+  il va chercher l'objet vu, le dépose, revient où il était et se remet perpendiculaire.
+  `pattern: lanes` rend l'ancien parcours en couloirs, où le robot tourne.
 - Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
   `models/detector_v2.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
   Mesures et limites : `docs/workstreams/WS2_perception.md`.
@@ -85,7 +90,8 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 `src/makai/app.py`.
 
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
-mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), la mission lancée
+mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), son mode aspirateur
+en rangées (la base n'a jamais glissé de côté sur une longue distance), la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
 (`PickByCategory`), le détecteur v2 pendant un balayage. Mode d'emploi : `docs/NAVIGATION.md`.
@@ -111,7 +117,7 @@ cette liste une fois validé.
 ```bash
 make setup | setup-lite     # installer tout | le cœur seulement
 make check                  # lint + tests (ce que fait la CI)
-make sim                    # les deux missions simulées : recherche sur place, puis balayage en serpentin
+make sim                    # les deux missions simulées : recherche sur place, puis balayage en rangées (mode aspirateur)
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?

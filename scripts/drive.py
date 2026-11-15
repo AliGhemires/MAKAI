@@ -122,16 +122,17 @@ def sim_things(world) -> list:
 
 
 def plan_of(sweep) -> dict:
-    """The room, the lanes and the stations, for the map of the console."""
-    from makai.navigation.coverage import snake_waypoints
+    """The room, the route of the sweep and the stations, for the map of the console."""
+    from makai.orchestrator.sweep import sweep_waypoints
 
     return {
+        "pattern": sweep.pattern,
         "room": {
             "length_m": sweep.room.length_m,
             "width_m": sweep.room.width_m,
             "margin_m": sweep.room.margin_m,
         },
-        "waypoints": snake_waypoints(sweep.room, sweep.lane_spacing_m),
+        "waypoints": sweep_waypoints(sweep),
         "stations": {
             key.value: {"x": s.x, "y": s.y, "dock_x": s.dock_x, "dock_y": s.dock_y}
             for key, s in sweep.stations.items()

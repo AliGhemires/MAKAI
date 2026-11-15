@@ -73,6 +73,11 @@
   .status { padding: 14px 16px; }
   .status .top { display: flex; align-items: center; gap: 10px; }
   .status .badge { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); margin-left: auto; }
+  .mode { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 3px 10px 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunken); color: var(--muted); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .mode i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .mode.vacuum, .mode.detection { color: var(--text); }
+  .mode.vacuum { border-color: var(--accent); } .mode.vacuum i { background: var(--accent); }
+  .mode.detection { border-color: var(--s4); } .mode.detection i { background: var(--s4); }
   .state { font-size: 27px; font-weight: 720; letter-spacing: -.01em; margin: 6px 0 2px; }
   .why { color: var(--muted); min-height: 1.4em; }
   .pipe { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
@@ -154,7 +159,7 @@
       <div class="legend">
         <span><i class="key area"></i>floor seen by the camera</span>
         <span><i class="key path"></i>path driven</span>
-        <span><i class="key lane"></i>lanes planned</span>
+        <span><i class="key lane"></i>route planned</span>
         <span><i class="key" style="background: var(--s1)"></i>clothing</span>
         <span><i class="key" style="background: var(--s2)"></i>trash</span>
         <span><i class="key ring"></i>given up</span>
@@ -164,6 +169,7 @@
     <div class="side">
       <div class="card status">
         <div class="top"><h2>Mission</h2><span class="badge"><span class="dot" id="dot-status"></span><span id="txt-status">idle</span></span></div>
+        <div class="mode" id="mode"><i></i><span id="mode-text">Vacuum mode</span></div>
         <div class="state" id="state">Ready</div>
         <div class="why" id="why">Robot in front of the bin, facing the room.</div>
         <div class="pipe" id="pipe">
@@ -267,14 +273,14 @@ $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) setTab(e
 
 // ---- Mission: text ---------------------------------------------------------------------------
 const STATES = {
-  sweep: ["Sweeping", "Following the lanes, looking for things on the floor.", "sweep"],
+  sweep: ["Sweeping", "Following the route, looking for things on the floor.", "sweep"],
   approach: ["Approaching", "Object in sight: placing the robot in front of it with the camera.", "approach"],
   pick: ["Picking", "The policy trained for this object drives the arm.", "pick"],
   dock: ["To the station", "Carrying the object back, on odometry.", "dock"],
   go_to_station: ["Aligning", "On the station's marker: this also corrects the position.", "dock"],
   drop: ["Dropping", "Releasing the object into the station.", "drop"],
   back_off: ["Backing off", "Clearing the station.", "drop"],
-  resume: ["Resuming", "Going back to the exact spot where the sweep was left.", "resume"],
+  resume: ["Resuming", "Going back to the exact spot where the sweep was left, square to the wall.", "resume"],
   return_home: ["Going home", "Room swept: back in front of the bin.", "home"],
   done: ["Done", "Room swept. The robot is back in front of the bin.", "home"],
   failed: ["Failed", "", ""],
@@ -284,6 +290,12 @@ const STATUS = { idle: ["", "idle"], loading: ["warn", "loading"], running: ["li
 function clock(seconds) {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Where the sweep is: "row 2 of 5" in vacuum rows (the robot slides sideways), "lane" when it turns.
+function progress(m) {
+  const n = Math.max(1, Math.ceil(m.waypoints.length / 2));
+  return `${m.pattern === "rows" ? "row" : "lane"} ${Math.min(Math.floor(m.waypoint / 2) + 1, n)} of ${n}`;
 }
 
 function renderText() {
@@ -303,12 +315,20 @@ function renderText() {
   else if (status === "failed" && !m) { title = "Could not start"; why = mission.message; }
   else if (m) {
     [title, why, step] = STATES[m.state] || [m.state, "", ""];
-    if (m.state === "sweep") why = `Lane ${Math.min(Math.floor(m.waypoint / 2) + 1, m.waypoints.length / 2)} of ${m.waypoints.length / 2}, looking for things on the floor.`;
+    if (m.state === "sweep") why = m.pattern === "rows"
+      ? `Sliding along ${progress(m)}, square to the wall, looking at the floor ahead.`
+      : `Following ${progress(m)}, looking for things on the floor.`;
     if (m.state === "approach" && m.target) why = "Object in sight: placing the robot in front of it with the camera.";
     if (m.carrying && (m.state === "dock" || m.state === "go_to_station")) why = `Carrying ${m.carrying} to its station.` + (m.state === "go_to_station" ? " Aligning on the marker." : "");
     if (status === "stopped") { title = "Stopped"; why = (mission.message || "stopped") + ". Before starting again, put the robot back in front of the bin, facing the room."; step = ""; }
     if (status === "failed") { title = "Failed"; why = mission.message; step = ""; }
   }
+  // The two modes: vacuum while it sweeps, detection while it is away from its route for an object.
+  const running = m && status === "running", mode = running ? m.mode : "";
+  $("#mode").className = "mode " + mode;
+  $("#mode-text").textContent = mode === "detection" ? "Detection mode · handling an object"
+    : mode === "vacuum" ? "Vacuum mode" + (m.pattern === "rows" ? " · heading locked" : "")
+    : (m ? m.pattern : mission.plan.pattern) === "rows" ? "Vacuum mode · rows, heading locked" : "Vacuum mode · lanes";
   $("#state").textContent = title;
   $("#why").textContent = why;
   for (const d of document.querySelectorAll("#pipe div")) d.classList.toggle("on", d.dataset.step === step && status === "running");
@@ -317,7 +337,7 @@ function renderText() {
   $("#t-delivered").textContent = stats.delivered;
   $("#t-delivered-s").textContent = m ? `${stats.picked} picked` + (stats.failed_picks ? `, ${stats.failed_picks} retried` : "") + (stats.abandoned ? `, ${stats.abandoned} given up` : "") : "";
   $("#t-coverage").innerHTML = `${m ? Math.round(100 * m.map.coverage) : 0}<small>%</small>`;
-  $("#t-coverage-s").textContent = m ? `lane ${Math.min(Math.floor(m.waypoint / 2) + 1, m.waypoints.length / 2)} of ${m.waypoints.length / 2}` : "";
+  $("#t-coverage-s").textContent = m ? progress(m) : "";
   $("#t-time").textContent = clock(m ? m.time_s : 0);
   $("#t-time-s").textContent = m && m.carrying ? `carrying ${m.carrying}` : "";
   $("#t-fix").innerHTML = m && m.anchor_m !== null ? `${(100 * m.anchor_m).toFixed(1)}<small>cm</small>` : "–";
@@ -371,7 +391,7 @@ function drawMap(now) {
   ctx.strokeStyle = colors.text; ctx.lineWidth = 1.5;
   ctx.strokeRect(X(0), Y(room.width_m / 2), room.length_m * scale, room.width_m * scale);
 
-  // Lanes planned (dashed), and the part already driven (solid, faint).
+  // Route planned (dashed).
   const way = m ? m.waypoints : plan.waypoints;
   ctx.setLineDash([5, 5]); ctx.strokeStyle = colors.muted; ctx.lineWidth = 1.25; ctx.beginPath();
   way.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));

@@ -53,7 +53,7 @@ def main() -> None:
     )
     room = mission.sweep.room
     print(f"[ok  ] mission built in {time.perf_counter() - start:.1f} s")
-    print(f"       room {room.length_m} x {room.width_m} m, {len(mission.waypoints) // 2} lanes, stations: "
+    print(f"       room {room.length_m} x {room.width_m} m, {(len(mission.waypoints) + 1) // 2} {mission.sweep.pattern}, stations: "
           + ", ".join(f"{key.value} at ({s.x:+.2f}, {s.y:+.2f})" for key, s in mission.sweep.stations.items()))  # fmt: skip
     print(
         f"       pick skill: {type(mission.pick).__name__}; detector: {cfg['perception']['learned']['weights']}"
