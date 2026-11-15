@@ -215,6 +215,17 @@ catégorie est juste à plus de 90 %, la position est juste à ±2 cm en dessous
 
 _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
 
+**Dim. 15, 19 h : stations repérées par une bande de scotch gris** (`TapeStationDetector`,
+`perception/stations.py`). Deux cartons : bande horizontale (linge), bande verticale (déchets).
+- Sur la photo des deux cartons (`tests/samples/bins_tape.jpg`) : les deux bandes trouvées et
+  distinguées. Sur des scènes synthétiques vues par la caméra du robot : distance à 6 % près
+  de 0,8 à 2,6 m, 3 cm près à 35 cm ; un mur gris, un objet gris au sol, une chaussette noire,
+  un carton sans scotch sont ignorés. 10 ms par image.
+- Pas essayé sur une image de la caméra du robot. À faire : onglet Drive, « Save image »
+  devant les cartons à 0,5, 1 et 2 m, puis bouton « Zone from marker ».
+- À mesurer : la longueur de chaque bande (`perception.stations.tape`). La bande horizontale
+  de la photo est froissée (3 cm visibles au lieu de 4,8) : la recoller à plat.
+
 **Dim. 15, 7 h : détecteur v2, sur la caméra du robot.** Le v1 (photos de téléphone) ne
 transférait pas : sur des images de la caméra du robot jamais vues, il trouvait la canette
 dans 4 sur 14 et la chaussette dans 3 sur 12. Le v2 ajoute aux images du v1 celles de nos

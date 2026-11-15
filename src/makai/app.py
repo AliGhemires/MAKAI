@@ -97,6 +97,9 @@ def sweep_config(cfg: dict):
     stations = {Category(name): Station(**place) for name, place in places.items()}
     if "marker_scan_deg" in sweep:
         sweep["marker_scan_deg"] = tuple(sweep["marker_scan_deg"])
+    camera = cfg.get("perception", {}).get("camera_model", {})
+    if "hfov_deg" in camera:  # the coverage map shows what this camera really sees
+        sweep.setdefault("camera_hfov_deg", float(camera["hfov_deg"]))
     return SweepConfig(room=room, **({"stations": stations} if stations else {}), **sweep)
 
 

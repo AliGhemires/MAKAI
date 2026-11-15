@@ -69,6 +69,13 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - La zone à balayer est un rectangle imaginaire, sans mur. Elle se trace en conduisant le
   robot (console, onglet Mission, « Trace zone ») ; elle est gardée dans `configs/zone.yaml`
   (hors git) et remplace alors `navigation.sweep.room` (`navigation/zone.py`).
+- Les stations sont deux cartons marqués d'une bande de scotch gris : horizontale pour le
+  linge, verticale pour les déchets (`perception.stations.kind: tape`, `TapeStationDetector`
+  dans `perception/stations.py`). La direction de la bande dit quel carton c'est, sa taille
+  dans l'image sa distance. Pas de marqueur ArUco imprimé (`kind: aruco` reste possible).
+- La caméra avant est à 7,5 cm du sol, presque à l'horizontale, 42° de champ : les distances
+  au sol sont grossières au-delà d'un mètre. **Partir du principe que l'odométrie est
+  mauvaise** : tout ce qui se voit (objet, station) se rejoint en le regardant.
 - Les objets sont trouvés et classés par notre propre détecteur (`LearnedDetector`,
   `models/detector_v2.pt`), entraîné sans annotation manuelle par `scripts/train_detector.py`.
   Mesures et limites : `docs/workstreams/WS2_perception.md`.
@@ -108,7 +115,9 @@ Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim
 mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), ses deux usages
 (Vacuum en rangées : la base n'a jamais glissé de côté sur une longue distance ; Scan : elle
 n'a jamais avancé en faisant osciller son cap), la correction de l'odométrie par la caméra
-sur le marqueur et la disposition « poubelle en face », le tracé de la
+sur le marqueur et la disposition « poubelle en face », la détection des cartons par leur
+bande de scotch (essayée sur une seule photo de téléphone et sur des scènes synthétiques, jamais
+sur une image de la caméra du robot), le tracé de la
 zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
