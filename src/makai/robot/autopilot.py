@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 from makai.contracts import BaseVelocity, Observation
-from makai.navigation.zone import zone_from_trail
+from makai.navigation.zone import zone_from_markers, zone_from_trail
 from makai.orchestrator.mission import TERMINAL
 from makai.orchestrator.sweep import USES
 
@@ -81,7 +81,8 @@ class MissionRunner:
         preview: Callable[[], dict[str, Any]],
         reset: Callable[[], None] | None = None,
         simulated: bool = False,
-        use_zone: Callable[[dict[str, float] | None], None] | None = None,
+        use_zone: Callable[..., None] | None = None,
+        see_markers: Callable[[], dict] | None = None,
         prepare: Callable[[Any], None] | None = None,
     ):
         self.loop, self.driver, self._build, self._preview, self._reset = loop, driver, build, preview, reset
@@ -90,7 +91,8 @@ class MissionRunner:
         self._prepare, self._prepare_pending, self._tap = prepare, False, None
         self.simulated = simulated
         self.use = USES[0]  # the use of the last mission started, and of the next by default
-        self._use_zone = use_zone
+        self._use_zone = use_zone  # use_zone(room, stations=None); use_zone(None) forgets the zone
+        self._see_markers = see_markers  # the station markers the front camera sees right now
         self._trace: list[tuple[float, float]] | None = None  # the path driven while tracing the zone
         self._trace_yaw = 0.0
         self.status = "idle"  # idle, loading, running, done, failed, stopped
@@ -172,6 +174,23 @@ class MissionRunner:
 
     def trace_cancel(self) -> None:
         self._trace = None
+
+    def zone_from_marker(self) -> None:
+        """Set the zone without driving: the robot is at the start pose and the bin stands
+        across the zone, its marker facing the robot. The camera reads where the marker is.
+        ValueError, with the reason, if it cannot."""
+        if self._use_zone is None or self._see_markers is None:
+            raise ValueError("The zone cannot be read on a marker here.")
+        with self._lock:
+            if self.status in ("loading", "running"):
+                raise ValueError("Stop the mission first.")
+        room, stations = zone_from_markers(self._see_markers(), self._preview()["room"])
+        self._trace = None
+        self._use_zone(room, stations)
+        self.mission, self._shot = None, None
+        self.status = "idle"
+        far = ", ".join(f"{name} {place['x']:.2f} m ahead" for name, place in stations.items())
+        self.message = f"zone read on the marker: {far}; zone {room['length_m']:.2f} m deep."
 
     def zone_forget(self) -> None:
         """Drop the traced zone and go back to the room of the config."""

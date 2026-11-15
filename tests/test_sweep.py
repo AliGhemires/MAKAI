@@ -4,12 +4,21 @@ import math
 
 import pytest
 
-from makai.contracts import Category
+from makai.contracts import Category, Scene, StationSighting
 from makai.navigation.coverage import Room, path_length_m, row_waypoints, scan_waypoints, snake_waypoints
 from makai.navigation.mapping import RoomMap
 from makai.orchestrator.mission import MissionConfig, State
 from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
-from makai.sim.world import SimDrop, SimObject, SimPerception, SimPick, SimRobot, SimWorld, sweep_world
+from makai.sim.world import (
+    SimDrop,
+    SimObject,
+    SimPerception,
+    SimPick,
+    SimRobot,
+    SimWorld,
+    facing_world,
+    sweep_world,
+)
 
 ROOM = Room(length_m=2.4, width_m=1.8)
 TWO_STATIONS = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(-0.35, 0.7, 0.0, 0.7)}
@@ -407,3 +416,95 @@ def test_a_noisy_speed_reading_after_a_pick_does_not_turn_the_map():
     assert mission.state is State.DOCK and mission.carrying is Category.TRASH
     mission.step()  # the first step after the pick: 15 s after the one before
     assert abs(math.degrees(mission.odometry.yaw - before)) < 0.2
+
+
+# ---------------------------------------------------------------- the bin across the zone
+ACROSS = {Category.TRASH: Station(2.35, 0.0, 2.0, 0.0)}  # 2.35 m ahead of the start pose, facing it
+
+
+def facing(slip=0.0, yaw_drift=0.0, marker_range=2.5, **more) -> tuple[SweepMission, SimWorld]:
+    world = facing_world()
+    cfg = MissionConfig()
+    mission = SweepMission(
+        SimRobot(world, slip=slip, yaw_drift=yaw_drift),
+        SimPerception(world, station_max_range_m=marker_range, max_range_m=1.5),
+        SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m)),
+        SimDrop(world),
+        cfg,
+        SweepConfig(room=Room(length_m=2.0, width_m=1.6, margin_m=0.0), stations=ACROSS, **more),
+    )
+    return mission, world
+
+
+def run_and_watch(mission: SweepMission, world: SimWorld) -> tuple[float, float]:
+    """Run to the end. Returns how much the base was told to turn in all (degrees), and the
+    largest gap between where the odometry put the robot and where it really was (metres)."""
+    turned = gap = 0.0
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        mission.step()
+        turned += abs(mission.robot._vel.theta) * mission.robot.dt
+        gap = max(gap, math.hypot(world.x - mission.odometry.x, world.y - mission.odometry.y))
+    return math.degrees(turned), gap
+
+
+def test_with_the_bin_across_the_zone_the_robot_never_turns():
+    mission, world = facing()
+    turned, gap = run_and_watch(mission, world)
+    assert mission.state is State.DONE and world.objects == [] and len(world.delivered) == 4
+    assert turned == 0.0  # not once in the whole mission: sweeping, fetching, delivering, coming back
+    assert gap < 0.02
+    assert mission.events[-1].reason == "zone swept, back at the start"
+    assert math.hypot(world.x, world.y) < 0.05 and abs(world.yaw) < 1e-6
+    assert mission.snapshot()["stations"]["trash"] == {"x": 2.35, "y": 0.0, "dock_x": 2.0, "dock_y": 0.0}
+
+
+def test_the_marker_in_view_holds_the_odometry_all_along():
+    mission, world = facing(slip=0.04, yaw_drift=0.03)
+    turned, gap = run_and_watch(mission, world)
+    assert mission.state is State.DONE and len(world.delivered) == 4
+    assert gap < 0.08  # never more than a few centimetres off, over the whole mission
+    assert turned < 90  # only small corrections to stay square to the marker
+    assert math.hypot(world.x, world.y) < 0.05 and abs(math.degrees(world.yaw)) < 6
+
+    blind, blind_world = facing(slip=0.04, yaw_drift=0.03, marker_fix_gain=0.0)  # the same, camera unused
+    for obj in list(blind_world.objects):
+        blind_world.objects.remove(obj)  # nothing to deliver: the marker is never visited either
+    _, blind_gap = run_and_watch(blind, blind_world)
+    assert blind_gap > 0.2  # what the wheels alone make of it
+
+
+def test_the_direction_of_the_marker_corrects_the_heading_and_its_distance_the_position():
+    mission, _ = facing()
+    mission.state = State.SWEEP
+    # The robot really is at (0.5, 0.2), facing the bin. Its odometry is 12 degrees and 10 cm off.
+    mission.odometry.x, mission.odometry.y, mission.odometry.yaw = 0.6, 0.2, math.radians(12.0)
+    seen = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 2.35 - 0.5, 0.0 - 0.2)})
+    for _ in range(60):  # two seconds of images
+        mission._fix_on_markers(seen)
+    assert abs(math.degrees(mission.odometry.yaw)) < 1.0
+    assert mission.odometry.x == pytest.approx(0.5, abs=0.02) and mission.odometry.y == pytest.approx(
+        0.2, abs=0.03
+    )
+    assert mission.locked_at is not None
+
+    before = (mission.odometry.x, mission.odometry.y, mission.odometry.yaw)
+    wild = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 0.9, 1.4)})  # a wrong reading
+    far = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 3.4, 0.0)})  # too far to trust
+    unknown = Scene(stations={Category.CLOTHING: StationSighting(Category.CLOTHING, 1.0, 0.0)})  # not placed
+    for scene in (wild, far, unknown):
+        mission._fix_on_markers(scene)
+    assert (mission.odometry.x, mission.odometry.y, mission.odometry.yaw) == before
+
+
+def test_close_to_the_marker_the_heading_is_left_to_the_dock():
+    mission, _ = facing()
+    mission.state = State.DOCK
+    mission.odometry.x, mission.odometry.y, mission.odometry.yaw = (
+        1.8,
+        0.05,
+        0.0,
+    )  # 5 cm to the side, 0.55 m away
+    seen = Scene(stations={Category.TRASH: StationSighting(Category.TRASH, 0.55, 0.0)})
+    for _ in range(30):
+        mission._fix_on_markers(seen)
+    assert mission.odometry.yaw == 0.0  # 5 cm at 0.55 m would have passed for 5 degrees of heading

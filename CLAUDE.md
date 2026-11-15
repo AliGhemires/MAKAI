@@ -54,8 +54,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
 - La distance aux objets vient d'une homographie du sol (`perception/geometry.py`), pas
   d'un modèle de profondeur.
 - Mission qui balaie : le repère de la carte est celui de l'odométrie, origine à la pose de
-  départ, **devant la poubelle, dos à elle, face à la pièce** ; les stations sont placées
-  dans ce repère (`navigation.sweep.stations`). Détail : `docs/NAVIGATION.md`.
+  départ, **face à la zone** ; les stations sont placées dans ce repère
+  (`navigation.sweep.stations`). Deux dispositions : poubelle **en face**, de l'autre côté de
+  la zone, marqueur tourné vers le robot (recommandée : aucune rotation en Vacuum, et la
+  caméra corrige l'odométrie en continu sur le marqueur ; bouton « Zone from marker ») ; ou
+  poubelle derrière le robot, comme au début. Détail : `docs/NAVIGATION.md`, section 2.
 - Elle a deux usages, choisis dans la console ou avec `--use` (`orchestrator/sweep.py`,
   `for_use`). **Vacuum & collect** (chambre d'hôtel) : le robot passe sur tout le sol en
   rangées sans jamais tourner, perpendiculaire au mur de la poubelle (`pattern: rows`), et ne
@@ -104,7 +107,8 @@ Jamais exécuté sur le matériel : `LeKiwiRobot` dans `src/makai/robot/lekiwi.p
 Jamais exécuté sur le matériel non plus, validé en simulation seulement (dim. 15) : la
 mission qui balaie (`orchestrator/sweep.py`, `makai-mission --sweep`), ses deux usages
 (Vacuum en rangées : la base n'a jamais glissé de côté sur une longue distance ; Scan : elle
-n'a jamais avancé en faisant osciller son cap), le tracé de la
+n'a jamais avancé en faisant osciller son cap), la correction de l'odométrie par la caméra
+sur le marqueur et la disposition « poubelle en face », le tracé de la
 zone en conduisant le robot, la mission lancée
 depuis la console (`robot/autopilot.py`, onglet Mission de `scripts/drive.py --link host`),
 le recalage sur le marqueur d'une station, le choix du modèle selon l'objet
@@ -131,7 +135,8 @@ cette liste une fois validé.
 ```bash
 make setup | setup-lite     # installer tout | le cœur seulement
 make check                  # lint + tests (ce que fait la CI)
-make sim                    # les missions simulées : recherche sur place, Vacuum & collect, Scan & collect
+make sim                    # les missions simulées : recherche sur place, Vacuum, Scan, et Vacuum poubelle en face
+uv run python scripts/drive.py --sim --sim-ahead   # la console simulée avec la poubelle en face
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?

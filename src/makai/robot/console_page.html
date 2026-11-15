@@ -172,6 +172,7 @@
       <div class="map-head">
         <h2>Room map</h2>
         <button class="mini" id="trace" title="Define the zone to sweep by driving the robot around it">Trace zone</button>
+        <button class="mini" id="zone-marker" title="The bin stands across the zone, its marker facing the robot: the camera reads how deep the zone is and where the bin stands">Zone from marker</button>
         <button class="mini primary" id="trace-done" hidden>Use this zone</button>
         <button class="mini" id="trace-cancel" hidden>Cancel</button>
         <button class="mini" id="turn-left" hidden title="Turn left onto the next quarter of the start heading (0, 90, 180, 270 deg), on the wheels' odometry">⟲ 90°</button>
@@ -223,7 +224,7 @@
         </div>
         <div class="mode" id="mode"><i></i><span id="mode-text">Vacuum</span></div>
         <div class="state" id="state">Ready</div>
-        <div class="why" id="why">Robot in front of the bin, facing the room.</div>
+        <div class="why" id="why">Robot at the start pose, facing the zone.</div>
         <div class="pipe" id="pipe">
           <div data-step="sweep" id="step-sweep">Vacuum</div><div data-step="approach">Approach</div><div data-step="pick">Pick</div><div data-step="dock">Dock</div><div data-step="drop">Drop</div><div data-step="resume">Resume</div><div data-step="home">Home</div>
         </div>
@@ -335,8 +336,8 @@ const STATES = {
   drop: ["Dropping", "Releasing the object into the station.", "drop"],
   back_off: ["Backing off", "Clearing the station.", "drop"],
   resume: ["Resuming", "Going back to the exact spot where the route was left.", "resume"],
-  return_home: ["Going home", "Room swept: back in front of the bin.", "home"],
-  done: ["Done", "Room swept. The robot is back in front of the bin.", "home"],
+  return_home: ["Going home", "Zone swept: back to where it started.", "home"],
+  done: ["Done", "Zone swept. The robot is back where it started.", "home"],
   failed: ["Failed", "", ""],
 };
 const STATUS = { idle: ["", "idle"], loading: ["warn", "loading"], running: ["live", "running"], done: ["ok", "done"], failed: ["bad", "failed"], stopped: ["warn", "stopped"] };
@@ -364,6 +365,7 @@ function renderText() {
   const busy = status === "running" || status === "loading";
   // The zone to sweep: traced by driving the robot around it, or the room of the config.
   $("#trace").hidden = !zone || tracing; $("#trace").disabled = busy;
+  $("#zone-marker").hidden = !zone || tracing; $("#zone-marker").disabled = busy;
   $("#trace-done").hidden = $("#trace-cancel").hidden = !tracing;
   $("#turn-left").hidden = $("#turn-right").hidden = !tracing;
   $("#zone-forget").hidden = !zone || tracing || !mission.plan.traced; $("#zone-forget").disabled = busy;
@@ -386,7 +388,7 @@ function renderText() {
   $("#reset").disabled = status === "running" || status === "loading";
   $("#start").textContent = status === "loading" ? "Loading…" : m && status !== "running" ? "Start again" : "Start mission";
 
-  let title = "Ready", why = "Robot in front of the bin, facing the room.", step = "";
+  let title = "Ready", why = "Robot at the start pose, facing the zone.", step = "";
   if (!m && mission.message && status === "idle") why = mission.message;
   if (tracing) { title = "Tracing the zone"; why = "The start pose is the origin. Drive the robot around the edge of the zone, or to its corners (Drive tab), then come back here and press Use this zone."; }
   else if (status === "loading") { title = "Loading"; why = "Loading the detector and the policies."; }
@@ -399,10 +401,10 @@ function renderText() {
       : `Following ${progress(m)}. It picks up what lies on its way.`;
     if (m.state === "resume") why = m.use === "scan" ? "Going back to the exact spot where the patrol was left."
       : "Going back to the exact spot where the vacuuming was left" + (m.pattern === "rows" ? ", square to the wall." : ".");
-    if ((m.state === "return_home" || m.state === "done") && m.use === "scan") why = why.replace("Room swept", "Zone scanned");
+    if ((m.state === "return_home" || m.state === "done") && m.use === "scan") why = why.replace("Zone swept", "Zone scanned");
     if (m.state === "approach" && m.target) why = "Object in sight: placing the robot in front of it with the camera.";
     if (m.carrying && (m.state === "dock" || m.state === "go_to_station")) why = `Carrying ${m.carrying} to its station.` + (m.state === "go_to_station" ? " Aligning on the marker." : "");
-    if (status === "stopped") { title = "Stopped"; why = (mission.message || "stopped") + ". Before starting again, put the robot back in front of the bin, facing the room."; step = ""; }
+    if (status === "stopped") { title = "Stopped"; why = (mission.message || "stopped") + ". Before starting again, put the robot back at the start pose, facing the zone."; step = ""; }
     if (status === "failed") { title = "Failed"; why = mission.message; step = ""; }
   }
   // What the robot is doing: following its route (vacuuming or scanning), or away from it for an object.
@@ -425,6 +427,7 @@ function renderText() {
   $("#t-time").textContent = clock(m ? m.time_s : 0);
   $("#t-time-s").textContent = m && m.carrying ? `carrying ${m.carrying}` : "";
   $("#t-fix").innerHTML = m && m.anchor_m !== null ? `${(100 * m.anchor_m).toFixed(1)}<small>cm</small>` : "–";
+  $("#t-fix-s").textContent = m && m.locked ? "marker in view: position held" : "on the marker";
   const at = tracing ? zone.pose : m ? m.pose : null;
   $("#where").textContent = at ? `x ${at.x.toFixed(2)} m · y ${at.y.toFixed(2)} m · ${Math.round(((at.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180)}°` : "";
 
@@ -451,7 +454,8 @@ function drawMap(now) {
   const room = tracing ? zone.box : m ? m.map.room : plan.room, yc = room.y_offset_m || 0;
   const stations = Object.entries(m ? m.stations : plan.stations);
   // World window: the room, the stations behind the origin, a little air around.
-  const minX = Math.min(-0.2, ...stations.map(([, s]) => s.x - 0.24)), maxX = room.length_m + 0.08;
+  const minX = Math.min(-0.2, ...stations.map(([, s]) => s.x - 0.24));
+  const maxX = Math.max(room.length_m + 0.08, ...stations.map(([, s]) => s.x + 0.24));  // a bin across the zone
   const yTop = Math.max(yc + room.width_m / 2, ...stations.map(([, s]) => s.y + 0.2)) + 0.14;
   const yBottom = Math.min(yc - room.width_m / 2, ...stations.map(([, s]) => s.y - 0.2)) - 0.14;
   const scale = Math.min((w - 28) / (maxX - minX), (h - 24) / (yTop - yBottom));
@@ -601,6 +605,7 @@ $("#uses").addEventListener("click", (e) => {
   if (b && !b.disabled) { use = b.dataset.use; renderText(); }
 });
 $("#trace").addEventListener("click", () => act("trace"));
+$("#zone-marker").addEventListener("click", () => act("zone_from_marker"));
 $("#trace-done").addEventListener("click", () => act("trace_done"));
 $("#trace-cancel").addEventListener("click", () => act("trace_cancel"));
 $("#zone-forget").addEventListener("click", () => act("zone_forget"));

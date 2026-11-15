@@ -198,12 +198,13 @@ class Mission:
                 # A guess from far away must not overwrite what we already know it is.
                 match = replace(match, category=self._track.category, confidence=self._track.confidence)
             self._track, self._last_seen = match, now
-        elif not self._in_blind_zone(now):
+        elif not self._in_blind_zone(now) and now - self._last_seen > self.cfg.lost_timeout_s:
             self.robot.stop()
-            if now - self._last_seen > self.cfg.lost_timeout_s:
-                self._go(State.SEARCH, now, "lost the object")
+            self._go(State.SEARCH, now, "lost the object")
             return
-        # Seen, or too close to be seen: servo on the (odometry-propagated) track.
+        # Seen, too close to be seen, or out of sight for a moment (the edge of the image, a
+        # blurred frame): keep going to where the odometry says it is. Standing still, as before,
+        # could never bring it back into view.
         velocity, arrived = self._object_ctrl.step(self._track.x_m, self._track.y_m)
         self.robot.drive(velocity)
         if arrived:

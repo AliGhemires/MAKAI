@@ -282,7 +282,13 @@ uv run python scripts/odometry_report.py
 4. **La batterie** : au-dessus de 11,5 V pour les essais.
 5. **Le sol** : refaire `turn_check` sur le sol de la démo, et sur un sol lisse pour comparer.
 
-**Si les rotations restent imprécises**, la mission est déjà faite pour s'en passer en grande
+**Solution retenue pour la démo, quelle que soit la cause (15 nov., 19 h)** : mettre la
+poubelle en face du robot, de l'autre côté de la zone. En Vacuum & collect il ne tourne alors
+plus du tout, et la caméra corrige l'odométrie en continu sur le marqueur de la poubelle
+(`docs/NAVIGATION.md`, section 2 ; `orchestrator/sweep.py`, `_fix_on_markers`). En simulation
+avec des roues qui glissent : 4 cm d'écart au pire, contre 38 cm avec la poubelle derrière.
+
+**Avec la poubelle derrière**, la mission est déjà faite pour se passer des rotations en grande
 partie : en Vacuum & collect le robot ne tourne jamais pendant qu'il balaie, et il recale sa
 position et son cap sur le marqueur de la poubelle à chaque dépose. Il reste les deux
 demi-tours de chaque dépose. Tracer la zone sans tourner. Mettre `recheck_after_m: 3`.

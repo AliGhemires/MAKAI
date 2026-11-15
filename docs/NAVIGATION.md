@@ -61,21 +61,50 @@ l'odométrie (où il est) et l'empreinte au sol de la caméra avant (ce qu'il vo
 case est « vue » quand la caméra l'a regardée. La carte retient aussi le chemin parcouru et
 chaque objet : vu, en approche, ramassé, déposé, abandonné.
 
-**Le recalage.** Les roues glissent, donc l'odométrie dérive. La position de la poubelle
-dans la carte est connue : chaque fois que le robot voit son marqueur de près, il en déduit
-où il est vraiment, position et cap, et efface la dérive accumulée. Il le fait à chaque
-dépose et à la fin. On peut aussi lui demander d'y retourner tous les N mètres
+**Le recalage : la caméra corrige l'odométrie.** Les roues glissent, donc l'odométrie
+dérive, surtout en rotation (`docs/DEBUG_ODOMETRY.md`). La position de la poubelle dans la
+carte est connue, et son marqueur sert de repère de deux façons :
+
+- **en continu, dès qu'il est dans l'image** (jusqu'à 2,5 m) : la direction dans laquelle le
+  robot voit le marqueur corrige son cap, et la distance du marqueur corrige sa position, un
+  peu à chaque image ;
+- **de près, à l'arrivée devant la poubelle** : l'inclinaison du marqueur donne le cap
+  directement, et le robot efface toute la dérive accumulée.
+
+Avec la poubelle en face du robot (section 2), le marqueur reste dans l'image pendant presque
+tout le balayage : l'odométrie est tenue en permanence. Avec la poubelle derrière lui, il
+n'est vu qu'aux déposes ; on peut alors demander un retour au marqueur tous les N mètres
 (`recheck_after_m`).
 
 ## 2. Préparer la salle
 
-L'origine de la carte est la pose de départ du robot : **devant la poubelle, dos à la
-poubelle, face à la pièce**. `x` va vers la pièce, `y` vers la gauche.
+L'origine de la carte est la pose de départ du robot, **face à la zone**. `x` va vers la
+zone, `y` vers la gauche. Deux dispositions :
 
-- [ ] **La poubelle** : contre un bord de la zone, marqueur ArUco n° 1 collé verticalement
-      sur sa face avant, à hauteur de la caméra (`make markers` pour les imprimer). Un panier
-      à linge prend le marqueur n° 0.
-- [ ] **Le robot** : centre de la base à 35 cm du marqueur, dans son axe, dos à la poubelle.
+| | Poubelle en face (recommandée) | Poubelle derrière |
+|---|---|---|
+| Où est la poubelle | de l'autre côté de la zone, son marqueur tourné vers le robot | juste derrière le robot, qui lui tourne le dos |
+| Pose de départ | au bord de la zone, face à la poubelle, à 1,3 m ou plus | centre de la base à 35 cm du marqueur, dans son axe |
+| Rotations dans une mission Vacuum | **aucune** : il avance vers la poubelle pour déposer, puis revient à sa rangée en glissant | deux demi-tours par dépose |
+| Le marqueur est dans l'image | pendant presque toute la mission (93 % du temps en simulation) | seulement aux déposes (23 %) |
+| Pire écart entre l'odométrie et la réalité, roues qui glissent de 4 % (simulation) | **4 cm** | 38 cm |
+| Définir la zone | bouton **Zone from marker** : la caméra lit la distance de la poubelle | la tracer ou la mesurer |
+| À la fin | retour à la pose de départ | retour devant la poubelle |
+
+Les rotations sont ce que le robot fait le moins bien : la première disposition les supprime
+et garde le repère sous les yeux de la caméra. La seconde reste possible, rien ne change pour
+elle.
+
+- [ ] **La poubelle** : marqueur ArUco n° 1 collé verticalement sur sa face avant, à hauteur
+      de la caméra (`make markers` pour les imprimer). Un panier à linge prend le marqueur
+      n° 0.
+- [ ] **Le robot** : à la pose de départ de la disposition choisie.
+- [ ] **Poubelle en face : bouton Zone from marker** (console, onglet Mission), robot à la
+      pose de départ. La caméra lit où est le marqueur : la poubelle est placée dans la
+      carte, son point d'arrêt 35 cm devant elle, et la zone va de la ligne de départ à ce
+      point. La largeur ne se lit pas sur un marqueur : elle reste celle de la configuration
+      (`room.width_m`), ou celle d'une zone tracée avant. Le résultat est gardé dans
+      `configs/zone.yaml`.
 - [ ] **La zone à balayer** : un rectangle imaginaire devant le robot, sans mur. On la
       trace en conduisant le robot (ci-dessous). On peut aussi la mesurer et l'écrire dans
       `configs/local.yaml` : longueur dans l'axe du robot, largeur centrée sur lui,
@@ -87,12 +116,14 @@ navigation:
     room: {length_m: 2.0, width_m: 1.6, margin_m: 0.0}
 ```
 
-**Tracer la zone en conduisant le robot.** Dans la console, onglet Mission :
+**Tracer la zone en conduisant le robot**, pour sa largeur ou pour une poubelle derrière.
+**Sans tourner** : avancer, glisser de côté, reculer. Les lignes droites sont bonnes (2 cm
+d'écart sur 90 cm), les rotations ne le sont pas. Dans la console, onglet Mission :
 
 1. Robot à la pose de départ : devant la poubelle, dos à elle, face à la pièce.
 2. Bouton **Trace zone**. La pose de départ devient l'origine.
 3. Onglet Drive : conduire le robot le long du bord de la zone, ou seulement jusqu'à ses
-   coins. Sans tourner, c'est plus précis. Pour tourner à un coin : boutons **⟲ 90°** et
+   coins, sans tourner. Pour tourner à un coin : boutons **⟲ 90°** et
    **⟳ 90°** de l'onglet Mission (visibles pendant le tracé). Le robot se cale sur le quart
    suivant de son cap de départ (0, 90, 180, 270°), pas seulement 90° de plus : la petite
    dérive de la conduite à la main est rattrapée à chaque coin et la zone sort carrée.
@@ -206,7 +237,9 @@ Dans `configs/makai.yaml`, section `navigation.sweep` (valeurs d'une salle : `lo
 | `lane_spacing_m` | 0,5 m | écart entre deux rangées ; plus petit = plus sûr de tout voir, plus long |
 | `sweep_speed` | 0,15 m/s | vitesse le long des rangées |
 | `recheck_after_m` | 0 | retour au marqueur après tant de mètres sans recalage ; 0 = seulement aux déposes |
-| `stations` | poubelle en (−0,35 ; 0) | où est chaque station, et où le robot s'arrête devant |
+| `stations` | poubelle en (−0,35 ; 0) | où est chaque station, et où le robot s'arrête devant ; remplacé par ce que lit **Zone from marker** |
+| `marker_fix_range_m` | 2,5 m | au-delà, le marqueur n'est pas utilisé pour corriger l'odométrie |
+| `marker_fix_gain` | 0,15 | part de l'écart corrigée à chaque image ; 0 = la caméra ne corrige plus en continu |
 | `marker_scan_deg` | jusqu'à ±180° | où chercher le marqueur quand la dérive l'a sorti de l'image |
 
 Un objet vu hors de la zone (à plus de 10 cm des bords) est ignoré. Un objet abandonné après
@@ -251,7 +284,16 @@ Les deux usages, dans les mêmes conditions :
 Scan parcourt une zone vide deux fois plus vite. Avec des objets il est plus lent : il
 avance moins vite et regarde de nouveau à gauche et à droite chaque fois qu'il revient.
 
-Vacuum, en rangées :
+Poubelle en face contre poubelle derrière, même zone de 2,0 × 1,6 m, 4 objets, Vacuum :
+
+| Situation simulée | Poubelle en face | Poubelle derrière |
+|---|---|---|
+| Roues parfaites | 4 sur 4 en 2 min 49, **0° de rotation** sur toute la mission | 4 sur 4 |
+| Roues qui glissent de 4 %, cap qui dérive de 1,7° par mètre | 4 sur 4 en 2 min 55 ; odométrie à 4 cm de la réalité au pire ; 41° de petites corrections de cap | 4 sur 4 en 3 min 27 ; 38 cm au pire ; 2 160° de rotation |
+| Dérive doublée | 4 sur 4 ; 9 cm au pire | 3 sur 4 ; 76 cm au pire |
+| Zone vide, même dérive, caméra coupée (`marker_fix_gain: 0`) | 27 cm au pire, au lieu de 4 cm avec la caméra | — |
+
+Vacuum, en rangées, poubelle derrière :
 
 | Situation simulée | Résultat |
 |---|---|
@@ -289,6 +331,8 @@ et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, p
 | La base glisse mal de côté (à-coups, forte dérive) | roues ou sol peu adaptés au déplacement latéral | `pattern: lanes` : l'ancien parcours, où le robot avance et tourne |
 | En Scan, il passe à côté d'objets | regard trop rapide (images floues), ou objets trop loin pour le détecteur | augmenter `scan_period_s`, réduire `scan_speed` ; réduire `scan_swath_m` pour passer plus près |
 | En Vacuum, il part chercher un objet trop loin, ou trop tard | `pickup_range_m` | le réduire ou l'augmenter ; rester au-dessus de l'écart entre deux rangées |
+| « No station marker in view across the zone » | le marqueur n'est pas vu, ou la poubelle est à moins de 0,9 m | robot face à la poubelle, à 1,3 m ou plus ; onglet Cameras pour vérifier que le marqueur est dans l'image |
+| La tuile « Drift fixed » ne dit jamais « marker in view » | marqueur trop loin, trop petit ou hors de l'image | rapprocher la poubelle, agrandir le marqueur (`perception.stations.marker_size_m`) |
 | Il heurte un bord | zone déclarée trop grande | retracer la zone ; ou réduire `room`, augmenter `margin_m` |
 | La zone tracée est fausse | odométrie qui a dérivé pendant le tracé | retracer plus lentement, sans tourner ; ou **Forget traced zone** et écrire les dimensions dans `configs/local.yaml` |
 | « Could not start » dans la console | modèle, calibration ou poids introuvable | le message dit lequel |
