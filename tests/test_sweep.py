@@ -364,3 +364,46 @@ def test_scanning_an_empty_zone_the_swings_cancel_out():
     assert world.x == pytest.approx(1.7 * 0.96, abs=0.06)  # at the end of the lane (the wheels slip 4 %)
     assert abs(world.y) < 0.05  # and still on it: what slipped turning left was undone turning right
     assert mission.map.coverage > 0.9
+
+
+def test_a_noisy_speed_reading_after_a_pick_does_not_turn_the_map():
+    """On the robot, a wheel that stands still reads 50 steps/s one frame in four. The mission
+    used to integrate that reading over the whole pick: up to 9 degrees of heading, for nothing."""
+    from makai.contracts import BaseVelocity
+
+    class NoisyAtRest(SimRobot):
+        def get_observation(self):
+            obs = super().get_observation()
+            if self._vel.is_zero():
+                obs.base_velocity = BaseVelocity(theta=math.radians(0.586))  # one wheel at 50 steps/s
+            return obs
+
+    world = SimWorld(
+        objects=[SimObject(0.7, 0.0, Category.TRASH, "can")],
+        stations={Category.TRASH: (-0.35, 0.0)},
+        station_facing={Category.TRASH: 0.0},
+    )
+    cfg = MissionConfig()
+    pick = SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m))
+    grab = pick.run
+
+    def fifteen_seconds(robot, target):
+        world.time += 15.0  # a real pick lasts 8 to 20 s, base stopped
+        return grab(robot, target)
+
+    pick.run = fifteen_seconds
+    mission = SweepMission(
+        NoisyAtRest(world),
+        SimPerception(world, station_max_range_m=1.2, max_range_m=1.5),
+        pick,
+        SimDrop(world),
+        cfg,
+        SweepConfig(room=ROOM, stations={Category.TRASH: Station(-0.35, 0.0)}),
+    )
+    before = None
+    while mission.state is not State.DOCK and mission.now < 120:
+        before = mission.odometry.yaw
+        mission.step()
+    assert mission.state is State.DOCK and mission.carrying is Category.TRASH
+    mission.step()  # the first step after the pick: 15 s after the one before
+    assert abs(math.degrees(mission.odometry.yaw - before)) < 0.2

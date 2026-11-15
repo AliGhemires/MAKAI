@@ -22,10 +22,9 @@ robot:
     watchdog_s: 0.5         # wheels stop when no command came for this long
   odometry:                 # through the host only: what the robot really does per measured unit of speed.
     linear_scale: 0.978     # 15 Nov: 100 cm forward = 100.89 / 100.96 by odometry, 98.5 / 99.0 on the tape
-    angular_scale: 1.039    # 15 Nov, 4 quarter turns then 90 cm along a tape line: the robot turns MORE
-                            # than measured. Uncorrected: 359.5 deg measured, 25 cm off (375.5 deg) -> 1.045.
-                            # With 0.961 (the inverse, by mistake): 375.9 deg raw, 48 cm off (388.1 deg)
-                            # -> 1.032. Mean 1.039. Policies are not affected.
+    angular_scale: 1.0      # NOT calibrated. The tape tests of 15 Nov contradict each other whatever the
+                            # side (docs/DEBUG_ODOMETRY.md, section 10): 1.039 was not validated. Measure it
+                            # with the camera, signed and repeated: uv run python scripts/turn_check.py
                             # NOT VALIDATED: later runs give 1.07 to 1.13; the error varies from run to
                             # run, so it is not only a scale. Analysis: docs/DEBUG_ODOMETRY.md.
 

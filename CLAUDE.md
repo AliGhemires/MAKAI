@@ -83,7 +83,11 @@ Si la personne n'a pas dit quel est son workstream, le lui demander.
   `scripts/net_check.py` avant d'accuser le code.
 - **Odométrie du robot réel** : lignes droites bonnes, **rotations non reproductibles** (10 à
   32° d'erreur sur 360° selon l'essai, 15 nov.). Avant de toucher à la navigation ou aux
-  facteurs `robot.odometry`, lire `docs/DEBUG_ODOMETRY.md` (essais, journaux, hypothèses).
+  facteurs `robot.odometry`, lire `docs/DEBUG_ODOMETRY.md` (essais, journaux, hypothèses ;
+  analyse et marche à suivre en section 10). Par le host, l'odométrie compte les codeurs de
+  roues quand le host les envoie (`scripts/lekiwi_host.py` à jour sur la Pi) ; les vitesses
+  lues par les servos ne valent qu'à 50 pas/s près et lisent du bruit à l'arrêt. Mesurer une
+  rotation : `scripts/turn_check.py` (caméra sur un marqueur), jamais au mètre.
 - Entraînement sur le HPC de DTU : `scripts/hpc/` (testé de bout en bout le 14 nov.). Tout ce
   qui est lourd va dans `$BLACKHOLE`, jamais dans le dossier personnel (quota de 30 Go : une
   installation de PyTorch le remplit). Les variables d'environnement ne passent pas aux jobs :
@@ -131,6 +135,8 @@ make sim                    # les missions simulées : recherche sur place, Vacu
 uv run python scripts/drive.py --sim        # la console (Mission, Drive, Cameras, Data) avec un robot simulé
 uv run python scripts/drive.py --link host  # la console sur le vrai robot (host lancé sur la Pi)
 uv run python scripts/mission_check.py      # avant le robot : la mission démarre-t-elle avec cette config ?
+uv run python scripts/turn_check.py         # de combien le robot tourne vraiment pour 360° d'odométrie (caméra + marqueur)
+uv run python scripts/odometry_report.py    # après des déplacements : vitesses lues, codeurs, roue par roue
 make teleop | mission       # sur le robot (host lancé sur la Pi, voir docs/SETUP.md)
 make markers | calibrate-ground
 uv run python scripts/collect.py sock                   # LA commande de collecte : contrôle, enregistre, zippe

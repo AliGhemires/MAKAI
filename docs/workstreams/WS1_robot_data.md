@@ -63,6 +63,15 @@ minutes en suivant `docs/SETUP.md`.
 
 _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui bloque, besoins._
 
+**Dim. 15, 18 h : odométrie (analyse sans le robot, `docs/DEBUG_ODOMETRY.md` section 10)**
+- Mesuré sur nos épisodes : les vitesses de roues ne valent qu'à 50 pas/s près, et une roue
+  immobile lit ±50 pas/s dans 26 à 28 % des images. Simulé : cela ne fait que 0,4° sur 360°,
+  donc les 10 à 32° ne viennent pas de la chaîne de mesure.
+- Corrigé : odométrie comptée sur les codeurs de roues (host à mettre à jour sur la Pi), saut
+  de cap de la mission après chaque saisie (jusqu'à 8,8°), `angular_scale` remis à 1.0.
+- À faire sur le robot : `scripts/turn_check.py` (rotation réelle lue à la caméra) et les
+  contrôles matériels de la section 10.4.
+
 **Sam. 14, soir**
 - Marche : 9 moteurs répondent (bras 1–6, roues 7–9), batterie 12,8 V ; bras calibré
   sur la Pi (`makai_kiwi`) ; leader calibré et dans le dépôt ; téléop bras + base depuis un

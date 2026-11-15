@@ -10,6 +10,12 @@ import math
 
 from makai.contracts import BaseVelocity
 
+# Observations come 10 to 50 times a second. A silence of more than a second is a blocking skill (a pick lasts
+# 8 to 20 s, base stopped) or a lost link: the velocity of the next observation says nothing
+# about it. Integrating it over the whole gap turned one noisy speed reading into a jump of
+# several degrees after every pick (15 Nov).
+MAX_GAP_S = 1.0
+
 
 class Odometry:
     """Pose of the base in the frame it had at the first update (the 'home' frame)."""
@@ -19,7 +25,7 @@ class Odometry:
         self._stamp: float | None = None
 
     def update(self, velocity: BaseVelocity, stamp: float) -> None:
-        if self._stamp is not None:
+        if self._stamp is not None and stamp - self._stamp <= MAX_GAP_S:
             dt = max(0.0, stamp - self._stamp)
             c, s = math.cos(self.yaw), math.sin(self.yaw)
             self.x += (c * velocity.x - s * velocity.y) * dt

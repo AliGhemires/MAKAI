@@ -252,6 +252,7 @@ class DriveLoop:
         truth: Callable[[], Pose] | None = None,
         cameras: CameraHub | None = None,
         tuning: MoveTuning | None = None,
+        trace: Any = None,
     ):
         self.robot, self.driver, self.geometry = robot, driver, geometry
         self.period, self.telemetry_period, self.voltage_period = (
@@ -263,6 +264,8 @@ class DriveLoop:
         self.trials = trials if trials is not None else TrialLog()
         self.truth = truth  # simulation only: where the robot really is
         self.cameras = cameras  # images from the observations go there (host mode)
+        self.trace = trace  # robot/trace.py OdometryTrace: the flight recorder of the base, or None
+        self._traced: Any = None  # the last raw observation written to it
         self.tuning = tuning or MoveTuning()
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -426,7 +429,9 @@ class DriveLoop:
                     "yaw_deg": round(math.degrees(odo.yaw), 2),
                 },
                 "odometry_epoch": self.odometry_epoch,
-                "odometry_source": {True: "wheel encoders", False: "measured speed"}.get(self._encoders),
+                "odometry_source": {True: "wheel encoders"}.get(self._encoders)
+                or getattr(self.robot, "odometry_source", None)
+                or {False: "measured speed"}.get(self._encoders),
                 "battery_v": None if self.voltage is None else round(self.voltage, 2),
                 "motors": self.motors,
                 # Joint angles in degrees, gripper 0 (closed) to 100 (open); {} when unknown.
@@ -497,10 +502,21 @@ class DriveLoop:
             for name, image in obs.images.items():
                 self.cameras.put(name, image, rgb=True)  # LeRobot images are RGB
         with self._lock:
-            self.measured = obs.base_velocity
+            # For the page: the servos' own speed readings when the robot keeps them apart (through
+            # the host, the velocity of the observation is made of encoder steps and jumps about).
+            self.measured = getattr(self.robot, "speed_reading", obs.base_velocity)
             self.arm = {key: obs.arm[key] for key in ARM_KEYS if key in obs.arm}
             if not self._encoders:
                 self.odometry.update(obs.base_velocity, obs.stamp)
+            command, pose = self.commanded, self._pose()
+        if self.trace is not None:
+            raw = getattr(self.robot, "raw_observation", None)
+            if raw is None or raw is not self._traced:  # the client repeats the last one when nothing came
+                self._traced = raw
+                extras = getattr(getattr(self.robot, "client", None), "host_extras", None) or {}
+                positions = getattr(self.robot, "host_wheel_positions", lambda: None)()
+                speed = getattr(self.robot, "speed_reading", obs.base_velocity)
+                self.trace.note(obs.stamp, extras.get("host.time"), command, speed, positions, pose)
 
     def _next_velocity(self, now: float) -> BaseVelocity:
         with self._lock:

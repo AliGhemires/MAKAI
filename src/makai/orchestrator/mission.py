@@ -27,7 +27,7 @@ from makai.contracts import (
     Target,
 )
 from makai.navigation.approach import ApproachConfig, ApproachController
-from makai.navigation.odometry import Odometry
+from makai.navigation.odometry import MAX_GAP_S, Odometry
 
 log = logging.getLogger("makai.mission")
 
@@ -296,6 +296,8 @@ class Mission:
     def _predict_track(self, velocity: BaseVelocity, now: float) -> None:
         """Move the tracked point the opposite way the base moved since the last tick."""
         dt = 0.0 if self._prev_stamp is None else max(0.0, now - self._prev_stamp)
+        if dt > MAX_GAP_S:  # a blocking skill just ended: the base did not move meanwhile
+            dt = 0.0
         self._prev_stamp = now
         if self._track is None or dt == 0.0:
             return
