@@ -315,7 +315,99 @@ lieu d'un rectangle, le cap affiché valait 762° après un tour, et les images 
 - Pistes : host à 15 Hz pour la navigation, console qui lit le flux à chaque tour, modèles sur
   la carte graphique du laptop pour repasser sous 33 ms.
 
+Suite : sections 14 à 17. La console lit maintenant le flux à chaque tour (`9a4666b`).
+
+## 14. D'où vient l'erreur de rotation : ce que disent nos propres données
+
+Après la correction du flux, les lignes droites étaient bonnes (2 cm d'écart sur 90 cm) mais
+quatre quarts de tour finissaient à 10, 15, 28 ou 32° de leur cible selon l'essai. Analyse
+faite sans le robot, sur les journaux et sur nos épisodes de saisie enregistrés.
+
+| Question | Réponse | Comment on le sait |
+|---|---|---|
+| Un facteur d'échelle suffit-il ? | Non | entre trois essais où seul le facteur change, l'angle réel ne suit pas l'odométrie : pente de 0,36 à 2,5 au lieu de 1, quel que soit le côté mesuré |
+| La vitesse lue sur les servos est-elle fine ? | Non : par pas de 50 pas/s | 44 526 images d'épisodes : les roues ne lisent que 0, ±50, ±100, ±150 |
+| Une roue immobile lit-elle zéro ? | Pas toujours | au moins une roue lit ±50 pas/s dans 26 à 28 % des images, base à l'arrêt |
+| Est-ce cela qui fausse les rotations ? | Non | chaîne de mesure simulée de bout en bout, roues parfaites : 0,4° d'écart sur 360°, 0,9° au pire |
+| Y avait-il un vrai défaut logiciel ? | Oui, ailleurs | après chaque saisie, la mission multipliait la vitesse lue à la reprise par toute la durée de la saisie : une roue à 50 pas/s pendant 15 s = 8,8° de cap d'un coup |
+
+Conclusion : la chaîne de mesure dit vrai à 1° près ; l'erreur de 10 à 32° vient du sol, de
+la mécanique ou du mètre. Corrigé au passage : l'odométrie compte les pas des codeurs de roues
+(exact, sans bruit à l'arrêt) et n'intègre plus à travers une saisie. Outils : un test de
+rotation lu à la caméra (`scripts/turn_check.py`) et un enregistreur de chaque déplacement.
+Pas encore refait sur le robot. Source : `docs/DEBUG_ODOMETRY.md`, section 10.
+
+## 15. L'odométrie est mauvaise : la caméra décide
+
+Plutôt que de chercher à rendre les rotations justes, on les évite et on regarde.
+
+- Le robot rejoint tout ce qu'il voit en le regardant : un objet est remesuré à chaque image,
+  une station est visée dès qu'elle entre dans l'image.
+- Dès qu'une station est dans l'image, sa direction corrige le cap du robot et sa distance
+  corrige sa position, un peu à chaque image.
+- La poubelle passe **en face** du robot, de l'autre côté de la zone. Il la garde alors sous
+  les yeux pendant qu'il balaie, et n'a plus un seul demi-tour à faire : il avance pour
+  déposer, puis revient à sa rangée en glissant.
+
+Même zone simulée de 2,0 × 1,6 m, 4 objets, roues qui glissent de 4 % et cap qui dérive de
+1,7° par mètre :
+
+| | Poubelle derrière le robot | Poubelle en face |
+|---|---|---|
+| Objets déposés | 4 sur 4 | 4 sur 4 |
+| Rotation sur toute la mission | 2 160° | **41°** (0° avec des roues parfaites) |
+| Station dans l'image | 23 % du temps | **93 %** |
+| Pire écart entre l'odométrie et la réalité | 38 cm | **4 cm** |
+| Avec une dérive doublée | 3 sur 4, 76 cm | 4 sur 4, 9 cm |
+
+Un piège trouvé en simulation : corriger la position à partir de la direction du repère,
+quand c'est le cap qui a dérivé, aggrave tout (60 cm d'écart à 2 m pour 18° d'erreur). C'est
+le cap que la direction doit corriger. Image : `figures/console_bin_ahead.png`. Simulation
+seulement. Source : `docs/NAVIGATION.md`, sections 1 et 2.
+
+## 16. Un robot, deux métiers
+
+La même mission, deux usages choisis dans la console avant de démarrer.
+
+| | Vacuum & collect (chambre d'hôtel) | Scan & collect (rue) |
+|---|---|---|
+| But | passer sur tout le sol | trouver les objets |
+| Parcours | rangées serrées, sans jamais tourner | larges couloirs, le regard qui balaie de 60° à gauche et à droite |
+| Ce qu'il ramasse | ce qui est sur son passage, à moins de 1 m | tout ce qu'il repère |
+| Pièce de 2,4 × 1,8 m, 4 objets | 4 sur 4 en 3 min 11 | 4 sur 4 en 4 min 16 |
+| Zone vide de 2,0 × 1,6 m | parcourue en 59 s, sol vu à 92 % | parcourue en 26 s, sol vu à 96 % |
+
+En rangées, le robot ne tourne plus pendant qu'il balaie : 0° de rotation contre 700° avec le
+premier parcours en couloirs. Images : `figures/console_mission.png`,
+`figures/console_scan.png`. Simulation seulement.
+
+## 17. Des stations sans imprimante : une bande de scotch gris
+
+Pas d'imprimante sur place, donc pas de marqueur ArUco. Nos deux stations sont des cartons
+marqués d'une bande de scotch gris : horizontale pour le linge, verticale pour les déchets.
+
+- La direction de la bande dit quel carton c'est ; sa taille dans l'image dit à quelle
+  distance il est (sa longueur de loin, sa largeur de près, quand la bande déborde de l'image).
+- Une bande est grise, plus sombre que le carton sans être noire, longue et fine, avec du
+  carton de chaque côté. La caméra est à 7,5 cm du sol : une bande collée en travers d'un
+  carton apparaît près de la ligne d'horizon où que soit le carton.
+
+| Essai | Résultat |
+|---|---|
+| La photo de nos deux cartons | les deux bandes trouvées et distinguées |
+| Scènes synthétiques vues par la caméra du robot, cartons de 0,8 à 2,6 m | distance à 6 % près ; 3 cm près à 35 cm |
+| Mur gris, objet gris au sol, chaussette noire, carton sans scotch | ignorés |
+| Scotch gris collé au sol, au-delà de 1,8 m | **pris pour un carton** dans la première version ; corrigé : vu de biais, il n'a ni les proportions ni la hauteur d'une bande sur un carton (ignoré de 0,6 à 5 m) |
+| Temps de calcul | 10 ms par image |
+
+Jamais essayé sur une image de la caméra du robot. Image : `figures/stations_tape.jpg`.
+Source : `docs/workstreams/WS2_perception.md`.
+
 ## Ce qui reste à mesurer
+
+- Sur le robot, tout ce que disent les sections 14 à 17 : la rotation réelle lue à la caméra
+  (`scripts/turn_check.py`), les bandes de scotch vues par la caméra du robot, la mission avec
+  la poubelle en face.
 
 - Le taux de réussite sur le robot : 10 essais par modèle (`scripts/try_pick.py`). Premiers
   essais du 15 nov. (`act_sock_v1`, `act_can_v1`, modèles finaux) : saisies réussies presque
