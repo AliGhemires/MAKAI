@@ -90,8 +90,12 @@ def main() -> None:
         print(f"\nThis was a trial. Look at it, then delete it:  {folder}")
         print(f"If it looks right:  uv run python scripts/collect.py {args.object}")
         raise SystemExit(code)
-    if not folder.exists():
-        raise SystemExit(f"No dataset at {folder}: nothing was recorded.")
+    if not (folder / "data").exists():  # a session that died before its first save leaves only images
+        raise SystemExit(f"No episode saved in {folder} (record.py exit code {code}): nothing to pack.")
+    if code != 0:
+        print(
+            f"\nWARNING: record.py stopped with an error (exit code {code}). Packing the episodes saved before it."
+        )
 
     print("\n== 3/3 packing the dataset ==")
     desktop = Path.home() / "Desktop"

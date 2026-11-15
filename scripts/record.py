@@ -103,7 +103,14 @@ def quiet(log_path: Path):
 
     Saving an episode starts the video encoders, and they print some fifty lines each time:
     the pilot's status was buried under them.
+
+    Not on Windows: there, sys.stdout and sys.stderr write to the console itself, and once the
+    descriptors point to a file every write fails ("The handle is invalid"), which killed the
+    process in the middle of the first save (15 Nov). The encoders' lines stay on screen there.
     """
+    if sys.platform == "win32":
+        yield
+        return
     sys.stdout.flush()
     sys.stderr.flush()
     terminal = os.dup(1), os.dup(2)
