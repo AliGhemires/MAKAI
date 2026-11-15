@@ -170,6 +170,8 @@
         <button class="mini" id="trace" title="Define the zone to sweep by driving the robot around it">Trace zone</button>
         <button class="mini primary" id="trace-done" hidden>Use this zone</button>
         <button class="mini" id="trace-cancel" hidden>Cancel</button>
+        <button class="mini" id="turn-left" hidden title="Turn left onto the next quarter of the start heading (0, 90, 180, 270 deg), on the wheels' odometry">⟲ 90°</button>
+        <button class="mini" id="turn-right" hidden title="Turn right onto the next quarter of the start heading (0, 90, 180, 270 deg), on the wheels' odometry">⟳ 90°</button>
         <button class="mini" id="zone-forget" hidden title="Go back to the room of the config">Forget traced zone</button>
         <span class="zone-note num" id="zone-note"></span>
         <span class="where num" id="where"></span>
@@ -344,6 +346,7 @@ function renderText() {
   // The zone to sweep: traced by driving the robot around it, or the room of the config.
   $("#trace").hidden = !zone || tracing; $("#trace").disabled = busy;
   $("#trace-done").hidden = $("#trace-cancel").hidden = !tracing;
+  $("#turn-left").hidden = $("#turn-right").hidden = !tracing;
   $("#zone-forget").hidden = !zone || tracing || !mission.plan.traced; $("#zone-forget").disabled = busy;
   const size = tracing ? zone.size : mission.plan.room;
   $("#zone-note").textContent = tracing ? `${size.length_m.toFixed(2)} m deep · ${size.width_m.toFixed(2)} m wide`
@@ -582,6 +585,29 @@ $("#trace").addEventListener("click", () => act("trace"));
 $("#trace-done").addEventListener("click", () => act("trace_done"));
 $("#trace-cancel").addEventListener("click", () => act("trace_cancel"));
 $("#zone-forget").addEventListener("click", () => act("zone_forget"));
+
+// While tracing: turn onto the next quarter (0, 90, 180, 270 deg) of the heading the trace
+// started with, not just 90 deg from here, so that a little drift while driving is taken out
+// at every corner and the traced zone comes out square. A precise move, closed on odometry.
+const QUARTER = Math.PI / 2;
+function quarterTurn(yaw, sign) {
+  const nearest = Math.round(yaw / QUARTER);
+  let goal = (nearest + sign) * QUARTER;  // the next quarter that way...
+  if (sign * (nearest * QUARTER - yaw) > 0.35) goal = nearest * QUARTER;  // ...or the near one, if well short of it
+  return goal - yaw;
+}
+async function turn(sign) {
+  const zone = mission && mission.zone;
+  if (!zone || !zone.tracing || !zone.pose) return;
+  try {
+    notice = null;
+    await api("POST", "/api/move", {
+      client: CLIENT, axis: "theta", target: quarterTurn(zone.pose.yaw, sign), speed: 0.8, label: "zone trace: quarter turn",
+    });
+  } catch (error) { notice = { text: error.message, until: performance.now() + 7000 }; renderText(); }
+}
+$("#turn-left").addEventListener("click", () => turn(+1));
+$("#turn-right").addEventListener("click", () => turn(-1));
 
 async function pollMission() {
   try { if (tab === "mission" || (mission && mission.status === "running")) take(await api("GET", "/api/mission")); }
