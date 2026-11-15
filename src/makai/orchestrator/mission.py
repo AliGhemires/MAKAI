@@ -73,6 +73,11 @@ class MissionConfig:
     # After a missed grasp, back away to `orbit_radius_m` before trying again: the camera sees
     # the object again, where the grasp may have pushed it (it is out of view at the grasp pose).
     retry_from_afar: bool = True
+    # After a grasp the gripper says held: back away to `orbit_radius_m` and look where the
+    # object lay. Seen there in `verify_frames` images: missed. Not seen for `verify_look_s`: held.
+    verify_pick: bool = True
+    verify_look_s: float = 1.0
+    verify_frames: int = 3
     # Then go round the object and try from another side: so many degrees round it from where the
     # first approach came (counter-clockwise seen from above), one after the other. () = give up.
     orbit_deg: tuple[float, ...] = (40.0, -40.0)
@@ -152,6 +157,9 @@ class Mission:
         # What the tracked object was seen as, summed confidence: from afar, and up close.
         self._votes: dict[Category, float] = {}
         self._votes_near: dict[Category, float] = {}
+        self._verifying = False  # backed away after a grasp, looking whether the object is still there
+        self._verify_seen = 0
+        self._verify_since: float | None = None
         self._reset_orbit()
 
     # ------------------------------------------------------------------ loop
@@ -213,6 +221,9 @@ class Mission:
             self._go(State.SEARCH, now, "back at the start")
 
     def _on_approach(self, scene: Scene, now: float) -> None:
+        if self._verifying:
+            self._verify_grasp(scene, now)
+            return
         match = self._match_track(scene)
         if match is not None:
             if match.confidence > 0.0:
@@ -254,19 +265,53 @@ class Mission:
         assert self._track is not None
         self.robot.stop()
         self._pick_attempts += 1
-        if self.pick.run(self.robot, self._track):
-            self.carrying = self._track.category
-            self.stats.picked += 1
-            self._failed_objects = 0
-            self._go(State.FIND_STATION, now, f"holding {self._track.label}")
+        if not self.pick.run(self.robot, self._track):
+            self._missed(now)
+        elif self.cfg.verify_pick:
+            # The gripper says held. A sock pinched by the tip, a few threads of carpet, read the
+            # same (15 Nov). Check with the camera: back away and look at the floor where it lay.
+            self._verifying, self._verify_seen, self._verify_since = True, 0, None
+            self._orbit_active, self._orbit_left, self._orbit_circling = True, 0.0, False
+            self._object_ctrl.reset()
+            self._last_seen = now
+            self._go(
+                State.APPROACH, now, f"checking the grasp: is the {self._track.label} still on the floor?"
+            )
+        else:
+            self._picked(now)
+
+    def _verify_grasp(self, scene: Scene, now: float) -> None:
+        """Backed away from where the object lay: is it still there? Seen there in a few images:
+        the grasp missed. Not seen for `verify_look_s`: it is held."""
+        if self._orbit_active:
+            self.robot.drive(self._orbit_step(now))
             return
+        self.robot.stop()
+        self._verify_since = now if self._verify_since is None else self._verify_since
+        if self._match_track(scene) is not None:
+            self._verify_seen += 1
+        if self._verify_seen >= self.cfg.verify_frames:
+            self._verifying = False
+            self._missed(now, "still on the floor: pick failed")
+        elif now - self._verify_since >= self.cfg.verify_look_s:
+            self._verifying = False
+            self._picked(now)
+
+    def _picked(self, now: float) -> None:
+        assert self._track is not None
+        self.carrying = self._track.category
+        self.stats.picked += 1
+        self._failed_objects = 0
+        self._go(State.FIND_STATION, now, f"holding {self._track.label}")
+
+    def _missed(self, now: float, why: str = "pick failed") -> None:
         self.stats.failed_picks += 1
         if self._pick_attempts < self.cfg.max_pick_attempts:
             self._object_ctrl.reset()
             self._last_seen = now
             if self.cfg.retry_from_afar:  # back away until it is in view again: the grasp may have pushed it
                 self._orbit_active, self._orbit_left, self._orbit_circling = True, 0.0, False
-            self._go(State.APPROACH, now, f"pick failed, retry {self._pick_attempts}")
+            self._go(State.APPROACH, now, f"{why}, retry {self._pick_attempts}")
             return
         if self._orbits < len(self.cfg.orbit_deg):
             side = float(self.cfg.orbit_deg[self._orbits])
@@ -378,6 +423,7 @@ class Mission:
         if target is None:
             return False
         self._track, self._last_seen, self._pick_attempts = target, now, 0
+        self._verifying = False
         self._votes, self._votes_near = {}, {}
         if target.confidence > 0.0:
             near = target.distance_m < self.cfg.classify_near_m

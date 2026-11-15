@@ -271,6 +271,27 @@ def test_a_missed_pick_is_tried_again_though_the_pick_took_its_time():
     assert mission.stats.delivered == 1
 
 
+def test_a_grasp_that_left_the_object_on_the_floor_is_seen_and_tried_again():
+    """15 Nov: the gripper read "held" with nothing in it (a sock pinched by the tip). After a
+    grasp the robot backs away and looks where the object lay: still there, it tries again."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    grab, tries = mission.pick.run, []
+
+    def pick(robot, target):
+        tries.append(target)
+        return True if len(tries) == 1 else grab(robot, target)  # the first one only thinks it holds it
+
+    mission.pick.run = pick
+    assert mission.run(max_duration_s=900) is State.DONE
+    reasons = [event.reason for event in mission.events]
+    assert "still on the floor: pick failed, retry 1" in reasons
+    assert len(tries) == 2 and mission.stats.failed_picks == 1
+    assert [o.label for o, _ in world.delivered] == ["can"] and mission.stats.picked == 1
+
+
 def test_every_delivery_checks_the_position_on_the_bins_marker_then_goes_straight_in():
     """The demo arena of 15 Nov: the bin behind the start, marked; the basket 48 cm to its left,
     not marked. Wheels that slip: the odometry drifts. Each delivery stops on the bin's marker
