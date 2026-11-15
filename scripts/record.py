@@ -322,6 +322,10 @@ def check_home(
             f"  The policy must start every pick from the pose it was trained from. In configs/{poses_file.name}:"
         )
         print(f"  home: {line}")
+    elif mission:
+        print(
+            f"Same home pose as the mission's, in configs/{poses_file.name} (largest gap: {abs(degrees):.0f} degrees)."
+        )
     if gripper > OPEN_GRIPPER:
         print("  Careful: the gripper is open on the rest. Going home after a pick would let go of the")
         print("  object: give the carry its own pose (manipulation.pick.after in configs/makai.yaml).")
