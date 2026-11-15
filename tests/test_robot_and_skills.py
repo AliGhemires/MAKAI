@@ -181,7 +181,7 @@ def test_the_grasp_is_checked_once_the_hand_is_closed_in_the_carry_pose():
 
     skill = PolicyPick.__new__(PolicyPick)  # the grasp check only: no model to load
     skill.gripper_open_above, skill.gripper_at_stop, skill.after = 4.3, 20.0, CarryPose()
-    skill.gripper_held_below = 20.0
+    skill.gripper_held_below, skill.carry = 20.0, None
     assert skill._holding(Hand(holding=False), settle_s=0.0) is False and skill.last_gripper == 2.4
     assert skill._holding(Hand(holding=True), settle_s=0.0) is True and skill.last_gripper == 6.0
 
@@ -192,6 +192,20 @@ def test_the_grasp_is_checked_once_the_hand_is_closed_in_the_carry_pose():
     skill.after = StuckOpen()
     assert skill._holding(Hand(holding=False), settle_s=0.0) is False
     skill.after = CarryPose()
+
+    class WristUp:  # the carry pose that clears the camera: only once the object is held
+        def __init__(self):
+            self.played = 0
+
+        def play(self, robot):
+            self.played += 1
+
+    skill.carry = WristUp()
+    skill._holding(Hand(holding=False), settle_s=0.0)
+    assert skill.carry.played == 0  # missed: stays in home, where the demonstrations start
+    skill._holding(Hand(holding=True), settle_s=0.0)
+    assert skill.carry.played == 1
+    skill.carry = None
     skill.after, skill.gripper_held_below = (
         None,
         None,
