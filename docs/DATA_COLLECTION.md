@@ -65,6 +65,9 @@ seconde. Le pas-à-pas et les touches sont dans `docs/CE_SOIR.md`, section 2 («
 pilote »). Avec `--manual`, l'enregistrement part à la flèche droite et seule la flèche droite
 sauvegarde.
 
+Ajouter un nouveau décor à un dataset existant sans le modifier (salle de pitch) :
+`--from` et `--note`, pas à pas dans `docs/COLLECTE_PITCH.md`.
+
 Faire des sessions de 30 épisodes. Relancer la même commande **ajoute** des épisodes au même
 dataset : rien n'est écrasé, et un plantage ne fait perdre que l'épisode en cours. Noter chaque
 dataset dans `docs/REGISTRY.md` aussitôt.

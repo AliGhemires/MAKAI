@@ -547,6 +547,9 @@ def main() -> None:
         "--end-still", type=float, default=1.0, help="seconds still at home that end an episode"
     )
     parser.add_argument("--min-episode", type=float, default=3.0, help="seconds: shorter is a false start")
+    parser.add_argument(
+        "--note", default="", help="written next to every episode of this session, e.g. 'pitch, facing door'"
+    )
     args = parser.parse_args()
 
     # A Mac left alone goes to sleep after a few minutes, which freezes the session (seen on
@@ -646,6 +649,7 @@ def main() -> None:
                 args.object,
                 datetime.now().isoformat(timespec="seconds"),
                 note,
+                args.note,
             ]
             csv.writer(f).writerow(row)
 
