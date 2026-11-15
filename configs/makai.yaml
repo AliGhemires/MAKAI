@@ -164,7 +164,8 @@ manipulation:
     task: "Pick up the object from the floor"  # must be the task string used when recording
     duration_s: 20.0          # the longest a pick may take; it ends as soon as the arm is back home (demos: 8 to 18 s)
     device: null              # null = as trained; "mps" on the Macs
-    after: [home]             # poses played once the policy is done (carry pose)
+    after: [home]             # poses played once the policy is done; the grasp is checked there
+    carry: [[carry, 1.0]]     # then, only if the object is held: wrist raised, the camera sees the bins (15 Nov)
     gripper_open_above: null  # set to a gripper value to detect an empty grasp
     gripper_held_below: 20.0  # commanded closed, a hand still wider than this did not close: empty (15 Nov:
                               # 33.9 read as "holding" a sock left on the floor; held objects read 3 to 12)

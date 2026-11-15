@@ -9,12 +9,15 @@
 #              the gripper as commanded on the rest (1.4 = closed). Closed is what we want:
 #              going home keeps squeezing the object after a pick, and closes the hand again
 #              after a drop, which is how every demonstration starts.
+# carry      : home with the wrist raised (24 instead of 74), read on the robot on 15 Nov, arm placed
+#              by hand: the held object no longer hides the front camera. Played once the object is held.
 # pick_*     : open-loop grasp at the canonical pre-grasp pose (fallback without policy).
 # drop_path_* : the drop into the bin, robot docked 35 cm from the bin's face (docs/NAVIGATION.md,
 #              demo arena). Recorded on the robot on 15 Nov evening: the arm guided by hand,
 #              torque off, read 20 times a second; a waypoint every 7 degrees (scratch tool
 #              path_to_poses.py, see docs/NAVIGATION.md). Up folded, over the bin, open, back, home.
 home: {arm_shoulder_pan.pos: -11.8, arm_shoulder_lift.pos: -102.5, arm_elbow_flex.pos: 94.7, arm_wrist_flex.pos: 74.2, arm_wrist_roll.pos: -2.7, arm_gripper.pos: 1.4}
+carry: {arm_shoulder_pan.pos: -11.8, arm_shoulder_lift.pos: -102.5, arm_elbow_flex.pos: 94.7, arm_wrist_flex.pos: 24.1, arm_wrist_roll.pos: -2.7, arm_gripper.pos: 1.4}
 pick_above: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_down: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
 pick_close: {arm_shoulder_pan.pos: 0.0, arm_shoulder_lift.pos: 0.0, arm_elbow_flex.pos: 0.0, arm_wrist_flex.pos: 0.0, arm_wrist_roll.pos: 0.0, arm_gripper.pos: 0.0}
