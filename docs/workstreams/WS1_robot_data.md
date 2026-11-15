@@ -90,3 +90,11 @@ _Mis à jour avant chaque point d'équipe : ce qui marche (chiffres), ce qui blo
   Fait dans `docs/SETUP.md`, section 4 (commande à deux caméras), à valider au premier lancement.
 - À faire : calibrer le rayon des roues au mètre (onglet Measure, `docs/SETUP.md`) ; compenser
   cette calibration en mode host (le host garde ses valeurs intégrées).
+
+**Dim. 15, 16 h–17 h 40 · navigation sur le robot (laptop d'Amine, option A)**
+- Corrigé : flux lu à 10 Hz par la console (images 2,5 s en retard, virages comptés deux fois),
+  bras pas en home au départ d'une mission, dépassements des déplacements précis.
+- Lignes droites bonnes (2 cm sur 90 cm, distance corrigée de 2,2 %). **Rotations non
+  reproductibles** : 10 à 32° d'erreur sur 360° selon l'essai, alors que l'odométrie dit 360° à
+  1,5° près. Analyse complète, journaux et essais qui tranchent : `docs/DEBUG_ODOMETRY.md`.
+- `robot.odometry.angular_scale: 1.039` non validé. Batterie à recharger avant tout nouvel essai.

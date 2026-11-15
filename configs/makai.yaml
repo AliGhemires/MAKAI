@@ -26,6 +26,8 @@ robot:
                             # than measured. Uncorrected: 359.5 deg measured, 25 cm off (375.5 deg) -> 1.045.
                             # With 0.961 (the inverse, by mistake): 375.9 deg raw, 48 cm off (388.1 deg)
                             # -> 1.032. Mean 1.039. Policies are not affected.
+                            # NOT VALIDATED: later runs give 1.07 to 1.13; the error varies from run to
+                            # run, so it is not only a scale. Analysis: docs/DEBUG_ODOMETRY.md.
 
 teleop:
   leader_port: /dev/tty.usbmodemXXXX   # per laptop -> local.yaml  (find it with `lerobot-find-port`)

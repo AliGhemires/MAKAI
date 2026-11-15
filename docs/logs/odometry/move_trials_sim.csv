@@ -1,0 +1,6 @@
+id,time,move,unit,target,speed,wheels,tape,sim_truth,off_axis_cm,heading_drift_deg,duration_s,status,wheel_radius_m,base_radius_m
+1,2026-11-15 16:28:49,turn left,deg,90.0,45.84,89.97,,89.97,0.0,0.0,4.56,done,0.05,0.125
+2,2026-11-15 16:28:55,turn left,deg,90.05,45.84,89.95,,89.95,0.0,0.0,4.56,done,0.05,0.125
+3,2026-11-15 16:35:11,forward,cm,50.0,12.0,49.99,,49.99,0.0,0.0,8.52,done,0.05,0.125
+4,2026-11-15 16:35:17,right,cm,30.0,12.0,29.99,,29.99,0.0,0.0,5.55,done,0.05,0.125
+5,2026-11-15 16:35:22,turn left,deg,68.75,34.38,68.71,,68.71,0.0,0.0,4.47,done,0.05,0.125

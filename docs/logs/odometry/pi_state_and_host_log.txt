@@ -1,0 +1,33 @@
+## collected 2026-11-15 17:36:06 CET on lekiwi
+## uptime: up 2 hours, 17 minutes   load: 0.80 0.70 0.64
+## throttled: throttled=0x0   temp: temp=57.6'C   5V in: volt(24)=5.08932000V
+## os: Debian GNU/Linux 13 (trixie)   kernel: 6.18.50+rpt-rpi-2712
+## python: Python 3.12.16   lerobot: 0.7.1   repo: fe1c5459 2026-11-13
+## host process:
+1562 tmux new -d -s host bash -c "source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/lerobot && python ~/makai_host.py --arm_acceleration=50 --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 --robot.cameras=\"{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}, wrist: {type: opencv, index_or_path: /dev/video2, widt
+1563 bash -c source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/lerobot && python ~/makai_host.py --arm_acceleration=50 --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 --robot.cameras="{front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}, wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, f
+1568 python /home/kiwi/makai_host.py --arm_acceleration=50 --robot.id=makai_kiwi --robot.port=/dev/ttyACM0 --robot.cameras={front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}, wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 30, fourcc: MJPG, warmup_s: 3}} --host.connection_time_s=36000
+## host script sha256: b1c160756146f473   MAKAI clone on the Pi: 6f4ff77 Merge ws1/network into ws1/manual: the control page on the new
+## usb:
+Bus 001 Device 002: ID 1b3f:2247 Generalplus Technology Inc. GENERAL WEBCAM
+Bus 001 Device 003: ID 1e45:8022 Generic USB HD Camera
+Bus 003 Device 002: ID 1a86:55d3 QinHeng Electronics USB Single Serial
+## cameras:
+  /dev/video0 <- usb-GENERAL_GENERAL_WEBCAM_JH0319_20210712_v102-video-index0
+  /dev/video2 <- usb-Generic_USB_HD_Camera_200910120001-video-index0
+## network: makai-ap  10.42.0.1 
+## wifi power save: Power save: off
+## known networks:
+NAME                  AUTOCONNECT  AUTOCONNECT-PRIORITY 
+makai-ap              no           0                    
+lo                    no           0                    
+makai-cyrine-laptop   yes          5                    
+makai-laptop          yes          10                   
+netplan-eth0          yes          0                    
+netplan-wlan0-Cyrine  yes          0                    
+## calibration file: -rw-rw-r-- 1 kiwi kiwi 1399 Nov 14 17:48 makai_kiwi.json
+## host.log: 45862 lines, 1.6M
+## host.log message counts (numbers replaced by N):
+  45636 WARNING:root:No command available
+    226 WARNING:root:Command not received for more than N milliseconds. Stopping the base.
+## host.log: every line that is not the idle 'No command available' / watchdog message:
