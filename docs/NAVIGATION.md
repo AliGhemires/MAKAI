@@ -99,6 +99,45 @@ Les rotations sont ce que le robot fait le moins bien : la première disposition
 et garde le repère sous les yeux de la caméra. La seconde reste possible, rien ne change pour
 elle.
 
+### Arène de la démo (15 nov. au soir, `docs/DECISIONS.md` D30)
+
+Celle des premiers essais de mission sur le robot, à refaire telle quelle. Poubelle
+**derrière** : la caméra ne voit pas encore les bandes de scotch (`docs/DEBUG_ODOMETRY.md`,
+11.3), et les rotations sont justes depuis les codeurs. Vue de dessus, le robot regarde vers
+le haut :
+
+```
+          y = +0,80                y = -0,80
+  x = 2,00  +--------------------------+   fond de la zone
+            |                          |
+            |   rangées du centre du   |   le centre du robot reste à 30 cm des bords
+            |   robot : x = 0 ; 0,5 ;  |   (margin_m) : y de -0,50 à +0,50,
+            |   1,0 ; 1,5, y ±0,50     |   x jusqu'à 1,50
+            |                          |
+  x = 0     +-----------( R )----------+   ligne de départ : elle passe par le centre du robot
+                       [ BIN ]             face avant du carton à 35 cm derrière le centre
+```
+
+- **Zone** : 2,0 m devant le robot, 1,6 m de large centrée sur lui. C'est `navigation.sweep.room`
+  de `configs/makai.yaml` (2,0 × 1,6, `margin_m: 0.30`). **Ne pas tracer de zone** : une zone
+  tracée (`configs/zone.yaml`) la remplace. S'il y en a une sur le laptop de la démo, la
+  supprimer.
+- **Poubelle** (`stations.trash`, x = -0,35) : face avant du carton à **35 cm du centre du
+  robot**, dans son axe, soit environ **22 cm derrière le point de contact de la roue
+  arrière** (rayon de la base 12,5 cm). Le 15 au soir, le robot s'y est arrêté au bon endroit
+  pour déposer.
+- **Départ = home = point de dépose** : là où est le robot quand on appuie sur Start, dos à la
+  poubelle, face à la zone. La mission n'utilise pas les bases 1 et 2 de la console : elle
+  part de zéro à chaque Start. Les bases servent entre deux essais : « Set base 1 » une fois
+  au départ, puis « Go base 1 » ramène le robot au départ, à 1 cm près le 15 au soir. Vérifier
+  sur les marques au sol.
+- **Marques au sol** (scotch) : les deux roues avant au départ, les quatre coins de la zone,
+  la face avant de la poubelle.
+- **Laptop de la démo** : celui d'Amine, avec dans `configs/local.yaml` la détection des
+  cartons coupée (`perception.stations.kind: aruco`) et pas de recherche du marqueur à la
+  base (`navigation.sweep.marker_scan_deg: []`) : il dépose à l'odométrie. Les poses de dépose
+  restent à capturer (`drop_reach`, `drop_open` dans `configs/arm_poses.yaml`).
+
 - [ ] **Les deux stations** : deux cartons, chacun avec une bande de scotch gris sur sa
       face avant. Bande **horizontale** : le linge. Bande **verticale** : les déchets (à
       confirmer, et à changer dans `perception.stations.tape` si c'est l'inverse). La direction
