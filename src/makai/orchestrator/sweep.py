@@ -99,6 +99,9 @@ class SweepConfig:
     # metres without seeing one. 0 = only when delivering. Raise it on a floor that grips well.
     recheck_after_m: float = 0.0
     max_dock_tries: int = 3  # markers lost this many times in one delivery: drop on odometry
+    # After each pick, before going to the dock: turn to the first station (the bin with the
+    # marker), look for its marker, let it correct the odometry, then go (15 Nov).
+    look_for_marker_after_pick: bool = True
     travel_timeout_s: float = 120.0  # for one leg driven on odometry
     room_slack_m: float = 0.10  # an object this far outside the walls is still accepted
     abandon_radius_m: float = 0.30  # do not go back to an object that was given up
@@ -211,6 +214,8 @@ class SweepMission(Mission):
         self._home_step = 0
         self._scan = 0  # which direction of the marker search is being looked at
         self._dock_tries = 0
+        self._looked_from_afar = True  # this delivery looked for the bin's marker where it picked
+        self._marker_seen_at: float | None = None
         self._object: MapObject | None = None
 
     # ------------------------------------------------------------------ loop
@@ -306,6 +311,13 @@ class SweepMission(Mission):
             self._last_seen = now
             self._go(State.GO_TO_STATION, now, "station in sight")
             return
+        if not self._looked_from_afar:
+            # Just picked: before trusting the odometry to the dock, turn to the bin and look for
+            # its marker; seen, it puts the position right (`_fix_on_markers`). From the second
+            # object on, the odometry alone dropped cans on the floor (15 Nov).
+            if self._look_for_marker(scene, now):
+                self._looked_from_afar, self._scan, self._faced_at = True, 0, None
+            return
         if not self._arrived:
             self._arrived = self._travel(station.dock_x, station.dock_y, exact=True, heading=station.heading)
             if not self._arrived and now - self._entered > self.sweep.travel_timeout_s:
@@ -399,6 +411,11 @@ class SweepMission(Mission):
         if state is State.DOCK:
             if self.state is State.PICK:  # a new delivery
                 self._dock_tries, self._anchored = 0, False
+                # With the bin across the zone its marker is in view all along: nothing to look for.
+                self._looked_from_afar = (
+                    not self.sweep.look_for_marker_after_pick or self.starts_away_from_dock
+                )
+                self._marker_seen_at = None
             self._dock_tries += 1
         super()._go(state, now, reason)
 
@@ -572,6 +589,20 @@ class SweepMission(Mission):
             turn = math.copysign(self.sweep.min_turn, error)
         self.robot.drive(BaseVelocity(theta=turn))
         return False
+
+    def _look_for_marker(self, scene: Scene, now: float) -> bool:
+        """From where the robot is: face the bin with the marker, look to each side. True once
+        done: the marker seen for `marker_wait_s` (time for the camera to correct the
+        odometry), or not found anywhere (then the odometry it is)."""
+        key = self._home_key
+        if key in scene.stations:
+            self.robot.stop()
+            self._marker_seen_at = self._marker_seen_at if self._marker_seen_at is not None else now
+            return now - self._marker_seen_at >= self.sweep.marker_wait_s
+        self._marker_seen_at = None
+        station = self.sweep.stations[key]
+        towards = math.atan2(station.y - self.odometry.y, station.x - self.odometry.x)
+        return self._find_marker(key, scene, now, towards) is False
 
     def _find_marker(self, key: Category, scene: Scene, now: float, heading: float) -> bool | None:
         """At a dock: face the station, then look to each side for its marker.

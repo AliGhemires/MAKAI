@@ -149,6 +149,7 @@ class PolicyPick:
         n_action_steps: int | None = None,
         revision: str | None = None,
         gripper_held_below: float | None = None,
+        carry: ScriptedSequence | None = None,
     ):
         """`n_action_steps`: how many predicted actions to play before looking at the cameras
         again (the model plans `chunk_size` ahead; default: as trained). Lower is more reactive.
@@ -162,6 +163,10 @@ class PolicyPick:
         # Commanded closed, a hand still wider than this is not holding: it did not close at all
         # (15 Nov: 33.9 read as "holding" a sock that stayed on the floor; held objects read <= 12).
         self.gripper_held_below = gripper_held_below
+        # Played only once the object is held: the wrist raised, so that the object no longer
+        # hides the front camera (15 Nov: a sock held in home hid the bin's marker). A missed
+        # grasp stays in home, where every demonstration starts.
+        self.carry = carry
         self.policy = get_policy_class(policy_type).from_pretrained(policy_path, revision=revision)
         if device:
             self.policy.to(device)
@@ -264,6 +269,8 @@ class PolicyPick:
             "?" if self.gripper_at_stop is None else f"{self.gripper_at_stop:.1f}",
             gripper, "holding" if held else "empty", self.gripper_open_above,
         )  # fmt: skip
+        if held and self.carry is not None:
+            self.carry.play(robot)
         return held
 
 
@@ -287,6 +294,7 @@ def build_pick_skill(cfg: dict):
     if pick["kind"] == "scripted":
         return ScriptedPick(ScriptedSequence(poses, pick["steps"], cfg["robot"]["fps"]))
     after = ScriptedSequence(poses, pick["after"], cfg["robot"]["fps"]) if pick.get("after") else None
+    carry = ScriptedSequence(poses, pick["carry"], cfg["robot"]["fps"]) if pick.get("carry") else None
 
     def policy(entry: Mapping) -> PolicyPick:
         return PolicyPick(
@@ -300,6 +308,7 @@ def build_pick_skill(cfg: dict):
             entry.get("gripper_open_above", pick.get("gripper_open_above")),
             entry.get("n_action_steps", pick.get("n_action_steps")),
             gripper_held_below=entry.get("gripper_held_below", pick.get("gripper_held_below")),
+            carry=carry,
         )
 
     # One policy per kind of object when `policies` lists them; `policy_path` is then the
