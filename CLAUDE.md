@@ -110,4 +110,6 @@ uv run python scripts/preflight.py                      # avant d'enregistrer (-
 uv run python scripts/record.py --name pick_sock_v1 --object sock --episodes 30    # relancer = ajouter
 scripts/train.sh pick_sock_v1 act_sock_v1 --job.target=a10g-large                   # ou --policy.device=mps
 uv run python scripts/try_pick.py --policy outputs/train/act_sock_v1/checkpoints/last/pretrained_model --trials 10
+uv run python scripts/replay_check.py --policy <dossier pretrained_model>      # vérifier un modèle sans robot
+uv run python scripts/hpc/run_logs.py                   # courbes et tableau des essais du cluster (docs/figures, docs/EXPLORATIONS.md)
 ```
