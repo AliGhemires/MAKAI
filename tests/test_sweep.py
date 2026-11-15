@@ -1,6 +1,7 @@
 """The sweeping mission, end to end on the simulated robot, and the pieces it is made of."""
 
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -251,12 +252,49 @@ def test_a_missed_pick_is_tried_again_though_the_pick_took_its_time():
         return len(tries) > 1 and grab(robot, target)
 
     mission.pick.run = slow_pick
+    farthest = []  # from the can, between the two grasps: it backs away to see it again
+    step = mission.step
+
+    def watched_step():
+        if len(tries) == 1 and world.objects:
+            can = world.objects[0]
+            farthest.append(math.hypot(world.x - can.x, world.y - can.y))
+        return step()
+
+    mission.step = watched_step
     assert mission.run(max_duration_s=900) is State.DONE
     reasons = [event.reason for event in mission.events]
     retry = reasons.index("pick failed, retry 1")
-    assert mission.events[retry + 1].state is State.PICK  # tried again from where it was
+    assert mission.events[retry + 1].state is State.PICK  # tried again, without losing it
     assert "lost the object" not in reasons[retry : retry + 2]
+    assert max(farthest) > 0.45  # backed away until the camera saw it again
     assert mission.stats.delivered == 1
+
+
+def test_up_close_a_sock_taken_for_a_can_still_goes_to_the_clothing_bin():
+    """15 Nov: a sock seen as clothing from afar, as trash in the last images (it leaves the
+    image), was picked with the can model and taken to the trash bin."""
+    world = SimWorld(
+        objects=[SimObject(1.2, 0.3, Category.CLOTHING, "sock")],
+        stations={Category.TRASH: (-0.35, 0.0), Category.CLOTHING: (-0.35, 0.7)},
+    )
+    mission = build(world)
+    perceive = mission.perception.perceive
+
+    def confused(obs):
+        scene = perceive(obs)
+        close = [
+            replace(t, category=Category.TRASH, label="trash") if t.distance_m < 0.55 else t
+            for t in scene.targets
+        ]
+        return replace(scene, targets=close)
+
+    mission.perception.perceive = confused
+    grab, kinds = mission.pick.run, []
+    mission.pick.run = lambda robot, target: kinds.append(target.category) or grab(robot, target)
+    assert mission.run(max_duration_s=900) is State.DONE
+    assert kinds == [Category.CLOTHING]
+    assert world.delivered and world.delivered[0][1] is Category.CLOTHING
 
 
 def test_after_three_missed_grasps_it_goes_round_the_object_and_tries_from_there():
