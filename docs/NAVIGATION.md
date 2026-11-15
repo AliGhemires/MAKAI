@@ -1,8 +1,13 @@
 # Navigation : balayer la pièce, ramasser, déposer, reprendre
 
-Le robot se comporte comme un aspirateur : il parcourt la pièce en serpentin, s'arrête dès
-qu'il voit un objet, le ramasse avec le modèle entraîné pour cet objet, le porte à la poubelle,
-puis revient exactement là où il avait quitté sa route et continue.
+Le robot se comporte comme un aspirateur. Il passe tout seul d'un mode à l'autre :
+
+- **Mode aspirateur.** Il parcourt la pièce en rangées, sans jamais tourner : il reste face à
+  la pièce, perpendiculaire au mur de la poubelle, et glisse de côté le long de chaque rangée.
+- **Mode détection.** Dès qu'il voit un objet, il quitte sa rangée, se place devant, le
+  ramasse avec le modèle entraîné pour cet objet et le porte à la poubelle. Puis il revient
+  exactement là où il avait quitté sa rangée, se remet perpendiculaire au mur, et repart en
+  mode aspirateur.
 
 Tout se pilote depuis une seule page, la **console** (`scripts/drive.py`), décrite à la
 section 3. Rien de ce qui suit n'a encore tourné sur le vrai robot : la section 6 dit ce qui
@@ -19,14 +24,23 @@ SWEEP ──pièce balayée──► RETURN_HOME ──► DONE
 
 | État | Ce qui se passe | Sur quoi le robot s'appuie |
 |---|---|---|
-| SWEEP | suit les couloirs du serpentin, caméra vers l'avant | odométrie |
+| SWEEP | **mode aspirateur** : glisse le long des rangées, toujours face à la pièce | odométrie |
 | APPROACH | se place devant l'objet, à la distance de saisie | caméra avant : détecteur, puis projection au sol ; les 45 derniers centimètres à l'odométrie |
 | PICK | le modèle de l'objet pilote le bras, jusqu'à 3 essais | caméras avant et de poignet |
 | DOCK | retourne au point d'arrêt devant la station | odométrie |
 | GO_TO_STATION | finit sur le marqueur de la station | caméra avant : marqueur ArUco |
 | DROP, BACK_OFF | dépose, puis recule | poses du bras |
-| RESUME | revient où il avait quitté sa route, dans le même sens | odométrie, recalée |
+| RESUME | revient où il avait quitté sa rangée et se remet perpendiculaire au mur | odométrie, recalée |
 | RETURN_HOME | pièce balayée : revient devant la poubelle | odométrie, puis marqueur |
+
+Tous les états sauf SWEEP forment le **mode détection** : le robot y tourne librement, comme
+avant. La console affiche le mode en cours.
+
+**Les rangées.** La base est holonome : elle peut glisser de côté sans tourner. En mode
+aspirateur le robot garde donc le cap du départ. Il glisse le long d'une rangée parallèle au
+mur, avance d'une rangée, repart dans l'autre sens. La caméra regarde toujours la bande de sol
+devant lui, celle qu'il n'a pas encore atteinte : il ne roule jamais sur du sol qu'il n'a pas
+vu. La première rangée est la ligne de départ.
 
 **La carte.** Le robot n'a pas de capteur de distance. Sa carte est faite de deux choses :
 l'odométrie (où il est) et l'empreinte au sol de la caméra avant (ce qu'il voit de là). Une
@@ -59,6 +73,9 @@ navigation:
 
 - [ ] **Rien d'autre au sol** que les objets à ramasser : le robot n'a aucun capteur
       d'obstacle et ne contourne rien.
+- [ ] **La ligne de départ dégagée** : rien à gauche ni à droite du robot, le long du mur de
+      la poubelle. C'est la première rangée, et la seule que la caméra n'a pas vue avant d'y
+      passer. Les deux coins de la zone de ce côté-là ne sont jamais vus : ne rien y poser.
 - [ ] **La caméra avant calibrée** sur le sol : `make calibrate-ground`
       (`docs/ARCHITECTURE.md`, « Estimer la distance avec une seule caméra »).
 - [ ] **Le détecteur réentraîné sur des images de cette salle**, prises par la caméra du
@@ -101,7 +118,7 @@ Sans la page : `uv run makai-mission --sweep` (ajouter `--sim` sans robot).
 
 | Onglet | Contenu |
 |---|---|
-| Mission | la carte en direct, l'état, les compteurs, les deux caméras, le journal ; Start, Stop |
+| Mission | la carte en direct, le mode (aspirateur ou détection), l'état, les compteurs, les deux caméras, le journal ; Start, Stop |
 | Drive | la page de conduite manuelle, inchangée (sticks, mesures, moteurs) ; seule à `/drive` |
 | Cameras | les deux caméras en grand |
 | Data | les essais d'entraînement et les figures de `docs/figures` |
@@ -124,8 +141,9 @@ Dans `configs/makai.yaml`, section `navigation.sweep` (valeurs d'une salle : `lo
 |---|---|---|
 | `room.length_m`, `room.width_m` | 2,0 × 1,6 m | la zone à balayer, devant le robot |
 | `room.margin_m` | 0,30 m | le centre du robot reste à cette distance des bords |
-| `lane_spacing_m` | 0,5 m | écart entre deux couloirs ; plus petit = plus sûr de tout voir, plus long |
-| `sweep_speed` | 0,15 m/s | vitesse dans les couloirs |
+| `pattern` | `rows` | `rows` : mode aspirateur en rangées, sans tourner. `lanes` : l'ancien parcours, où le robot tourne pour suivre des couloirs qui s'enfoncent dans la pièce |
+| `lane_spacing_m` | 0,5 m | écart entre deux rangées ; plus petit = plus sûr de tout voir, plus long |
+| `sweep_speed` | 0,15 m/s | vitesse le long des rangées |
 | `recheck_after_m` | 0 | retour au marqueur après tant de mètres sans recalage ; 0 = seulement aux déposes |
 | `stations` | poubelle en (−0,35 ; 0) | où est chaque station, et où le robot s'arrête devant |
 | `marker_scan_deg` | jusqu'à ±180° | où chercher le marqueur quand la dérive l'a sorti de l'image |
@@ -158,15 +176,18 @@ Nos épisodes de saisie donnent ces paires gratuitement : première image de la 
 
 ## 6. Ce qui est vérifié
 
-En simulation, avec la machine à états et la navigation réelles (`make sim`, 30 tests) :
+En simulation, avec la machine à états et la navigation réelles (`make sim`, et les 19 tests
+de `tests/test_sweep.py`), en rangées :
 
 | Situation simulée | Résultat |
 |---|---|
-| Pièce de 2,4 × 1,8 m, 4 objets, 2 stations | 4 déposés dans la bonne station, sol vu à 100 %, retour à 1 cm de l'origine, en 3 min 50 |
-| Roues qui glissent de 4 %, cap qui dérive de 1,7° par mètre | 4 sur 4 ; chaque visite au marqueur corrige 14 à 23 cm ; retour à 3 cm de l'origine |
-| Même dérive, marqueurs jamais vus | 2 déposés sur 4, puis échec : le robot se croit devant la station alors qu'il en est trop loin pour déposer ; il finit à 90 cm de l'origine |
-| Dérive doublée | 4 sur 4, retour à 6 cm |
-| Marqueur jamais vu | dépose à l'odométrie, mission terminée |
+| Pièce de 2,4 × 1,8 m, 4 objets, 2 stations | 4 déposés dans la bonne station, retour à 2 cm de l'origine, en 3 min 19 (3 min 47 avec l'ancien parcours en couloirs) |
+| Même pièce, vide | aucune rotation pendant tout le balayage (l'ancien parcours en demandait 700°) ; le balayage seul voit 91 % du sol : il manque les 15 cm aux pieds du robot et les deux coins près du mur de départ |
+| Roues qui glissent de 4 %, cap qui dérive de 1,7° par mètre | 4 sur 4 ; chaque visite au marqueur corrige 4 à 46 cm ; retour à 3 cm de l'origine. Le robot se croit perpendiculaire au mur, mais il est de travers de 12° au pire, juste avant un recalage |
+| Même dérive, marqueurs jamais vus | 2 déposés sur 4, puis échec : le robot se croit devant la station alors qu'il en est trop loin pour déposer ; il finit à 50 cm de l'origine |
+| Dérive doublée | 4 sur 4, retour à 5 cm |
+| Marqueur jamais vu, sans dérive | dépose à l'odométrie, mission terminée |
+| Ancien parcours (`pattern: lanes`) | toujours testé : 4 sur 4 |
 | Objet impossible à saisir | abandonné après 3 essais, jamais réapproché |
 | Objet hors de la zone | ignoré |
 
@@ -174,7 +195,8 @@ Sur des images réelles : la lecture de l'orientation du marqueur (6° près sur
 tournés de ±30°), et le choix du modèle selon l'objet.
 
 **Pas vérifié** : tout ce qui touche au vrai robot. En particulier la dérive réelle des
-roues, la portée réelle du détecteur pendant le balayage, la visibilité du marqueur à 35 cm,
+roues, surtout quand la base glisse de côté (le mode aspirateur ne fait que ça), la portée
+réelle du détecteur pendant le balayage, la visibilité du marqueur à 35 cm,
 et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, peut être faux de
 10 à 20° ; la position, elle, est recalée.
 
@@ -186,6 +208,7 @@ et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, p
 | Il s'arrête trop loin ou trop près de l'objet | caméra avant mal calibrée sur le sol | `make calibrate-ground`, puis `navigation.approach.goal_x_m` |
 | Il tourne sur place devant la station | marqueur hors de l'image | marqueur plus haut ou plus grand ; il finit par déposer à l'odométrie |
 | Il dépose à côté | station mal placée dans `stations`, ou dérive sans marqueur | mesurer la position de la station ; `recheck_after_m: 4` |
-| Les couloirs partent de travers | dérive du cap | `recheck_after_m: 4` ; réduire `sweep_speed` |
+| Les rangées partent de travers | dérive du cap : le robot n'a que ses roues pour savoir s'il est perpendiculaire au mur, sauf devant le marqueur | `recheck_after_m: 3` ; réduire `sweep_speed` |
+| La base glisse mal de côté (à-coups, forte dérive) | roues ou sol peu adaptés au déplacement latéral | `pattern: lanes` : l'ancien parcours, où le robot avance et tourne |
 | Il heurte un bord | zone déclarée trop grande | réduire `room`, augmenter `margin_m` |
 | « Could not start » dans la console | modèle, calibration ou poids introuvable | le message dit lequel |

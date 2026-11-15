@@ -102,7 +102,7 @@ pour que le robot n'ait pas à contourner quoi que ce soit.
 ### La mission qui balaie (`makai-mission --sweep`)
 
 `orchestrator/sweep.py` hérite de la machine ci-dessus et ne remplace que deux choses : la
-recherche (un parcours en serpentin, `navigation/coverage.py`, au lieu de tourner sur place)
+recherche (un parcours en rangées, sans tourner, `navigation/coverage.py`, au lieu de tourner sur place)
 et le trajet vers les stations (par la carte, puis sur le marqueur, au lieu de les chercher
 du regard). Trois états en plus : `SWEEP`, `DOCK`, `RESUME`. L'approche, la saisie, les
 essais répétés et l'abandon sont ceux de la mission de base, inchangés.

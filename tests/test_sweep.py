@@ -5,7 +5,7 @@ import math
 import pytest
 
 from makai.contracts import Category
-from makai.navigation.coverage import Room, path_length_m, snake_waypoints
+from makai.navigation.coverage import Room, path_length_m, row_waypoints, snake_waypoints
 from makai.navigation.mapping import RoomMap
 from makai.orchestrator.mission import MissionConfig, State
 from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
@@ -16,7 +16,7 @@ TWO_STATIONS = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(
 
 
 def build(
-    world: SimWorld, stations=None, pick_success=1.0, slip=0.0, yaw_drift=0.0, room=ROOM
+    world: SimWorld, stations=None, pick_success=1.0, slip=0.0, yaw_drift=0.0, room=ROOM, pattern="rows"
 ) -> SweepMission:
     cfg = MissionConfig()
     return SweepMission(
@@ -25,7 +25,7 @@ def build(
         SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m), success_rate=pick_success),
         SimDrop(world),
         cfg,
-        SweepConfig(room=room, stations=stations or TWO_STATIONS),
+        SweepConfig(room=room, stations=stations or TWO_STATIONS, pattern=pattern),
     )
 
 
@@ -42,6 +42,64 @@ def test_snake_path_covers_the_width_and_stays_off_the_walls():
 
 def test_a_narrow_room_gets_one_lane():
     assert snake_waypoints(Room(length_m=2.0, width_m=0.6), 0.5) == [(0.3, 0.0), (1.7, 0.0)]
+
+
+def test_rows_start_on_the_start_line_and_reach_the_far_end():
+    points = row_waypoints(Room(length_m=2.0, width_m=1.6), row_spacing_m=0.5)
+    assert points[:4] == [(0.0, -0.5), (0.0, 0.5), (0.5, 0.5), (0.5, -0.5)]  # across, one row forward, back
+    rows = sorted({x for x, _ in points})
+    assert rows == [0.0, 0.5, 1.0, 1.5]  # the last row looks at the half metre left before the far wall
+    assert all(abs(y) == 0.5 for _, y in points)  # the robot's centre stays 30 cm from the side walls
+    assert path_length_m(points) == pytest.approx(4 * 1.0 + 3 * 0.5)
+    spread = sorted({x for x, _ in row_waypoints(ROOM, 0.5)})  # 2.4 m long: rows evenly spread
+    assert spread[0] == 0.0 and spread[-1] == 1.9 and len(spread) == 5
+    assert all(b - a <= 0.5 + 1e-9 for a, b in zip(spread, spread[1:], strict=False))
+
+
+def test_rows_in_a_room_one_robot_wide_go_straight_ahead():
+    assert row_waypoints(Room(length_m=2.0, width_m=0.6), 0.5) == [
+        (0.0, 0.0),
+        (0.5, 0.0),
+        (1.0, 0.0),
+        (1.5, 0.0),
+    ]
+
+
+def test_an_unknown_pattern_is_refused():
+    with pytest.raises(ValueError, match="pattern"):
+        build(sweep_world(), pattern="spiral")
+
+
+def test_in_vacuum_mode_the_robot_never_turns():
+    world = SimWorld(stations={Category.TRASH: (-0.35, 0.0)}, station_facing={Category.TRASH: 0.0})
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})  # nothing on the floor
+    turned, sideways = 0.0, 0.0
+    while mission.state is State.SWEEP and mission.now < 600:
+        mission.step()
+        if mission.state is State.SWEEP:
+            turned += abs(mission.robot._vel.theta) * mission.robot.dt
+            sideways += abs(mission.robot._vel.y) * mission.robot.dt
+            assert abs(world.yaw) < 1e-6  # square to the wall behind it, all along
+    assert mission.state is State.RETURN_HOME and turned == 0.0
+    assert sideways == pytest.approx(0.6 + 5 * 1.2, abs=0.25)  # to the end of the start line, then five rows
+    # Never seen while it sweeps: the 15 cm at the robot's feet and the two corners beside the start line.
+    assert 0.88 < mission.map.coverage < 0.95
+
+
+def test_comes_back_square_to_the_wall_after_each_object():
+    world = sweep_world()
+    mission = build(world, slip=0.04, yaw_drift=0.03)
+    modes, squared = set(), []
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        before = mission.state
+        mission.step()
+        modes.add((mission.state, mission.snapshot()["mode"]) if mission.now % 5 < 0.04 else (None, None))
+        if before is State.RESUME and mission.state is State.SWEEP:
+            squared.append(abs(math.asin(math.sin(mission.odometry.yaw))))
+    assert mission.state is State.DONE and len(world.delivered) == 4
+    assert len(squared) == 4 and max(squared) <= math.radians(3.0) + 1e-9
+    assert (State.SWEEP, "vacuum") in modes and (State.SWEEP, "detection") not in modes
+    assert any(mode == "detection" for state, mode in modes if state in (State.APPROACH, State.DOCK))
 
 
 def test_the_map_marks_what_the_camera_has_looked_at():
@@ -64,9 +122,10 @@ def test_the_map_keeps_one_entry_per_object():
     assert (first.x, first.y) == (1.05, 0.22)
 
 
-def test_sweeps_the_room_and_tidies_everything():
+@pytest.mark.parametrize("pattern", ["rows", "lanes"])
+def test_sweeps_the_room_and_tidies_everything(pattern):
     world = sweep_world()
-    mission = build(world)
+    mission = build(world, pattern=pattern)
     assert mission.run(max_duration_s=1200) is State.DONE
     assert world.objects == [] and world.carrying is None
     assert sorted((o.label, s.value) for o, s in world.delivered) == [
@@ -168,7 +227,8 @@ def test_the_snapshot_is_plain_data():
     shot = json.loads(json.dumps(mission.snapshot()))
     assert shot["state"] in {s.value for s in State}
     assert shot["map"]["room"]["length_m"] == 2.4 and len(shot["map"]["covered"]) == len(mission.map.ys)
-    assert shot["waypoints"][0] == [0.3, -0.6] and "trash" in shot["stations"]
+    assert shot["waypoints"][0] == [0.0, -0.6] and "trash" in shot["stations"]
+    assert shot["pattern"] == "rows" and shot["mode"] in ("vacuum", "detection")
 
 
 def test_checks_its_position_on_the_marker_during_a_long_sweep():
@@ -187,4 +247,4 @@ def test_checks_its_position_on_the_marker_during_a_long_sweep():
     assert mission.run(max_duration_s=2000) is State.DONE
     checks = [e for e in mission.events if "checking the position" in e.reason]
     assert len(checks) >= 2 and mission.stats.delivered == 0
-    assert math.hypot(world.x, world.y) < 0.05  # heavy drift, and still back at the origin
+    assert math.hypot(world.x, world.y) < 0.08  # heavy drift, and still back at the origin

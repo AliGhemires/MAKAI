@@ -202,7 +202,7 @@ Sources : github.com/Encrux/robohack26, boesch.dev/posts/robohack.
 
 ## 9. Naviguer et cartographier sans capteur de distance
 
-Le robot n'a que deux caméras et ses roues. Il balaie la pièce en serpentin, quitte sa route
+Le robot n'a que deux caméras et ses roues. Il balaie la pièce, quitte sa route
 pour un objet, le dépose à la poubelle et revient où il était. Sa carte : l'odométrie, plus
 l'empreinte au sol de la caméra avant. Le marqueur de la poubelle est son seul point fixe : à
 chaque visite, il y relit sa position et son cap.
@@ -212,9 +212,27 @@ Mesures en simulation, avec la machine à états et la navigation réelles, piè
 
 | Roues simulées | Avec les marqueurs | Marqueurs jamais vus |
 |---|---|---|
-| Parfaites | 4 déposés sur 4, sol vu à 100 %, retour à 1 cm de l'origine, 3 min 50 | — |
-| Glissent de 4 %, cap qui dérive de 1,7° par mètre | **4 sur 4**, retour à **3 cm** ; chaque visite corrige 14 à 23 cm | 2 sur 4 puis échec, fin à 90 cm de l'origine |
-| Glissent de 8 %, cap qui dérive de 3,4° par mètre | 4 sur 4, retour à 6 cm | 2 sur 4 puis échec, fin à 1 m de l'origine |
+| Parfaites | 4 déposés sur 4, retour à 2 cm de l'origine, 3 min 19 | — |
+| Glissent de 4 %, cap qui dérive de 1,7° par mètre | **4 sur 4**, retour à **3 cm** ; chaque visite corrige 4 à 46 cm | 2 sur 4 puis échec, fin à 50 cm de l'origine |
+| Glissent de 8 %, cap qui dérive de 3,4° par mètre | 4 sur 4, retour à 5 cm | pas mesuré |
+
+Ces chiffres sont ceux du parcours en rangées (ci-dessous).
+
+**Deux façons de balayer, comparées dans la même pièce simulée.** La base est holonome : elle
+peut glisser de côté. Premier parcours, en couloirs : le robot avance, tourne au bout, revient.
+Second, en rangées (le mode aspirateur retenu) : il ne tourne jamais, reste perpendiculaire au
+mur de la poubelle et glisse de côté ; la caméra regarde toujours la bande de sol suivante.
+
+| | En couloirs, en tournant | En rangées, sans tourner |
+|---|---|---|
+| Rotation pendant le balayage (pièce vide) | 700° | **0°** |
+| Longueur du parcours | 8,4 m | 7,9 m |
+| Mission complète, 4 objets, roues parfaites | 3 min 47 | **3 min 19** |
+| Sol vu par le balayage seul | 100 % | 91 % : les deux coins près du mur de départ manquent |
+| Avec des roues qui glissent de 4 % | 4 sur 4, retour à 3 cm | 4 sur 4, retour à 3 cm |
+
+Le gain en temps est modeste (12 %). Le gain attendu sur le robot est ailleurs : tourner est
+ce qui fausse le plus le cap d'une base à roues omnidirectionnelles. Ce n'est pas mesuré.
 
 Conclusion : sans point fixe, l'odométrie seule ne tient pas une mission ; un marqueur
 imprimé sur la poubelle suffit. Limite : aucun obstacle n'est vu, et rien de cela n'a encore

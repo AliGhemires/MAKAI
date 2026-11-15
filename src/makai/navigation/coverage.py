@@ -1,15 +1,23 @@
-"""Sweep a rectangular room in lanes, like a robot vacuum (a "snake", or boustrophedon, path).
+"""Sweep a rectangular room like a robot vacuum.
 
 The map frame is the frame of the odometry: its origin is where the robot starts, which the
-team places in front of the bin, facing the room. x points into the room, y to the left.
+team places in front of the bin, back to it, facing the room. x points into the room, y to
+the left.
 
-    y ^        wall
+Rows (`row_waypoints`), the vacuum mode: the robot never turns. It keeps facing the room,
+square to the wall behind it, slides sideways along a row, moves one row forward, slides back.
+The camera always looks at the strip of floor it has not reached yet.
+
+    y ^   wall behind the robot
       |  +----------------------------+
-      |  |  <----------------------+  |
-      |  |  +----------------------+  |   lanes, `lane_spacing_m` apart
-  bin O--|->+---------------------->  |
-      |  |                            |
-      |  +----------------------------+--> x
+      |  |  ^------->v      ^------>  |
+      |  |  |        |      |         |   rows, `lane_spacing_m` apart;
+  bin O  |  |        |      |         |   the robot faces +x all along
+      |  |  |        |      |         |
+      |  +--^        v------>         +--> x
+         start line (x = 0)
+
+Lanes (`snake_waypoints`), the earlier path: the robot turns to follow lanes that run along x.
 """
 
 from __future__ import annotations
@@ -53,6 +61,28 @@ def snake_waypoints(room: Room, lane_spacing_m: float = 0.5) -> list[tuple[float
         y = y0 + lane * (y1 - y0) / (lanes - 1) if lanes > 1 else 0.0
         ends = [(round(x0, 3), round(y, 3)), (round(x1, 3), round(y, 3))]  # to the millimetre
         points.extend(ends if lane % 2 == 0 else ends[::-1])
+    return points
+
+
+def row_waypoints(room: Room, row_spacing_m: float = 0.5) -> list[tuple[float, float]]:
+    """The corners of the path in rows: across the room, one row forward, back across.
+
+    Rows run along y. The first one is the start line (x = 0): the robot is already on it, and
+    every later row has been looked at from the row before, so the robot never slides over
+    floor it has not seen. Rows are at most `row_spacing_m` apart; the last one leaves that
+    much, at most, between itself and the far wall, and stays `margin_m` away from it.
+    The path starts at the end of the start line on the robot's right (y < 0).
+    """
+    y0, y1 = room.y_range
+    last = max(0.0, min(room.length_m - room.margin_m, room.length_m - row_spacing_m))
+    rows = math.ceil(last / row_spacing_m - 1e-9) + 1 if last > 0 else 1
+    points: list[tuple[float, float]] = []
+    for row in range(rows):
+        x = round(row * last / (rows - 1), 3) if rows > 1 else 0.0
+        ends = [(x, round(y0, 3)), (x, round(y1, 3))]
+        for point in ends if row % 2 == 0 else ends[::-1]:
+            if not points or points[-1] != point:  # a room one row wide: no sideways leg
+                points.append(point)
     return points
 
 

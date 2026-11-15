@@ -1,7 +1,7 @@
 """Entry point: run the tidy-up mission, in simulation or on the robot.
 
 uv run makai-mission --sim            # no hardware needed
-uv run makai-mission --sim --sweep    # the same, sweeping the room in lanes like a robot vacuum
+uv run makai-mission --sim --sweep    # the same, sweeping the room in rows like a robot vacuum
 uv run makai-mission --sweep          # real robot, settings from configs/
 """
 
@@ -70,7 +70,7 @@ def build_real(cfg: dict, mission_cfg: MissionConfig, sweep: bool = False) -> Mi
 
 
 def sweep_config(cfg: dict):
-    """`navigation.sweep` of the config: the room, the lanes, where the stations stand."""
+    """`navigation.sweep` of the config: the room, the route, where the stations stand."""
     from makai.navigation.coverage import Room
     from makai.orchestrator.sweep import Station, SweepConfig
 
@@ -93,7 +93,9 @@ def main() -> None:
     )
     parser.add_argument("--sim", action="store_true", help="run in the 2D simulator (no hardware)")
     parser.add_argument(
-        "--sweep", action="store_true", help="sweep the room in lanes instead of looking around"
+        "--sweep",
+        action="store_true",
+        help="sweep the room in rows, like a vacuum, instead of looking around",
     )
     parser.add_argument("--pick-success", type=float, default=0.8, help="simulated grasp success rate")
     parser.add_argument("--max-duration", type=float, default=600.0, help="seconds")
