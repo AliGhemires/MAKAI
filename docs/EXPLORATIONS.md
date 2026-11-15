@@ -239,9 +239,87 @@ imprimé sur la poubelle suffit. Limite : aucun obstacle n'est vu, et rien de ce
 tourné sur le robot. Image : `figures/console_mission.png` (la console pendant une mission
 simulée). Source : `docs/NAVIGATION.md`.
 
+## 10. Les deux datasets vérifiés épisode par épisode
+
+Collecte du 15 nov. sur un laptop Windows, robot en lien direct (option A, 30 images/s par
+caméra, aucun trou de plus de 53 ms).
+
+| Dataset | Enregistrés | Gardés | Images | Durée d'un épisode | Ratés trouvés |
+|---|---|---|---|---|---|
+| `pick_sock_v1` | 60 (02:00–03:08, 2 sessions) | 59 | 22 780 | 7,8 à 18,2 s | épisode 31 |
+| `pick_can_v1` | 70 (jusqu'à 05:38) | 68 | 22 118 | 8,1 à 14,6 s | épisodes 8 et 68 |
+
+- Comment on trouve un raté sans regarder 130 vidéos : la canette est rigide, la pince qui
+  la tient ne se ferme pas (5 à 8,5) ; vide, elle se ferme jusqu'à 2. Confirmé sur la dernière
+  image de la caméra de poignet de chaque épisode
+  (`docs/figures/can_v1_70_last_images_wrist_with_misses.jpg`).
+- Pour la chaussette, molle, la pince se ferme presque autant : seule l'image le montre
+  (l'épisode 31 a été trouvé ainsi).
+- Les ratés de la canette sont retirés du dataset (`lerobot-edit-dataset ... delete_episodes`),
+  celui de la chaussette exclu à l'entraînement.
+- Pose de départ identique d'un épisode à l'autre : ±9° (chaussette), ±13° (canette).
+
+Sources : `docs/logs/recordings/` (liste des épisodes, heure, durée), `docs/REGISTRY.md`.
+
+## 11. Calibrer la caméra avant sans imprimante
+
+Pas d'imprimante dans le hackerspace : une feuille A4 posée au sol (bords et contour noir
+au feutre, 29,7 × 14 cm) et cinq croix de scotch mesurées au mètre suffisent
+(`scripts/camera_from_sheet.py`). La caméra avant est la caméra d'origine du LeKiwi
+(« GENERAL WEBCAM »), sans fiche technique : son champ de vision est mesuré, pas lu.
+
+| Mesuré | Valeur |
+|---|---|
+| Hauteur de l'objectif | 7,5 cm |
+| Inclinaison | 3,5° vers le bas |
+| Champ de vision horizontal | 42,4° |
+| Sol visible | à partir de 27 cm devant le centre de la base |
+| Croix de 46 à 97 cm | 1 à 2 cm d'écart en distance, ~3 cm sur le côté (caméra décentrée) |
+| Canette posée à 57,5 cm | lue à 57,3 cm par son point de contact au sol |
+
+- Premier calcul faux de 13 % sur toutes les distances : le rectangle supposé de 26 cm faisait
+  en réalité 29,7 cm (bords de la feuille). Une erreur d'échelle constante pointe vers la
+  taille du rectangle.
+- La croix à 131,5 cm est inutilisable : caméra si basse que 1 pixel y vaut plus de 10 cm.
+- Le cadre du détecteur descend 13 pixels sous la canette : 6,5 cm d'erreur à 57 cm, mais
+  ~1 cm près du bas de l'image, là où se décide l'arrêt.
+
+Figures : `camera_calibration_grid.jpg` (quadrillage de 10 cm tracé avec le modèle),
+`camera_calibration_sheet_corners.jpg`, `camera_calibration_can_57cm.jpg`. Mesures :
+`docs/logs/camera_calibration_marks.csv`.
+
+## 12. Où s'arrêter devant l'objet : demandé aux démonstrations
+
+Au lieu de mesurer la zone de saisie, on la lit dans les données : première image de la
+caméra avant de chaque épisode, passée dans le même détecteur et le même modèle de caméra que
+pendant la mission. L'avant de l'objet était à **28,3 cm** (chaussette, médiane) et **27,3 cm**
+(canette) du centre de la base, à −0,2 et −2,5 cm sur le côté.
+
+- Cible d'approche : 0,28 / −0,01 m (elle était à 0,22 m : 6 cm trop près).
+- Mesurée par la même chaîne que la mission, la cible porte les mêmes biais (cadre du
+  détecteur, caméra décentrée) : ils s'annulent.
+
+Source : `docs/REGISTRY.md`, mesures système.
+
+## 13. Le retard des images et l'odométrie fausse (15 nov., en cours)
+
+Premier essai de navigation : la zone tracée en conduisant le robot dessinait un triangle au
+lieu d'un rectangle, le cap affiché valait 762° après un tour, et les images arrivaient avec
+2,5 s de retard.
+
+- Cause : le host envoie 30 observations par seconde, la console n'en lit que 10 hors mission
+  et ~18 pendant (une étape de mission prend 54 ms sur le processeur du laptop). Le surplus
+  s'empile dans les tampons réseau : 2,7 Mo en attente sur la Pi.
+- Les vitesses des roues arrivent par le même flux : tant que la file grossit, une seconde de
+  mouvement est rejouée sur deux ou trois, et l'odométrie compte deux fois les virages.
+- Pistes : host à 15 Hz pour la navigation, console qui lit le flux à chaque tour, modèles sur
+  la carte graphique du laptop pour repasser sous 33 ms.
+
 ## Ce qui reste à mesurer
 
-- Le taux de réussite sur le robot : 10 essais par modèle (`scripts/try_pick.py`).
+- Le taux de réussite sur le robot : 10 essais par modèle (`scripts/try_pick.py`). Premiers
+  essais du 15 nov. (`act_sock_v1`, `act_can_v1`, modèles finaux) : saisies réussies presque
+  à chaque fois d'après l'équipe ; score exact non noté.
 - Le seuil de la pince qui sépare une saisie réussie d'une saisie vide.
 - L'effet de la salle de démo : référence contre caméra de poignet seule, dans cette salle.
 - Le détecteur réentraîné sur les images de la caméra du robot.
