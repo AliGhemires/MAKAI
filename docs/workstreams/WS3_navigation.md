@@ -63,6 +63,10 @@ depuis 1,5 m.
   inchangé, il va chercher l'objet vu puis revient à sa place. Aucune rotation pendant le
   balayage (700° avant), 3 min 19 au lieu de 3 min 47. Le balayage seul voit 91 % du sol :
   il manque les deux coins près du mur de départ. L'ancien parcours reste : `pattern: lanes`.
+- Dim. 15, 15 h 30 : deux usages dans la console. Vacuum & collect (rangées, ramasse à
+  moins de 1 m sur son passage) et Scan & collect (larges couloirs, cap qui oscille de 60°,
+  va chercher tout ce qu'il voit). En simulation : 4 sur 4 dans les deux ; zone vide de
+  2,0 × 1,6 m parcourue en 59 s (Vacuum) et 26 s (Scan).
 - Dim. 15, 15 h : la zone à balayer se trace en conduisant le robot (console, « Trace
   zone »), gardée dans `configs/zone.yaml`. Essayé dans la console simulée seulement.
 - Glissement simulé (4 %, cap 1,7° par mètre) : le recalage sur le marqueur corrige 4 à

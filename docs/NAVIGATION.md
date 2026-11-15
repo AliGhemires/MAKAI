@@ -1,13 +1,18 @@
-# Navigation : balayer la pièce, ramasser, déposer, reprendre
+# Navigation : parcourir la zone, ramasser, déposer, reprendre
 
-Le robot se comporte comme un aspirateur. Il passe tout seul d'un mode à l'autre :
+Le robot parcourt une zone et range ce qu'il y trouve. Deux usages, choisis dans la console
+avant de lancer la mission :
 
-- **Mode aspirateur.** Il parcourt la pièce en rangées, sans jamais tourner : il reste face à
-  la pièce, perpendiculaire au mur de la poubelle, et glisse de côté le long de chaque rangée.
-- **Mode détection.** Dès qu'il voit un objet, il quitte sa rangée, se place devant, le
-  ramasse avec le modèle entraîné pour cet objet et le porte à la poubelle. Puis il revient
-  exactement là où il avait quitté sa rangée, se remet perpendiculaire au mur, et repart en
-  mode aspirateur.
+| | Vacuum & collect | Scan & collect |
+|---|---|---|
+| Exemple | une chambre d'hôtel : il passe l'aspirateur et en profite pour ramasser | une rue : il patrouille à la recherche de déchets et de vêtements |
+| But | passer sur tout le sol | trouver les objets |
+| Parcours | des rangées serrées, sans jamais tourner : il reste face à la zone, perpendiculaire au mur de la poubelle, et glisse de côté | de larges couloirs ; il avance en regardant à gauche puis à droite |
+| Ce qu'il ramasse | ce qui se trouve sur son passage, à moins d'un mètre | tout ce qu'il repère, aussi loin que la caméra voit |
+
+Dans les deux cas, une fois l'objet en vue, le robot quitte son parcours, se place devant,
+le ramasse avec le modèle entraîné pour cet objet et le porte à la poubelle. Puis il revient
+exactement là où il avait quitté son parcours et continue.
 
 Tout se pilote depuis une seule page, la **console** (`scripts/drive.py`), décrite à la
 section 3. Rien de ce qui suit n'a encore tourné sur le vrai robot : la section 6 dit ce qui
@@ -24,23 +29,32 @@ SWEEP ──pièce balayée──► RETURN_HOME ──► DONE
 
 | État | Ce qui se passe | Sur quoi le robot s'appuie |
 |---|---|---|
-| SWEEP | **mode aspirateur** : glisse le long des rangées, toujours face à la pièce | odométrie |
+| SWEEP | suit son parcours : glisse le long des rangées (Vacuum), ou avance en balayant du regard (Scan) | odométrie |
 | APPROACH | se place devant l'objet, à la distance de saisie | caméra avant : détecteur, puis projection au sol ; les 45 derniers centimètres à l'odométrie |
 | PICK | le modèle de l'objet pilote le bras, jusqu'à 3 essais | caméras avant et de poignet |
 | DOCK | retourne au point d'arrêt devant la station | odométrie |
 | GO_TO_STATION | finit sur le marqueur de la station | caméra avant : marqueur ArUco |
 | DROP, BACK_OFF | dépose, puis recule | poses du bras |
-| RESUME | revient où il avait quitté sa rangée et se remet perpendiculaire au mur | odométrie, recalée |
+| RESUME | revient où il avait quitté son parcours, dans le bon sens | odométrie, recalée |
 | RETURN_HOME | pièce balayée : revient devant la poubelle | odométrie, puis marqueur |
 
-Tous les états sauf SWEEP forment le **mode détection** : le robot y tourne librement, comme
-avant. La console affiche le mode en cours.
+Dans tous les états sauf SWEEP, le robot s'occupe d'un objet : il y tourne librement. La
+console affiche ce qu'il fait : Vacuuming, Scanning ou Collecting.
 
-**Les rangées.** La base est holonome : elle peut glisser de côté sans tourner. En mode
-aspirateur le robot garde donc le cap du départ. Il glisse le long d'une rangée parallèle au
-mur, avance d'une rangée, repart dans l'autre sens. La caméra regarde toujours la bande de sol
-devant lui, celle qu'il n'a pas encore atteinte : il ne roule jamais sur du sol qu'il n'a pas
-vu. La première rangée est la ligne de départ.
+**Vacuum : les rangées.** La base est holonome : elle peut glisser de côté sans tourner. Le
+robot garde donc le cap du départ. Il glisse le long d'une rangée parallèle au mur, avance
+d'une rangée, repart dans l'autre sens. La caméra regarde toujours la bande de sol devant
+lui, celle qu'il n'a pas encore atteinte : il ne roule jamais sur du sol qu'il n'a pas vu.
+La première rangée est la ligne de départ. Il ne quitte sa rangée que pour un objet à moins
+de `pickup_range_m` (1 m) : ceux qui sont plus loin, il les voit, les note sur la carte, et
+les ramassera quand il y arrivera.
+
+**Scan : le regard qui balaie.** Le robot suit un couloir au milieu de chaque bande de
+`scan_swath_m` (1,6 m) de large : un seul couloir pour une zone de cette largeur. Avant de
+partir, puis tout le long, son cap oscille de 60° à gauche et à droite de sa route pendant
+que la base continue tout droit : la caméra couvre ainsi une bande large. Chaque coup d'œil
+à gauche est suivi du même à droite, donc ce que les roues glissent en tournant s'annule au
+lieu de s'ajouter. Il avance lentement (8 cm/s) pour avoir le temps de regarder des deux côtés.
 
 **La carte.** Le robot n'a pas de capteur de distance. Sa carte est faite de deux choses :
 l'odométrie (où il est) et l'empreinte au sol de la caméra avant (ce qu'il voit de là). Une
@@ -131,13 +145,14 @@ Sans robot, pour voir une mission simulée, avec des roues qui glissent :
 uv run python scripts/drive.py --sim
 ```
 
-Sans la page : `uv run makai-mission --sweep` (ajouter `--sim` sans robot).
+Sans la page : `uv run makai-mission --sweep` pour Vacuum, `--sweep --use scan` pour Scan
+(ajouter `--sim` sans robot).
 
 **La console** a quatre onglets :
 
 | Onglet | Contenu |
 |---|---|
-| Mission | la carte en direct, le mode (aspirateur ou détection), l'état, les compteurs, les deux caméras, le journal ; Start, Stop |
+| Mission | le choix de l'usage (Vacuum & collect, Scan & collect), le tracé de la zone, la carte en direct, ce que fait le robot, les compteurs, les deux caméras, le journal ; Start, Stop |
 | Drive | la page de conduite manuelle, inchangée (sticks, mesures, moteurs) ; seule à `/drive` |
 | Cameras | les deux caméras en grand |
 | Data | les essais d'entraînement et les figures de `docs/figures` |
@@ -161,7 +176,11 @@ Dans `configs/makai.yaml`, section `navigation.sweep` (valeurs d'une salle : `lo
 | `room.length_m`, `room.width_m` | 2,0 × 1,6 m | la zone à balayer, devant le robot ; remplacée par la zone tracée (`configs/zone.yaml`) quand il y en a une |
 | `room.margin_m` | 0,30 m | le centre du robot reste à cette distance des bords ; 0 sans mur (c'est le cas d'une zone tracée) |
 | `room.y_offset_m` | 0 | centre de la zone, à gauche du robot ; 0 = zone centrée sur lui |
-| `pattern` | `rows` | `rows` : mode aspirateur en rangées, sans tourner. `lanes` : l'ancien parcours, où le robot tourne pour suivre des couloirs qui s'enfoncent dans la pièce |
+| `pattern` | `rows` | le parcours de Vacuum. `rows` : en rangées, sans tourner. `lanes` : l'ancien parcours, où le robot tourne pour suivre des couloirs qui s'enfoncent dans la pièce |
+| `pickup_range_m` | 1,0 m | Vacuum : le robot ne quitte son parcours que pour un objet à moins de cette distance ; 0 = pour tout ce qu'il voit |
+| `scan_swath_m` | 1,6 m | Scan : largeur de sol regardée depuis un couloir ; plus petit = plus de couloirs |
+| `scan_speed` | 0,08 m/s | Scan : vitesse le long des couloirs |
+| `scan_pan_deg`, `scan_period_s` | 60°, 10 s | Scan : jusqu'où le cap oscille de chaque côté, et la durée d'un aller-retour du regard |
 | `lane_spacing_m` | 0,5 m | écart entre deux rangées ; plus petit = plus sûr de tout voir, plus long |
 | `sweep_speed` | 0,15 m/s | vitesse le long des rangées |
 | `recheck_after_m` | 0 | retour au marqueur après tant de mètres sans recalage ; 0 = seulement aux déposes |
@@ -196,12 +215,25 @@ Nos épisodes de saisie donnent ces paires gratuitement : première image de la 
 
 ## 6. Ce qui est vérifié
 
-En simulation, avec la machine à états et la navigation réelles (`make sim`, et les 19 tests
-de `tests/test_sweep.py`), en rangées :
+En simulation, avec la machine à états et la navigation réelles (`make sim`, et les 26 tests
+de `tests/test_sweep.py`).
+
+Les deux usages, dans les mêmes conditions :
+
+| Situation simulée | Vacuum & collect | Scan & collect |
+|---|---|---|
+| Pièce de 2,4 × 1,8 m, 4 objets, 2 stations | 4 sur 4 en 3 min 11 ; quitte son parcours pour des objets à 0,7 à 1,0 m | 4 sur 4 en 4 min 16 ; va chercher des objets à 1,1 à 1,5 m |
+| Même pièce, roues qui glissent de 4 %, cap qui dérive de 1,7° par mètre | 4 sur 4, retour à 4 cm de l'origine | 4 sur 4, retour à 1 cm |
+| Zone tracée de 2,0 × 1,6 m, vide | parcours de 7,9 m, zone parcourue en 59 s, sol vu à 92 % | parcours de 1,7 m, zone parcourue en 26 s, sol vu à 96 % |
+
+Scan parcourt une zone vide deux fois plus vite. Avec des objets il est plus lent : il
+avance moins vite et regarde de nouveau à gauche et à droite chaque fois qu'il revient.
+
+Vacuum, en rangées :
 
 | Situation simulée | Résultat |
 |---|---|
-| Pièce de 2,4 × 1,8 m, 4 objets, 2 stations | 4 déposés dans la bonne station, retour à 2 cm de l'origine, en 3 min 19 (3 min 47 avec l'ancien parcours en couloirs) |
+| Pièce de 2,4 × 1,8 m, 4 objets, 2 stations | 4 déposés dans la bonne station, retour à 2 cm de l'origine (3 min 47 avec l'ancien parcours en couloirs, 3 min 19 en rangées sans limite de distance) |
 | Même pièce, vide | aucune rotation pendant tout le balayage (l'ancien parcours en demandait 700°) ; le balayage seul voit 91 % du sol : il manque les 15 cm aux pieds du robot et les deux coins près du mur de départ |
 | Roues qui glissent de 4 %, cap qui dérive de 1,7° par mètre | 4 sur 4 ; chaque visite au marqueur corrige 4 à 46 cm ; retour à 3 cm de l'origine. Le robot se croit perpendiculaire au mur, mais il est de travers de 12° au pire, juste avant un recalage |
 | Même dérive, marqueurs jamais vus | 2 déposés sur 4, puis échec : le robot se croit devant la station alors qu'il en est trop loin pour déposer ; il finit à 50 cm de l'origine |
@@ -217,7 +249,8 @@ Sur des images réelles : la lecture de l'orientation du marqueur (6° près sur
 tournés de ±30°), et le choix du modèle selon l'objet.
 
 **Pas vérifié** : tout ce qui touche au vrai robot. En particulier la dérive réelle des
-roues, surtout quand la base glisse de côté (le mode aspirateur ne fait que ça), la portée
+roues, surtout quand la base glisse de côté (Vacuum ne fait que ça) ou avance en tournant
+(Scan), le flou des images pendant que le regard balaie, la portée
 réelle du détecteur pendant le balayage, la visibilité du marqueur à 35 cm,
 et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, peut être faux de
 10 à 20° ; la position, elle, est recalée.
@@ -232,6 +265,8 @@ et la dépose. Le cap final, après le dernier demi-tour fait à l'odométrie, p
 | Il dépose à côté | station mal placée dans `stations`, ou dérive sans marqueur | mesurer la position de la station ; `recheck_after_m: 4` |
 | Les rangées partent de travers | dérive du cap : le robot n'a que ses roues pour savoir s'il est perpendiculaire au mur, sauf devant le marqueur | `recheck_after_m: 3` ; réduire `sweep_speed` |
 | La base glisse mal de côté (à-coups, forte dérive) | roues ou sol peu adaptés au déplacement latéral | `pattern: lanes` : l'ancien parcours, où le robot avance et tourne |
+| En Scan, il passe à côté d'objets | regard trop rapide (images floues), ou objets trop loin pour le détecteur | augmenter `scan_period_s`, réduire `scan_speed` ; réduire `scan_swath_m` pour passer plus près |
+| En Vacuum, il part chercher un objet trop loin, ou trop tard | `pickup_range_m` | le réduire ou l'augmenter ; rester au-dessus de l'écart entre deux rangées |
 | Il heurte un bord | zone déclarée trop grande | retracer la zone ; ou réduire `room`, augmenter `margin_m` |
 | La zone tracée est fausse | odométrie qui a dérivé pendant le tracé | retracer plus lentement, sans tourner ; ou **Forget traced zone** et écrire les dimensions dans `configs/local.yaml` |
 | « Could not start » dans la console | modèle, calibration ou poids introuvable | le message dit lequel |

@@ -5,10 +5,10 @@ import math
 import pytest
 
 from makai.contracts import Category
-from makai.navigation.coverage import Room, path_length_m, row_waypoints, snake_waypoints
+from makai.navigation.coverage import Room, path_length_m, row_waypoints, scan_waypoints, snake_waypoints
 from makai.navigation.mapping import RoomMap
 from makai.orchestrator.mission import MissionConfig, State
-from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
 from makai.sim.world import SimDrop, SimObject, SimPerception, SimPick, SimRobot, SimWorld, sweep_world
 
 ROOM = Room(length_m=2.4, width_m=1.8)
@@ -16,7 +16,14 @@ TWO_STATIONS = {Category.TRASH: Station(-0.35, 0.0), Category.CLOTHING: Station(
 
 
 def build(
-    world: SimWorld, stations=None, pick_success=1.0, slip=0.0, yaw_drift=0.0, room=ROOM, pattern="rows"
+    world: SimWorld,
+    stations=None,
+    pick_success=1.0,
+    slip=0.0,
+    yaw_drift=0.0,
+    room=ROOM,
+    pattern="rows",
+    **more,
 ) -> SweepMission:
     cfg = MissionConfig()
     return SweepMission(
@@ -25,7 +32,7 @@ def build(
         SimPick(world, goal_xy=(cfg.approach.goal_x_m, cfg.approach.goal_y_m), success_rate=pick_success),
         SimDrop(world),
         cfg,
-        SweepConfig(room=room, stations=stations or TWO_STATIONS, pattern=pattern),
+        SweepConfig(room=room, stations=stations or TWO_STATIONS, pattern=pattern, **more),
     )
 
 
@@ -98,8 +105,8 @@ def test_comes_back_square_to_the_wall_after_each_object():
             squared.append(abs(math.asin(math.sin(mission.odometry.yaw))))
     assert mission.state is State.DONE and len(world.delivered) == 4
     assert len(squared) == 4 and max(squared) <= math.radians(3.0) + 1e-9
-    assert (State.SWEEP, "vacuum") in modes and (State.SWEEP, "detection") not in modes
-    assert any(mode == "detection" for state, mode in modes if state in (State.APPROACH, State.DOCK))
+    assert (State.SWEEP, "vacuum") in modes and (State.SWEEP, "collect") not in modes
+    assert any(mode == "collect" for state, mode in modes if state in (State.APPROACH, State.DOCK))
 
 
 def test_the_map_marks_what_the_camera_has_looked_at():
@@ -228,7 +235,7 @@ def test_the_snapshot_is_plain_data():
     assert shot["state"] in {s.value for s in State}
     assert shot["map"]["room"]["length_m"] == 2.4 and len(shot["map"]["covered"]) == len(mission.map.ys)
     assert shot["waypoints"][0] == [0.0, -0.6] and "trash" in shot["stations"]
-    assert shot["pattern"] == "rows" and shot["mode"] in ("vacuum", "detection")
+    assert shot["pattern"] == "rows" and shot["use"] == "vacuum" and shot["mode"] in ("vacuum", "collect")
 
 
 def test_checks_its_position_on_the_marker_during_a_long_sweep():
@@ -276,3 +283,84 @@ def test_a_zone_off_centre_without_walls_is_swept_to_its_edges():
     assert mission.run(max_duration_s=900) is State.DONE
     assert [o.label for o in world.objects] == ["can outside"] and len(world.delivered) == 2
     assert mission.map.coverage > 0.9  # without a margin only the 15 cm at the robot's feet stay unseen
+
+
+# ---------------------------------------------------------------- the two uses
+def test_the_vacuum_only_picks_up_what_lies_on_its_way():
+    world = SimWorld(
+        objects=[SimObject(1.4, 0.0, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )  # straight ahead of the start pose, in plain sight, but four rows away
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)})
+    left_from = None
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 600:
+        before = mission.state
+        mission.step()
+        if before is State.SWEEP and mission.state is State.APPROACH:
+            left_from = (mission.odometry.x, mission.odometry.y)
+    assert mission.state is State.DONE and len(world.delivered) == 1
+    assert left_from is not None and left_from[0] > 0.4  # it kept vacuuming until the can was on its way
+    assert math.dist(left_from, (1.4, 0.0)) <= 1.0 + 0.05
+    assert mission.map.objects[0].status == "delivered"  # and it was on the map from the start
+
+
+def test_without_a_pickup_range_the_vacuum_goes_for_anything_in_sight():
+    world = SimWorld(
+        objects=[SimObject(1.4, 0.0, Category.TRASH, "can")], stations={Category.TRASH: (-0.35, 0.0)}
+    )
+    mission = build(world, stations={Category.TRASH: Station(-0.35, 0.0)}, pickup_range_m=0.0)
+    mission.step()
+    assert mission.state is State.APPROACH  # at once, from the start pose
+
+
+def test_the_scan_route_runs_down_the_middle_of_wide_strips():
+    assert scan_waypoints(Room(length_m=2.0, width_m=1.6, margin_m=0.0), 1.6) == [(0.0, 0.0), (1.7, 0.0)]
+    two = scan_waypoints(ROOM, 1.6)  # 1.8 m wide: two strips of 0.9 m
+    assert two == [(0.0, -0.45), (2.1, -0.45), (2.1, 0.45), (0.0, 0.45)]
+    off = scan_waypoints(Room(length_m=2.0, width_m=1.2, margin_m=0.0, y_offset_m=0.3), 1.6)
+    assert off == [(0.0, 0.3), (1.7, 0.3)]  # an off-centre zone: down its own middle
+
+
+def test_for_use_picks_the_route_of_each_use():
+    cfg = SweepConfig(room=ROOM)
+    assert for_use(cfg, "vacuum").pattern == "rows" and for_use(cfg, "scan").pattern == "scan"
+    lanes = SweepConfig(room=ROOM, pattern="lanes")  # the earlier vacuum path, kept when asked for
+    assert for_use(lanes, "vacuum").pattern == "lanes" and for_use(lanes, "scan").pattern == "scan"
+    assert for_use(for_use(cfg, "scan"), "vacuum").pattern == "rows"
+    with pytest.raises(ValueError, match="use"):
+        for_use(cfg, "mop")
+
+
+def test_scanning_it_looks_left_and_right_and_fetches_what_it_spots():
+    world = sweep_world()
+    mission = build(world, pattern="scan", slip=0.04, yaw_drift=0.03)
+    swings, far = [], 0.0
+    while mission.state not in (State.DONE, State.FAILED) and mission.now < 1500:
+        before = mission.state
+        mission.step()
+        if before is State.SWEEP and mission.state is State.SWEEP:
+            swings.append(math.degrees(math.asin(math.sin(mission.odometry.yaw - mission._course))))
+        if before is State.SWEEP and mission.state is State.APPROACH:
+            far = max(far, mission._track.distance_m)
+    assert mission.state is State.DONE and world.objects == []
+    assert sorted((o.label, s.value) for o, s in world.delivered) == [
+        ("can", "trash"), ("can", "trash"), ("sock", "clothing"), ("sock", "clothing"),
+    ]  # fmt: skip
+    assert max(swings) > 30 and min(swings) < -30  # the heading swings to both sides of the way it drives
+    assert far > 1.0  # it goes for things beyond the vacuum's reach
+    shot = mission.snapshot()
+    assert shot["use"] == "scan" and shot["pattern"] == "scan" and len(shot["waypoints"]) == 4
+    assert math.hypot(world.x, world.y) < 0.06
+
+
+def test_scanning_an_empty_zone_the_swings_cancel_out():
+    world = SimWorld(stations={Category.TRASH: (-0.35, 0.0)}, station_facing={Category.TRASH: 0.0})
+    room = Room(length_m=2.0, width_m=1.6, margin_m=0.0)  # one lane down the middle
+    mission = build(
+        world, stations={Category.TRASH: Station(-0.35, 0.0)}, room=room, pattern="scan", slip=0.04
+    )
+    while mission.state is State.SWEEP and mission.now < 300:
+        mission.step()
+    assert mission.state is State.RETURN_HOME
+    assert world.x == pytest.approx(1.7 * 0.96, abs=0.06)  # at the end of the lane (the wheels slip 4 %)
+    assert abs(world.y) < 0.05  # and still on it: what slipped turning left was undone turning right
+    assert mission.map.coverage > 0.9

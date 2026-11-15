@@ -13,7 +13,7 @@ from makai.config import CONFIG_DIR
 from makai.contracts import BaseVelocity, Category
 from makai.navigation.coverage import Room, snake_waypoints
 from makai.orchestrator.mission import MissionConfig
-from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
 from makai.robot.autopilot import MissionRunner
 from makai.robot.drive_server import DriveServer
 from makai.robot.lekiwi import BaseGeometry
@@ -35,10 +35,10 @@ def make(build=None):
     robot, driver = SimRobot(world), ManualDriver(LIMITS)
     loop = DriveLoop(robot, driver, GEOMETRY)
 
-    def default(tap):
+    def default(tap, use):
         return SweepMission(
             tap, SimPerception(world, station_max_range_m=1.2, max_range_m=1.5), SimPick(world), SimDrop(world),
-            MissionConfig(), SWEEP,
+            MissionConfig(), for_use(SWEEP, use),
         )  # fmt: skip
 
     plan = {
@@ -93,7 +93,7 @@ def test_the_page_sees_what_the_mission_sees_and_commands():
     started(runner, loop)
     ticks(loop, 60)
     assert not loop.commanded.is_zero()  # the mission is driving, and the page knows it
-    assert loop.snapshot()["cmd"]["x"] != 0 or loop.snapshot()["cmd"]["theta_deg"] != 0
+    assert any(loop.snapshot()["cmd"][axis] != 0 for axis in ("x", "y", "theta_deg"))  # sliding along a row
 
 
 def test_emergency_stop_ends_the_mission_at_once():
@@ -152,6 +152,31 @@ def test_the_zone_cannot_be_traced_during_a_mission():
     runner.stop()
 
 
+def test_each_use_starts_its_own_mission():
+    _, loop, _, runner = make()
+    assert runner.snapshot()["use"] == "vacuum"  # the default
+    with pytest.raises(ValueError, match="vacuum, scan"):
+        runner.start("mop")
+    assert runner.status == "idle"
+    runner.start("scan")
+    deadline = time.monotonic() + 5
+    while runner.status == "loading" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    shot = runner.snapshot()
+    assert shot["status"] == "running" and shot["use"] == "scan"
+    assert shot["mission"]["use"] == "scan" and shot["mission"]["pattern"] == "scan"
+    runner.stop()
+    ticks(loop, 2)
+    started(runner, loop)  # no use given: the same as last time
+    assert runner.snapshot()["mission"]["use"] == "scan"
+    runner.stop()
+    ticks(loop, 2)
+    runner.start("vacuum")
+    while runner.status == "loading" and time.monotonic() < deadline + 5:
+        time.sleep(0.01)
+    assert runner.snapshot()["mission"]["pattern"] == "rows"
+
+
 def test_stop_then_start_again():
     _, loop, _, runner = make()
     started(runner, loop)
@@ -168,7 +193,7 @@ def test_stop_then_start_again():
 
 
 def test_a_mission_that_cannot_be_prepared_says_why():
-    def broken(tap):
+    def broken(tap, use):
         raise FileNotFoundError("no model at outputs/train/act_can_v1")
 
     _, loop, _, runner = make(broken)
@@ -237,6 +262,16 @@ def test_the_routes_start_and_stop_a_mission(console):
     call(console, "/api/mission/stop", {"client": "t"})
     time.sleep(0.3)
     assert call(console, "/api/mission")["status"] == "stopped"
+    with pytest.raises(urllib.error.HTTPError) as wrong:
+        call(console, "/api/mission/start", {"client": "t", "use": "mop"})
+    assert wrong.value.code == 409 and "vacuum, scan" in json.loads(wrong.value.read())["error"]
+    assert call(console, "/api/mission/start", {"client": "t", "use": "scan"})["use"] == "scan"
+    deadline = time.monotonic() + 5
+    while call(console, "/api/mission")["status"] == "loading" and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert call(console, "/api/mission")["mission"]["use"] == "scan"
+    call(console, "/api/mission/stop", {"client": "t"})
+    time.sleep(0.3)
     with pytest.raises(urllib.error.HTTPError) as unknown:
         call(console, "/api/mission/fly", {"client": "t"})
     assert unknown.value.code == 404

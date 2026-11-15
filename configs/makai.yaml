@@ -103,6 +103,14 @@ navigation:
     pattern: rows
     lane_spacing_m: 0.5     # distance between two rows (or two lanes); smaller = sees better, takes longer
     sweep_speed: 0.15       # m/s along the route
+    # The two uses, chosen in the console (or makai-mission --sweep --use vacuum|scan):
+    # vacuum = pass over the whole floor (pattern above), pick up only what lies on the way;
+    # scan   = patrol wide lanes while the heading swings left and right, go to whatever is spotted.
+    pickup_range_m: 1.0     # vacuum: leaves its route only for an object this close (0 = anything in sight)
+    scan_swath_m: 1.6       # scan: width of floor looked at from one lane (smaller = more lanes)
+    scan_speed: 0.08        # scan: m/s along the lanes
+    scan_pan_deg: 60.0      # scan: the heading swings this far to each side of the way it drives
+    scan_period_s: 10.0     # scan: one swing left and right
     recheck_after_m: 0.0    # drive back to the bin's marker after this many metres without one (0 = only when delivering)
     stations:               # where each station stands, and where the robot stops in front of it (its dock)
       trash: {x: -0.35, y: 0.0, dock_x: 0.0, dock_y: 0.0}   # the bin, just behind the start pose

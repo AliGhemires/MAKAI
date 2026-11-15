@@ -123,10 +123,11 @@ def sim_things(world) -> list:
 
 def plan_of(sweep, traced: bool = False) -> dict:
     """The room, the route of the sweep and the stations, for the map of the console."""
-    from makai.orchestrator.sweep import sweep_waypoints
+    from makai.orchestrator.sweep import USES, for_use, sweep_waypoints
 
     return {
         "pattern": sweep.pattern,
+        "routes": {use: sweep_waypoints(for_use(sweep, use)) for use in USES},  # one per use
         "traced": traced,  # the zone was traced by driving the robot around it
         "room": {
             "length_m": sweep.room.length_m,
@@ -149,7 +150,7 @@ def sim_runner(loop, driver, robot, cfg):
     from makai.app import mission_config
     from makai.contracts import Category
     from makai.navigation.coverage import Room
-    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission
+    from makai.orchestrator.sweep import Station, SweepConfig, SweepMission, for_use
     from makai.robot.autopilot import MissionRunner
     from makai.sim.world import SimDrop, SimPerception, SimPick, sweep_world
 
@@ -160,7 +161,7 @@ def sim_runner(loop, driver, robot, cfg):
     plan = {"sweep": whole, "traced": False}
     goal = (mission_cfg.approach.goal_x_m, mission_cfg.approach.goal_y_m)
 
-    def build(tap):
+    def build(tap, use):
         # A mission always starts in front of the bin, facing the room: put the simulated robot there.
         world.x, world.y, world.yaw = 0.0, 0.0, 0.0
         return SweepMission(
@@ -169,7 +170,7 @@ def sim_runner(loop, driver, robot, cfg):
             SimPick(world, goal_xy=goal, success_rate=0.85, duration_s=2.5, seed=runner.runs),
             SimDrop(world, duration_s=1.5),
             mission_cfg,
-            plan["sweep"],
+            for_use(plan["sweep"], use),
         )
 
     def reset() -> None:
@@ -205,9 +206,9 @@ def real_runner(loop, driver, cfg):
             save_zone(room)
         plan["sweep"] = sweep_config(cfg)
 
-    def build(tap):
+    def build(tap, use):
         from makai.manipulation.skills import build_drop_skill, build_pick_skill
-        from makai.orchestrator.sweep import SweepMission
+        from makai.orchestrator.sweep import SweepMission, for_use
         from makai.perception.pipeline import build_perception
 
         if not parts:
@@ -215,7 +216,12 @@ def real_runner(loop, driver, cfg):
                 perception=build_perception(cfg), pick=build_pick_skill(cfg), drop=build_drop_skill(cfg)
             )
         return SweepMission(
-            tap, parts["perception"], parts["pick"], parts["drop"], mission_config(cfg), plan["sweep"]
+            tap,
+            parts["perception"],
+            parts["pick"],
+            parts["drop"],
+            mission_config(cfg),
+            for_use(plan["sweep"], use),
         )
 
     return MissionRunner(
