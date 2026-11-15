@@ -14,12 +14,12 @@ de la démo et fournit les chiffres du pitch. Se pousse directement sur `main`.
 
 | Nom sur le Hub | Datasets | Pas | Entraîné sur | Durée | Remarques |
 |---|---|---|---|---|---|
-| `act_sock_v1` (pas sur le Hub : cluster DTU, `scripts/hpc/fetch_model.sh act_sock_v1`) | `pick_sock_v1` sans l'épisode 31 (59) | 100 000, un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 03:40 | 4 h 50 prévues | Référence : deux caméras, plans de 100 actions. Relecture d'épisodes à 5 000 pas : 5,3° d'écart au pilote. Réussite sur le robot : à mesurer |
-| `act_sock_v1_aug` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 03:43 | 1 h 55 | Luminosité, contraste, saturation, teinte aléatoires. Relecture à 5 000 pas : 6,2°. Erreur d'entraînement finale 0,050 |
-| `act_sock_v1_c50` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 03:49 | 1 h 50 | Plans de 50 actions. Relecture à 5 000 pas : 5,5°. Erreur d'entraînement finale 0,044 |
-| `act_sock_v1_wrist` (cluster DTU) | `pick_sock_v1_wrist` (59, caméra de poignet seule) | 40 000 (fini) | DTU, V100, 03:50 | 1 h 06 | Ne dépend pas du décor de la caméra avant. Relecture à 5 000 pas : 6,0°. Erreur d'entraînement finale 0,050 |
-| `act_can_v1` (cluster DTU, `scripts/hpc/fetch_model.sh act_can_v1`) | `pick_can_v1` (68) | 100 000, un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 05:55 | 4 h 50 prévues | Référence canette : deux caméras, plans de 100 actions. Réussite sur le robot : à mesurer |
-| `act_can_v1_aug` (cluster DTU) | idem | 40 000 | DTU, V100, 05:57 | 2 h prévues | Luminosité, contraste, saturation, teinte aléatoires |
+| `act_sock_v1` (pas sur le Hub : cluster DTU, `scripts/hpc/fetch_model.sh act_sock_v1`) | `pick_sock_v1` sans l'épisode 31 (59) | 100 000 (fini dim. 15 à 08:30), un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 03:40 | 4 h 50 prévues | Référence : deux caméras, plans de 100 actions. Relecture d'épisodes à 5 000 pas : 5,3° d'écart au pilote. Réussite sur le robot : à mesurer ; **modèle final : 1,5° d'écart au pilote en relecture**, erreur d'entraînement 0,033 |
+| `act_sock_v1_aug` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 03:43 | 1 h 55 | Luminosité, contraste, saturation, teinte aléatoires. Relecture à 5 000 pas : 6,2°. Erreur d'entraînement finale 0,050 ; modèle final : 2,4° en relecture |
+| `act_sock_v1_c50` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 03:49 | 1 h 50 | Plans de 50 actions. Relecture à 5 000 pas : 5,5°. Erreur d'entraînement finale 0,044 ; modèle final : 2,0° en relecture |
+| `act_sock_v1_wrist` (cluster DTU) | `pick_sock_v1_wrist` (59, caméra de poignet seule) | 40 000 (fini) | DTU, V100, 03:50 | 1 h 06 | Ne dépend pas du décor de la caméra avant. Relecture à 5 000 pas : 6,0°. Erreur d'entraînement finale 0,050 ; modèle final : 2,4° en relecture |
+| `act_can_v1` (cluster DTU, `scripts/hpc/fetch_model.sh act_can_v1`) | `pick_can_v1` (68) | 100 000 (fini dim. 15 à 10:45), un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 05:55 | 4 h 50 prévues | Référence canette : deux caméras, plans de 100 actions. Réussite sur le robot : à mesurer ; **modèle final : 1,3° d'écart au pilote en relecture**, erreur d'entraînement 0,032 ; le modèle de la chaussette, rejoué sur des canettes, fait 16,8° : chaque objet a besoin du sien |
+| `act_can_v1_aug` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 05:57 | 2 h prévues | Luminosité, contraste, saturation, teinte aléatoires ; modèle final : 2,5° en relecture, erreur d'entraînement 0,051 |
 
 ## Évaluations sur le robot
 

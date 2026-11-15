@@ -152,6 +152,22 @@ et on compare ses commandes à celles du pilote (`scripts/replay_check.py`). Mes
 | Caméra de poignet seule | 6,0° | 35,1° |
 | Éclairage aléatoire | 6,2° | 38,9° |
 
+En fin d'entraînement, mêmes épisodes, modèles finaux (dim. 15, 11 h 30) :
+
+| Modèle final | Écart moyen au pilote | Un bras qui resterait immobile |
+|---|---|---|
+| Chaussette, référence (100 000 pas) | **1,5°** | 35,7° |
+| Chaussette, horizon de 50 (40 000 pas) | 2,0° | 35,9° |
+| Chaussette, éclairage aléatoire (40 000 pas) | 2,4° | 35,5° |
+| Chaussette, caméra de poignet seule (40 000 pas) | 2,4° | 35,1° |
+| Canette, référence (100 000 pas) | **1,3°** | 37,6° |
+| Canette, éclairage aléatoire (40 000 pas) | 2,5° | 37,8° |
+| Le modèle de la chaussette, rejoué sur des canettes | 16,8° | 37,9° |
+
+L'écart est passé de 5,3° à 1,5° entre 5 000 et 100 000 pas. Un modèle ne vaut que pour son
+objet : celui de la chaussette, sur des canettes, fait dix fois plus d'écart. Tous tournent à
+29 ou 30 commandes par seconde sur le Mac.
+
 Contre-épreuves sur la référence :
 
 | Ce qu'on donne au modèle | Écart | Lecture |
@@ -160,6 +176,9 @@ Contre-épreuves sur la référence :
 | Des images noires | 33,3° | sans images, il ne bouge presque pas |
 | Les images d'un autre épisode | 15,4° | il va là où il voit la chaussette |
 | Les deux caméras inversées | 5,3° | aucun effet : ACT ne sait pas quelle caméra est laquelle |
+
+Mêmes contre-épreuves sur le modèle final de la canette (1,3° avec les vraies images) : 32,0°
+avec des images noires, 19,4° avec les images d'un autre épisode.
 
 Ce que cela prouve : toute la chaîne d'inférence (caméras, couleurs, ordre des articulations,
 normalisation) est celle de l'entraînement, et le modèle se sert des images. Ce que cela ne
