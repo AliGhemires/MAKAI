@@ -4,6 +4,11 @@ Pour une analyse logicielle et matérielle en profondeur. Écrit à partir des j
 d'Amine (Windows) et de la Pi, et des mesures faites au mètre par l'équipe le 15 nov. entre
 16 h et 17 h 40. Tous les fichiers cités sont dans `docs/logs/odometry/`.
 
+> **Mise à jour du 15 nov., 18 h : analyse en profondeur à la section 10.** Deux défauts du
+> logiciel trouvés et corrigés (odométrie comptée sur les codeurs de roues, saut de cap après
+> chaque saisie), `angular_scale` remis à 1.0, et un test automatique à la caméra
+> (`scripts/turn_check.py`) qui remplace le mètre. À faire sur le robot : la section 10.4.
+
 ## 1. En bref
 
 - **Le problème ouvert : les rotations ne sont pas reproductibles.** Quatre quarts de tour à
@@ -160,3 +165,133 @@ Code concerné : `src/makai/robot/manual.py` (boucle de la console, `DriveLoop`,
 Commits du 15 nov. sur ces sujets : `9a4666b` (flux), `1b27686` (bras home), `94d316f` (quarts de
 tour), `457f463` (bases), `5970d3e` (déplacements exacts), `c146340` (journal), `e164a5f` et
 `ebf6e80` (facteurs d'odométrie), `7e69025` (rampe en rotation).
+
+## 10. Analyse en profondeur (15 nov., 18 h)
+
+Faite sans le robot, à partir des journaux ci-dessus, du code, et de nos épisodes de saisie
+enregistrés (qui contiennent les vitesses de roues lues sur ce robot).
+
+### 10.1 Ce que disent les données
+
+**Les mesures au mètre se contredisent, quel que soit le côté.** Entre deux essais, seul le
+réglage `s` change : la console fait tourner les roues de 360/s degrés d'odométrie brute.
+L'angle réel devrait suivre, avec une pente de 1 environ (k réel).
+
+| Essais comparés | Odométrie brute en plus | Angle réel en plus, selon les côtés supposés | Pente |
+|---|---|---|---|
+| R2 − R1 | +17,2° | +12,6° ou +43,6° (ou leurs opposés) | 0,73 ou 2,5 |
+| R1 − R3 | +13,2° | +4,8° ou +26,2° (ou leurs opposés) | 0,36 ou 2,0 |
+
+Aucune combinaison ne donne une pente proche de 1. Donc soit le robot ne tourne pas pareil
+d'un essai à l'autre (au moins ±2 %, soit ±7° par tour), soit le mètre se trompe d'autant.
+**On ne peut tirer aucun facteur de ces essais** : `angular_scale` est remis à 1.0.
+
+**R4 ne mesure pas qu'un cap.** 32,5 cm de côté et 52,5 cm devant font 61,7 cm parcourus pour
+50 cm demandés. Le robot s'était donc déplacé d'au moins 10 cm pendant ses quatre quarts de
+tour, alors que l'odométrie le voyait immobile à 1 mm près (H5), ou la mesure est partie d'un
+autre point.
+
+**La vitesse que renvoient les servos est grossière.** Dans nos 44 526 images d'épisodes
+(`pick_sock_v1`, `pick_can_v1`), base immobile, les vitesses de roues ne prennent que les
+valeurs 0, ±50, ±100 et ±150 pas/s : le servo compte ses pas de codeur sur 20 ms. Et une roue
+immobile lit ±50 pas/s : c'est le cas d'au moins une roue dans **26 à 28 % des images**.
+
+| Roue | `pick_sock_v1` : valeurs non nulles | `pick_can_v1` |
+|---|---|---|
+| gauche | −50 : 1542, +50 : 1541, −100 : 4 | −50 : 1890, +50 : 1866, ±100 : 45, ±150 : 3 |
+| arrière | −50 : 863, +50 : 849 | −50 : 313, +50 : 326, ±100 : 3 |
+| droite | −50 : 724, +50 : 810, ±100 : 2 | −50 : 1086, +50 : 1142, ±100 : 24, +150 : 3 |
+
+**Cette vitesse grossière n'explique pourtant pas 10 à 32°.** Simulation de toute la chaîne
+de mesure (servo qui compte sur 20 ms, host à 30 Hz, laptop Windows dont l'horloge avance par
+pas de 15,6 ms, `GoTo` réel), roues parfaites, 30 tirages de quatre quarts de tour :
+
+| Odométrie | Écart réel − odométrie sur 360° |
+|---|---|
+| Vitesses lues (comme le 15 nov.) | 0,4° d'écart-type, 0,9° au pire |
+| Codeurs de roues par le host | 0,01° d'écart-type |
+
+Donc **H4 n'est pas la cause principale**, tant que le servo compte honnêtement ses pas (ce que
+montrent les valeurs au repos). La chaîne logicielle mesure bien ce que font les roues, à 1°
+près. Les 10 à 32° viennent d'ailleurs : du sol et de la mécanique (H1, H5), ou du mètre (H3).
+
+### 10.2 Deux défauts du logiciel trouvés en chemin
+
+| Défaut | Effet | Preuve |
+|---|---|---|
+| **Le bruit au repos est intégré.** Une roue immobile qui lit 50 pas/s fait tourner l'odométrie de 0,6°/s pendant cette image | dérive d'environ 1° par minute à l'arrêt ; visible dans le journal : 358,68° puis 359,11° 21 s plus tard, sans bouger (R1) | valeurs ci-dessus |
+| **La mission intégrait une lecture sur toute la durée d'une saisie.** Pendant une saisie (8 à 20 s) la mission ne lit pas la base ; au pas suivant, elle multipliait la vitesse du moment par toute cette durée | une roue à 50 pas/s × 15 s = **8,8° de cap** d'un coup, environ une saisie sur quatre ; pareil pour la position de l'objet suivi | `tests/test_sweep.py`, `test_a_noisy_speed_reading_after_a_pick_does_not_turn_the_map` : échoue avant le correctif |
+
+Le second n'a pas joué dans les essais R1 à R4 (faits avec la console, qui lit en continu). Il
+aurait faussé toute mission avec saisie.
+
+### 10.3 Ce qui est corrigé (branche `ws1/encoder-odometry`)
+
+- **L'odométrie compte les pas des codeurs de roues.** Le host (`scripts/lekiwi_host.py`)
+  ajoute à chaque observation la position des trois roues (0 à 4095 par tour) et son horloge ;
+  le laptop en déduit le déplacement exact (`EncoderMotion`, `src/makai/robot/lekiwi.py`). Plus
+  de bruit au repos, plus de dépendance à la cadence ni à l'horloge. Ce que voient les modèles
+  de saisie ne change pas. Avec un host pas encore mis à jour, la console retombe sur les
+  vitesses et le dit (onglet Drive, « odometry »).
+- **Un silence de plus d'une seconde n'est plus intégré** (`navigation/odometry.py`,
+  `orchestrator/mission.py`).
+- **`angular_scale: 1.0`** en attendant une mesure fiable ; `linear_scale: 0.978` est gardé
+  (deux mesures concordantes), à revérifier une fois sur les codeurs.
+- **Le journal du host est daté** : on saura quand le chien de garde a coupé la base (H7).
+- **Un enregistreur de vol** : la console écrit `data/odometry_trace_<heure>.csv` (commande,
+  vitesses lues, codeurs, pose) pendant chaque déplacement. `scripts/odometry_report.py` le
+  résume : vitesses contre codeurs, pas de chaque roue, régularité du flux.
+- **Un test de rotation à la caméra**, `scripts/turn_check.py` : il lit la direction d'un
+  marqueur, fait 360° à l'odométrie, relit. Signé, répété, sans mètre ni règle.
+
+### 10.4 À faire sur le robot : dix minutes qui tranchent
+
+```bash
+# 1. Mettre le host à jour sur la Pi, puis le relancer (docs/SETUP.md, section 4)
+scp scripts/lekiwi_host.py kiwi@10.42.0.1:~/makai_host.py
+
+# 2. Robot à 1,5 m du marqueur de la poubelle, face à lui, console fermée
+uv run python scripts/turn_check.py              # 3 tours à gauche, à 0,6 rad/s
+uv run python scripts/turn_check.py --speed 0.3  # plus lentement
+uv run python scripts/turn_check.py --right      # dans l'autre sens
+
+# 3. Après quelques déplacements depuis la console
+uv run python scripts/odometry_report.py
+```
+
+| Ce que dit `turn_check` | Conclusion | Quoi faire |
+|---|---|---|
+| Les rapports réel / odométrie concordent à 1 % près | une simple échelle (rayon de la base, H6) | écrire la valeur proposée dans `robot.odometry.angular_scale`, relancer : le rapport doit donner 1,00 |
+| Ils diffèrent, et moins à 0,3 rad/s | les roues glissent à l'accélération (H1) | tourner lentement : `GoToTuning.max_ang_rad_s` 0,3 |
+| Ils diffèrent quelle que soit la vitesse | glissement propre au sol ou à la mécanique (H1, H5) | contrôles matériels ci-dessous ; ne pas compter sur les rotations (ci-dessous) |
+| La distance au marqueur change entre avant et après | le robot se déplace en tournant (H5) | une roue porte moins que les autres : centrer le poids, vérifier les roues |
+
+| Ce que dit `odometry_report` | Conclusion |
+|---|---|
+| « speeds / enc » loin de 1 | les vitesses lues étaient fausses : corrigé par les codeurs |
+| « uneven » de plus de 2 % dans un tour sur place | un servo de roue ne suit pas sa commande : batterie, servo, roue freinée |
+
+**Contrôles matériels**, du plus probable au moins probable :
+
+1. **Une roue qui tourne sur son moyeu.** Ni les codeurs ni les vitesses ne le voient : le
+   servo tourne, la roue pas autant. Tracer un trait au feutre à cheval sur chaque roue et son
+   moyeu ; après dix tours, les deux moitiés doivent rester alignées. Resserrer les vis.
+2. **La répartition du poids.** Bras replié en `home` ; batterie centrée. Une roue arrière peu
+   chargée glisse, et le robot se déplace en tournant.
+3. **Les galets** : ils doivent tourner librement, sans grains du sol coincés.
+4. **La batterie** : au-dessus de 11,5 V pour les essais.
+5. **Le sol** : refaire `turn_check` sur le sol de la démo, et sur un sol lisse pour comparer.
+
+**Si les rotations restent imprécises**, la mission est déjà faite pour s'en passer en grande
+partie : en Vacuum & collect le robot ne tourne jamais pendant qu'il balaie, et il recale sa
+position et son cap sur le marqueur de la poubelle à chaque dépose. Il reste les deux
+demi-tours de chaque dépose. Tracer la zone sans tourner. Mettre `recheck_after_m: 3`.
+
+### 10.5 Ce qui reste incertain
+
+- Rien de la section 10.3 n'a tourné sur le robot. Le host modifié lit trois registres de plus
+  par boucle : vérifier qu'il tient toujours 30 observations par seconde.
+- La simulation suppose que le servo compte ses pas sur 20 ms sans biais. Les valeurs au
+  repos le suggèrent ; `odometry_report` le confirmera ou non sur un vrai tour.
+- La précision de `turn_check` dépend du modèle de la caméra avant et du fait que le robot
+  tourne sur place ; à 1,5 m, 5 cm de déplacement de côté valent 2°.

@@ -9,13 +9,23 @@ arm servos makes them ramp instead. The wheels keep 254 so the base still stops 
     python ~/makai_host.py --arm_acceleration=50 --robot.id=makai_kiwi ...
 
 --arm_acceleration: 1 (very soft, laggy) to 254 (LeRobot default, snappy). Unit: 100 steps/s².
+The host also adds two things to every observation, which LeRobot's own client ignores:
+- the wheel encoders, `base_<left|back|right>_wheel.enc`, in steps (0 to 4095 per turn). The
+  laptop counts wheel turns from them: exact, where the speeds LeRobot sends are only known to
+  50 steps/s and read non-zero one frame in four on a robot that stands still (measured 15 Nov,
+  docs/DEBUG_ODOMETRY.md);
+- `host.time`, the Pi's clock in seconds, to see how regular the stream really is.
+And it dates every line of its log, to tell when the watchdog stopped the base.
+
 --jpeg_quality: 30 to 100, default 90 (what LeRobot sends). Two 640x480 cameras at 30 Hz weigh
     about 60 Mbit/s at 90: when the Wi-Fi does not carry that, images arrive late. 75 sends
     about 40 % less. Choose it BEFORE recording and keep it for the demo: the policy must see
     the same pictures as in its training data.
 """
 
+import logging
 import sys
+import time
 
 import cv2
 from lerobot.robots.lekiwi import lekiwi, lekiwi_host
@@ -62,5 +72,29 @@ if JPEG_QUALITY != DEFAULT_JPEG_QUALITY:
     cv2.imencode = _imencode
     print(f"Camera images sent at JPEG quality {JPEG_QUALITY} (LeRobot default 90)")
 
+_stock_get_observation = lekiwi.LeKiwi.get_observation
+_encoder_failures = 0
+
+
+def _get_observation(self):
+    """LeRobot's observation, plus the wheel encoders (steps) and the Pi's clock."""
+    global _encoder_failures
+    observation = _stock_get_observation(self)
+    try:
+        steps = self.bus.sync_read("Present_Position", self.base_motors, normalize=False)
+        observation.update({f"{name}.enc": int(value) for name, value in steps.items()})
+        observation["host.time"] = time.monotonic()
+    except Exception as error:  # noqa: BLE001 - the stream must go on: the laptop falls back on the speeds
+        _encoder_failures += 1
+        if _encoder_failures in (1, 100, 10000):
+            logging.warning("Wheel encoders not read (%d times): %s", _encoder_failures, error)
+    return observation
+
+
+lekiwi.LeKiwi.get_observation = _get_observation
+
 if __name__ == "__main__":
+    # Dated lines: when did the watchdog stop the base? (LeRobot's host logs without a time.)
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
+    print("Wheel encoders and host clock added to every observation")
     lekiwi_host.main()

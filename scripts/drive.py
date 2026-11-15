@@ -42,6 +42,7 @@ from makai.robot.drive_server import DriveServer
 from makai.robot.lekiwi import LINKS, BaseGeometry, LeKiwiRobot
 from makai.robot.manual import DriveLimits, DriveLoop, ManualDriver
 from makai.robot.moves import TrialLog
+from makai.robot.trace import OdometryTrace
 
 TELEMETRY_HZ = 10.0
 SIM_HZ = 50.0  # the simulated robot gives no encoders: read its speed at the control rate
@@ -321,6 +322,7 @@ def main() -> None:
         trials=trials,
         truth=truth,
         cameras=cameras,
+        trace=OdometryTrace.in_folder(REPO_ROOT / "data") if link == "host" else None,
     )
     info = {
         "link": link,
@@ -380,6 +382,9 @@ def main() -> None:
             loop.stop()  # stops the base
         finally:
             robot.disconnect()
+        if loop.trace is not None and loop.trace.rows:
+            loop.trace.close()
+            log.info("base trace: %s (uv run python scripts/odometry_report.py)", loop.trace.path)
         log.info("robot stopped")
 
 
