@@ -13,7 +13,10 @@ de la démo et fournit les chiffres du pitch. Se pousse directement sur `main`.
 
 | Nom sur le Hub | Datasets | Pas | Entraîné sur | Durée | Remarques |
 |---|---|---|---|---|---|
-| | | | | | |
+| `act_sock_v1` (pas sur le Hub : cluster DTU, `scripts/hpc/fetch_model.sh act_sock_v1`) | `pick_sock_v1` sans l'épisode 31 (59) | 100 000, un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 03:40 | 4 h 50 prévues | Référence : deux caméras, plans de 100 actions. Relecture d'épisodes à 5 000 pas : 5,3° d'écart au pilote. Réussite sur le robot : à mesurer |
+| `act_sock_v1_aug` (cluster DTU) | idem | 40 000 | DTU, V100, 03:43 | 2 h prévues | Luminosité, contraste, saturation, teinte aléatoires. Relecture à 5 000 pas : 6,2° |
+| `act_sock_v1_c50` (cluster DTU) | idem | 40 000 | DTU, V100, 03:49 | 2 h prévues | Plans de 50 actions. Relecture à 5 000 pas : 5,5° |
+| `act_sock_v1_wrist` (cluster DTU) | `pick_sock_v1_wrist` (59, caméra de poignet seule) | 40 000 | DTU, V100, 03:50 | 1 h 10 prévues | Ne dépend pas du décor de la caméra avant. Relecture à 5 000 pas : 6,0° |
 
 ## Évaluations sur le robot
 

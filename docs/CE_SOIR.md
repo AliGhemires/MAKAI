@@ -291,7 +291,7 @@ laptop, lui transmettre le dossier `outputs/train/<run>/checkpoints/<pas>/pretra
 **Le budget est de 8 heures, pas un nombre de pas.** Mesuré le 15 nov. sur `pick_sock_v1` :
 5,7 pas par seconde sur une V100, soit 100 000 pas en 4 h 50 et 40 000 pas en 2 heures. La
 file `gpuv100` peut être pleine (près de 1 000 jobs en attente dimanche à 3 h 40) : le premier
-essai a attendu 5 minutes, le deuxième 13. Les jobs sont coupés à 8 heures ; un checkpoint est gardé tous les
+essai a attendu 5 minutes, les trois autres de 9 à 16. Les jobs sont coupés à 8 heures ; un checkpoint est gardé tous les
 5 000 pas, donc un entraînement coupé est simplement plus court.
 
 À savoir sur ce cluster :
