@@ -97,9 +97,10 @@ l'objet, souffler, ou régler la scène.
   première session d'un dataset garde sa pose dans le dossier du dataset (`makai_home.yaml`).
   Une session suivante qui part de plus de 10° ailleurs affiche HOME POSE DIFFERS : remettre le
   support en place et relancer.
-- **Pour la mission** : l'enregistreur affiche la ligne `home: {...}` à copier dans
-  `configs/arm_poses.yaml`, sans la pince. Le robot se met dans cette pose avant chaque
-  saisie, et le modèle doit partir de la pose de ses démonstrations.
+- **Pour la mission** : le robot se met dans cette pose avant chaque saisie, et le modèle
+  doit partir de la pose de ses démonstrations. Elle est dans `configs/arm_poses.yaml` depuis
+  le 15 nov. (tirée de `pick_sock_v1`), pince comprise : notre leader repose pince fermée,
+  donc revenir en `home` continue de serrer l'objet après une saisie.
 
 **Où regarder.** Une seule ligne dit quoi faire : la dernière ligne du terminal, qui se met
 à jour sur place. Le panneau « prediction.status » de la fenêtre Rerun affiche exactement les
