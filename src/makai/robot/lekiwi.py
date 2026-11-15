@@ -132,16 +132,22 @@ def to_lerobot_base(velocity: BaseVelocity) -> dict[str, float]:
 
 
 def from_lerobot_observation(
-    raw: Mapping[str, Any], camera_names: tuple[str, ...], stamp: float
+    raw: Mapping[str, Any],
+    camera_names: tuple[str, ...],
+    stamp: float,
+    speed_scale: tuple[float, float] = (1.0, 1.0),
 ) -> Observation:
+    """`speed_scale` (linear, angular): what the robot really does per measured unit of speed
+    (`robot.odometry`). It corrects the odometry only: `raw`, which the policies see, is unchanged."""
+    linear, angular = speed_scale
     return Observation(
         stamp=stamp,
         images={name: raw[name] for name in camera_names if raw.get(name) is not None},
         arm={key: float(raw[key]) for key in ARM_KEYS if key in raw},
         base_velocity=BaseVelocity(
-            x=float(raw.get("x.vel", 0.0)),
-            y=float(raw.get("y.vel", 0.0)),
-            theta=math.radians(float(raw.get("theta.vel", 0.0))),
+            x=linear * float(raw.get("x.vel", 0.0)),
+            y=linear * float(raw.get("y.vel", 0.0)),
+            theta=angular * math.radians(float(raw.get("theta.vel", 0.0))),
         ),
     )
 
@@ -341,10 +347,16 @@ class WiredBase:
 class LeKiwiRobot:
     """Implements `makai.contracts.Robot` on the real LeKiwi."""
 
-    def __init__(self, client, camera_names: tuple[str, ...] = ("front", "wrist")):
+    def __init__(
+        self,
+        client,
+        camera_names: tuple[str, ...] = ("front", "wrist"),
+        speed_scale: tuple[float, float] = (1.0, 1.0),
+    ):
         self.client = client  # LeKiwiClient (or WiredBase), for policies that need it
         self.camera_names = camera_names
-        self.raw_observation: dict[str, Any] = {}  # last LeRobot-format observation
+        self.speed_scale = speed_scale  # odometry correction through the host (`robot.odometry`)
+        self.raw_observation: dict[str, Any] = {}  # last LeRobot-format observation, uncorrected
 
     @classmethod
     def from_config(cls, cfg: dict, link: str | None = None) -> LeKiwiRobot:
@@ -361,8 +373,10 @@ class LeKiwiRobot:
             base = WiredBase(bus, geometry, robot["base"].get("watchdog_s", 0.5), fallback_bus=fallback)
             base.calibration_file = calibration_file if arm_calibration else None
             return cls(base, camera_names=())
-        if link == "host":
-            return cls(make_client(cfg), tuple(robot["cameras"]))
+        if link == "host":  # the speeds come from LeRobot's built-in wheel sizes: corrected here
+            odometry = robot.get("odometry") or {}
+            scale = (float(odometry.get("linear_scale", 1.0)), float(odometry.get("angular_scale", 1.0)))
+            return cls(make_client(cfg), tuple(robot["cameras"]), speed_scale=scale)
         raise ValueError(f"robot.link must be one of {LINKS}, got {link!r}")
 
     def connect(self) -> None:
@@ -374,7 +388,9 @@ class LeKiwiRobot:
 
     def get_observation(self) -> Observation:
         self.raw_observation = self.client.get_observation()
-        return from_lerobot_observation(self.raw_observation, self.camera_names, time.monotonic())
+        return from_lerobot_observation(
+            self.raw_observation, self.camera_names, time.monotonic(), self.speed_scale
+        )
 
     def drive(self, velocity: BaseVelocity) -> None:
         self.client.send_action(to_lerobot_base(velocity))
