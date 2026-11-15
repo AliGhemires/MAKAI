@@ -1,8 +1,11 @@
-# Collecte dans la salle de pitch, plusieurs directions
+# Collecte sur plusieurs fonds (salle de pitch ou salle actuelle)
 
 But : apprendre aux modèles que le décor change. On ajoute aux datasets d'hier des
-épisodes enregistrés dans la salle de pitch, robot tourné vers chacun des quatre côtés,
-puisqu'on ne sait pas dans quelle direction il sera pendant la démo.
+épisodes enregistrés robot tourné vers chacun des quatre côtés, puisqu'on ne sait ni dans
+quelle salle ni dans quelle direction sera la démo. **Dans la salle de pitch si on y a
+accès, sinon dans la salle actuelle** : ce qui compte, c'est que le fond change d'une
+session à l'autre. Ajouter des fonds ne fait pas overfitter, c'est le remède : avec un
+seul décor, le modèle peut s'appuyer sur lui ; avec plusieurs, il apprend à l'ignorer.
 
 Les datasets d'hier ne sont pas modifiés : chaque objet a une **v2 = v1 + salle de pitch**,
 créée par une copie à la première session.
@@ -33,6 +36,12 @@ Puis host sur la Pi et réseau comme hier : `docs/ROBOT_NETWORK.md`, `docs/SETUP
 Placer le robot à l'endroit probable de la démo. Nommer les quatre directions d'après ce
 que voit la caméra avant, par exemple : `public`, `ecran`, `porte`, `fenetre`. On écrit ce
 nom dans `--note` : il reste attaché à chaque épisode (`makai_episodes.csv` dans le zip).
+
+Dans la salle actuelle, rendre les quatre fonds aussi différents que possible : déplacer
+chaises, sacs, personnes debout derrière le robot entre deux sessions ; une session lumières
+allumées, une autre éteintes ou stores ouverts. Le noter dans `--note`
+(ex. `"salle porte lumiere eteinte"`). Limite : le sol ne change pas ; si celui de la démo
+est différent, quelques sessions sur un tapis ou une nappe proche de ce sol aident.
 
 **On tourne le robot, pas l'objet.** Les caméras sont sur le robot : en le faisant pivoter,
 c'est le fond qui change, la zone de saisie reste la même. Pivoter le robot à la main entre
