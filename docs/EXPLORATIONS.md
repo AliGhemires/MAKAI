@@ -96,6 +96,11 @@ Images : `figures/sock_v1_first_images_front.jpg`, `figures/sock_v1_first_images
 des 60 épisodes d'origine : l'épisode 31 est le seul où la pince est vide).
 Source : `docs/REGISTRY.md`.
 
+**Le second dataset, `pick_can_v1`** : 68 épisodes de canette écrasée (12,3 minutes, de 8,1 à
+14,6 s), tous réussis après retrait de deux saisies ratées par le pilote. Poses de départ et
+de fin à moins de 13° de `home`, base immobile. Image : `figures/can_v1_last_images_wrist.jpg`
+(dernière image du poignet des 68 épisodes).
+
 ## 6. Quatre entraînements au lieu d'un
 
 Même modèle (ACT), même dataset, une seule différence par essai, pour ne pas tout miser sur
@@ -110,8 +115,17 @@ un réglage.
 
 ![Courbes d'apprentissage des quatre essais](figures/training_curves.png)
 
-Les quatre apprennent au même rythme : l'erreur est divisée par cinq en 10 000 pas.
-Les chiffres de la figure sont dans `docs/figures/training_curves.csv`.
+Les quatre apprennent au même rythme : l'erreur est divisée par cinq en 10 000 pas, par dix en
+40 000. Les chiffres de la figure sont dans `docs/figures/training_curves.csv`.
+
+La canette a ses deux essais (référence et éclairage aléatoire), lancés à 5 h 55 :
+`figures/training_curves_can.png`.
+
+**Une piste écartée : un seul modèle pour les deux objets.** L'outil de LeRobot fusionne les
+deux datasets en 5 secondes (127 épisodes), mais le résultat ne se charge pas : ses vidéos ne
+correspondent plus à ses épisodes (image demandée à 396 s, image trouvée à 1 879 s). Repéré en
+chargeant des images avant tout envoi ; le dataset fusionné n'a pas été entraîné. Tant qu'il
+n'y a pas de modèle commun, la mission doit choisir le modèle selon l'objet détecté.
 
 ## 7. Le modèle fait-il ce que faisait le pilote ?
 
