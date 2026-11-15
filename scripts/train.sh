@@ -15,11 +15,15 @@
 # AUGMENT=1: each training image gets a random brightness (x0.5 to x1.5), contrast, saturation
 #   and hue, so the policy stops relying on the exact lighting. Colour only: LeRobot's default
 #   set also shifts and rotates the image, which would blur where the object is.
+# FROM=<run>[/<step>] (or a pretrained_model folder): start from the weights of an earlier run
+#   instead of from scratch, e.g. after adding episodes to its dataset:
+#     FROM=act_sock_v1 STEPS=30000 scripts/train.sh pick_sock_v2 act_sock_v2_ft ...
+#   Without a step, its last checkpoint. The normalisation is recomputed on the new dataset.
 # See docs/TRAINING.md and docs/CE_SOIR.md.
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
-  sed -n '2,16p' "$0"; exit 1
+  sed -n '2,20p' "$0"; exit 1
 fi
 DATASET="$1"; RUN="$2"; shift 2
 cd "$(dirname "$0")/.."
@@ -30,9 +34,25 @@ if [ "$NS" = "CHANGE_ME" ] || [ "$NS" = "local" ]; then
   echo "No Hub namespace set: training from the local dataset, the model stays in ${OUTPUT_ROOT:-outputs/train}/${RUN}."
 fi
 
+POLICY=(--policy.type=act)
+if [ -n "${FROM:-}" ]; then
+  START="$FROM"
+  if [ ! -d "$START" ]; then
+    CHECKPOINTS="${OUTPUT_ROOT:-outputs/train}/${FROM%%/*}/checkpoints"
+    STEP="$(ls "$CHECKPOINTS" 2>/dev/null | grep -E '^[0-9]+$' | sort | tail -1)"   # the last one
+    if [[ "$FROM" == */* ]]; then STEP="${FROM#*/}"; fi
+    START="$CHECKPOINTS/$STEP/pretrained_model"
+  fi
+  if [ ! -f "$START/config.json" ]; then
+    echo "No model to start from in $START" >&2; exit 1
+  fi
+  POLICY=(--policy.path="$START")
+  echo "Starting from the weights of $START"
+fi
+
 ARGS=(
   --dataset.repo_id="${NS}/makai_${DATASET}"
-  --policy.type=act
+  "${POLICY[@]}"
   --output_dir="${OUTPUT_ROOT:-outputs/train}/${RUN}"
   --job_name="${RUN}"
   --steps="${STEPS:-30000}"

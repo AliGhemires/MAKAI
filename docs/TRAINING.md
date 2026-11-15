@@ -43,6 +43,8 @@ Chaque essai répond à une question. Si les GPU manquent, on s'arrête où on p
 | 4 | Canette, images augmentées | `STEPS=40000 AUGMENT=1` | Idem |
 | 5 | Chaussette, horizon court | `STEPS=40000`, plus `--policy.chunk_size=50 --policy.n_action_steps=50` | Un modèle qui regarde plus souvent les caméras est-il plus précis ? |
 | 6 | Chaussette, caméra de poignet seule | `scripts/wrist_only.sh pick_sock_v1`, puis `STEPS=40000` sur `pick_sock_v1_wrist` | La démo est dans une autre salle : un modèle qui ne voit pas le décor tient-il mieux ? |
+| 7 | Canette, caméra de poignet seule (dim. 15 au soir) | `scripts/wrist_only.sh pick_can_v1`, puis `STEPS=40000` sur `pick_can_v1_wrist` | Idem pour le second objet |
+| 8 | v2 : v1 plus des épisodes sur d'autres fonds, en repartant du modèle v1 | `STEPS=30000 FROM=act_sock_v1` sur `pick_sock_v2` (`docs/COLLECTE_PITCH.md`) | Montrer d'autres décors suffit-il à tenir dans une salle jamais vue ? |
 
 Sur des Mac seulement : les essais 1 et 2, un par Mac, `STEPS=15000 SAVE_FREQ=2500` (8 heures
 à 1,9 s par pas). Mesuré le 14 nov. : un batch de 16 ne va pas plus vite qu'un batch de 8, et

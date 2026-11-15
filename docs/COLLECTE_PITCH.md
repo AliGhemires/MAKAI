@@ -37,11 +37,26 @@ Placer le robot à l'endroit probable de la démo. Nommer les quatre directions 
 que voit la caméra avant, par exemple : `public`, `ecran`, `porte`, `fenetre`. On écrit ce
 nom dans `--note` : il reste attaché à chaque épisode (`makai_episodes.csv` dans le zip).
 
-Dans la salle actuelle, rendre les quatre fonds aussi différents que possible : déplacer
-chaises, sacs, personnes debout derrière le robot entre deux sessions ; une session lumières
-allumées, une autre éteintes ou stores ouverts. Le noter dans `--note`
-(ex. `"salle porte lumiere eteinte"`). Limite : le sol ne change pas ; si celui de la démo
-est différent, quelques sessions sur un tapis ou une nappe proche de ce sol aident.
+### Sans accès à la salle de pitch (dim. 15 au soir)
+
+Les 127 démonstrations de la v1 montrent toutes le même mur blanc et la même moquette. Mesuré
+le 15 au soir sur les modèles v1 (images enregistrées, décor ou sol repeint, écart entre les
+deux gestes prévus ; repère : 1,3 à 1,5° d'écart au pilote) : un autre décor déplace le geste
+de 2,5 à 3,9°, un autre sol jusqu'à 6° pour la canette, et l'entraînement « couleurs
+aléatoires » ne protège pas. Quatre fonds ne rendent pas le modèle indifférent à tout décor :
+ils réduisent le risque. Montrer ce qui changera demain, **jamais le mur blanc nu** :
+
+| Session | Devant le robot, de 1 à 3 m | Sol sous l'objet | `--note` |
+|---|---|---|---|
+| 1 | chaises, pieds de chaises et de table | sol actuel | `"salle chaises"` |
+| 2 | tissu sombre tendu (rideau, drap, vestes) | sol actuel | `"salle rideau"` |
+| 3 | salle ouverte : loin, sacs, personnes debout | revêtement 1 | `"salle loin sol 1"` |
+| 4 | chaises et tissu, une partie des lumières éteinte | revêtement 2 | `"salle chaises sol 2"` |
+
+Revêtement : carton, nappe, drap ou tapis d'au moins 1 m × 1 m, à plat, scotché aux coins,
+sous l'objet et devant le robot (la caméra de poignet ne doit voir que lui). Deux couleurs
+différentes ; si on connaît le sol de la salle de pitch, en prendre un qui lui ressemble.
+12 épisodes par session et par objet ; 6 au minimum si le temps manque.
 
 **On tourne le robot, pas l'objet.** Les caméras sont sur le robot : en le faisant pivoter,
 c'est le fond qui change, la zone de saisie reste la même. Pivoter le robot à la main entre
@@ -99,5 +114,17 @@ de sauvegarde : supprimer `makai_pick_can_v2` et relancer avec `--drop "[8, 68]"
    reconstruits à chaque session : n'envoyer que ceux de la dernière.
 2. Les envoyer à qui lance l'entraînement (TransferNow, clé USB).
 3. Noter les deux datasets dans `docs/REGISTRY.md` : épisodes, directions, heure, lumière.
-4. Entraîner sur `pick_sock_v2` et `pick_can_v2` (anciens et nouveaux épisodes ensemble),
-   puis tester avec `scripts/try_pick.py` dans chacune des quatre directions.
+4. Entraîner sur `pick_sock_v2` et `pick_can_v2` (anciens et nouveaux épisodes ensemble).
+   Par objet, deux essais lancés en même temps sur le cluster (`docs/CE_SOIR.md`) :
+
+   ```bash
+   scripts/hpc/push_dataset.sh pick_sock_v2            # depuis le laptop qui a le dataset
+   # puis sur le cluster, dans ~/MAKAI :
+   scripts/hpc/submit.sh pick_sock_v2 act_sock_v2_ft STEPS=30000 FROM=act_sock_v1   # repart du modèle v1, ~1 h 30
+   scripts/hpc/submit.sh pick_sock_v2 act_sock_v2 STEPS=100000                      # depuis zéro, ~4 h 50
+   ```
+
+   `FROM=` reprend les poids d'un essai précédent (`scripts/train.sh`). Pareil pour la canette.
+5. Juger : `scripts/replay_check.py` (le modèle reste près du pilote), puis sur le robot
+   `scripts/try_pick.py`, 10 essais par objet, devant un fond jamais vu. Les modèles v1
+   restent ceux de la démo tant qu'un v2 ne fait pas mieux.
