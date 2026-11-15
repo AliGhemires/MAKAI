@@ -134,6 +134,32 @@ def test_each_kind_of_object_gets_its_own_pick_skill():
     assert used == ["can model", "sock model", "default"]
 
 
+def test_the_grasp_is_checked_once_the_hand_is_closed_in_the_carry_pose():
+    """After a miss the policy may come home with its hand half open (20): that is not holding.
+    Once the carry pose closes the hand, an empty one closes (2.4), a can stops it (6.0)."""
+    from types import SimpleNamespace
+
+    from makai.manipulation.skills import GRIPPER, PolicyPick
+
+    class Hand:
+        def __init__(self, holding: bool):
+            self.holding, self.gripper = holding, 20.0
+
+        def get_observation(self):
+            return SimpleNamespace(arm={GRIPPER: self.gripper})
+
+    class CarryPose:
+        def play(self, robot):
+            robot.gripper = 6.0 if robot.holding else 2.4
+
+    skill = PolicyPick.__new__(PolicyPick)  # the grasp check only: no model to load
+    skill.gripper_open_above, skill.gripper_at_stop, skill.after = 4.3, 20.0, CarryPose()
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is False and skill.last_gripper == 2.4
+    assert skill._holding(Hand(holding=True), settle_s=0.0) is True and skill.last_gripper == 6.0
+    skill.after = None  # no carry pose: the reading when the policy stopped is all there is
+    assert skill._holding(Hand(holding=False), settle_s=0.0) is True
+
+
 def test_a_pick_is_over_when_the_arm_is_back_home():
     from makai.manipulation.skills import BackHome
 

@@ -66,7 +66,12 @@ class MissionConfig:
     approach_timeout_s: float = 40.0
     track_gate_m: float = 0.30  # max jump between two sightings of the same object
     station_exclusion_m: float = 0.30  # ignore objects this close to a station (already delivered)
-    max_pick_attempts: int = 3  # per object
+    max_pick_attempts: int = 3  # per object, from each side tried
+    # Then go round the object and try from another side: so many degrees round it from where the
+    # first approach came (counter-clockwise seen from above), one after the other. () = give up.
+    orbit_deg: tuple[float, ...] = (40.0, -40.0)
+    orbit_radius_m: float = 0.50  # back away to this distance first: the camera sees the object again
+    orbit_speed: float = 0.3  # rad/s, the base's turn while it goes round
     max_failed_objects: int = 3  # consecutive objects abandoned before giving up
     max_drop_attempts: int = 2
     back_off_speed: float = 0.10  # m/s
@@ -138,6 +143,7 @@ class Mission:
         self._pick_attempts = 0
         self._drop_attempts = 0
         self._failed_objects = 0
+        self._reset_orbit()
 
     # ------------------------------------------------------------------ loop
 
@@ -198,9 +204,16 @@ class Mission:
                 # A guess from far away must not overwrite what we already know it is.
                 match = replace(match, category=self._track.category, confidence=self._track.confidence)
             self._track, self._last_seen = match, now
-        elif not self._in_blind_zone(now) and now - self._last_seen > self.cfg.lost_timeout_s:
+        elif (
+            not self._orbit_left  # going round it: followed on odometry, it shows again at the end
+            and not self._in_blind_zone(now)
+            and now - self._last_seen > self.cfg.lost_timeout_s
+        ):
             self.robot.stop()
             self._go(State.SEARCH, now, "lost the object")
+            return
+        if self._orbit_left:
+            self.robot.drive(self._orbit_step(now))
             return
         # Seen, too close to be seen, or out of sight for a moment (the edge of the image, a
         # blurred frame): keep going to where the odometry says it is. Standing still, as before,
@@ -227,6 +240,16 @@ class Mission:
             self._object_ctrl.reset()
             self._last_seen = now
             self._go(State.APPROACH, now, f"pick failed, retry {self._pick_attempts}")
+            return
+        if self._orbits < len(self.cfg.orbit_deg):
+            side = float(self.cfg.orbit_deg[self._orbits])
+            self._orbit_left = math.radians(side) - self._orbit_offset
+            self._orbit_offset = math.radians(side)
+            self._orbits += 1
+            self._orbit_circling, self._pick_attempts = False, 0
+            self._object_ctrl.reset()
+            self._last_seen = now
+            self._go(State.APPROACH, now, f"{self.cfg.max_pick_attempts} grasps failed: trying from {side:+.0f} deg round it")  # fmt: skip
             return
         self.stats.abandoned += 1
         self._failed_objects += 1
@@ -328,9 +351,46 @@ class Mission:
         if target is None:
             return False
         self._track, self._last_seen, self._pick_attempts = target, now, 0
+        self._reset_orbit()
         self._object_ctrl.reset()
         self._go(State.APPROACH, now, f"found {target.label} at {target.distance_m:.2f} m")
         return True
+
+    def _reset_orbit(self) -> None:
+        self._orbits = 0  # sides tried after the first one, for the current object
+        self._orbit_offset = 0.0  # how far round the object the current side is (rad)
+        self._orbit_left = 0.0  # still to go round it (rad, the base's turn); 0 = not going round
+        self._orbit_circling = False  # backed away already: going round
+        self._orbit_yaw = 0.0
+
+    def _orbit_step(self, now: float) -> BaseVelocity:
+        """One tick of going round the object, keeping it straight ahead: back away until it is
+        `orbit_radius_m` off, then slide sideways while turning. The base turns by as much as it
+        goes round, so going round by an angle is turning by it. Then the approach takes over."""
+        track, cfg = self._track, self.cfg
+        assert track is not None
+        distance = math.hypot(track.x_m, track.y_m)
+        too_long = now - self._entered > cfg.approach_timeout_s / 2
+        if not self._orbit_circling:
+            if distance < cfg.orbit_radius_m and not too_long:
+                return BaseVelocity(x=-cfg.back_off_speed)
+            self._orbit_circling, self._orbit_yaw = True, self.odometry.yaw
+        left = self._orbit_left - math.remainder(self.odometry.yaw - self._orbit_yaw, math.tau)
+        self._orbit_yaw = self.odometry.yaw
+        if left * self._orbit_left <= 0.0 or abs(left) < math.radians(1.0) or too_long:
+            self._orbit_left, self._orbit_circling = 0.0, False
+            self._object_ctrl.reset()
+            self._last_seen = now
+            return BaseVelocity()
+        self._orbit_left = left
+        # Turning at `turn` with the object at (x, y), it stays put if the base moves by
+        # (turn * y, -turn * x). Plus: keep it centred, and at the radius.
+        turn = math.copysign(cfg.orbit_speed, left) + 1.0 * math.atan2(track.y_m, track.x_m)
+        return BaseVelocity(
+            x=turn * track.y_m + 0.8 * (distance - cfg.orbit_radius_m),
+            y=-turn * track.x_m,
+            theta=turn,
+        )
 
     def _match_track(self, scene: Scene) -> Target | None:
         """The sighting that is most likely the object we were already approaching."""

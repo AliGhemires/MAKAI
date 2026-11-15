@@ -327,7 +327,8 @@ Vacuum, en rangées, poubelle derrière :
 | Ancien parcours (`pattern: lanes`) | toujours testé : 4 sur 4 |
 | Zone tracée, sans marge, décalée de 30 cm vers la gauche | 2 objets sur 2 déposés, l'objet posé hors de la zone est ignoré, sol vu à plus de 90 % |
 | Zone tracée dans la console simulée en conduisant le robot | la mission suivante balaie cette zone |
-| Objet impossible à saisir | abandonné après 3 essais, jamais réapproché |
+| Objet impossible à saisir | 3 essais, puis le robot recule à 50 cm, tourne de 40° autour de l'objet en le gardant en face et réessaie 3 fois, puis de -40° ; abandonné ensuite, jamais réapproché (`navigation.mission.orbit_deg`) |
+| Objet qui ne se laisse prendre que d'un autre côté | 3 essais manqués, le 4ᵉ vient de 40° autour de l'objet (à 8° près) et réussit |
 | Objet hors de la zone | ignoré |
 
 Sur des images réelles : la lecture de l'orientation du marqueur (6° près sur des marqueurs

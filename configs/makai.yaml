@@ -101,7 +101,8 @@ perception:
 
 navigation:
   approach:                 # canonical pre-grasp pose: where the object must be, in the base frame
-    goal_x_m: 0.28          # median start position of the object in pick_sock_v1 / pick_can_v1 (28.3 / 27.3 cm),
+    goal_x_m: 0.265         # median start position of the object in pick_sock_v1 / pick_can_v1 (28.3 / 27.3 cm),
+                            # 1.5 cm closer after the first picks in a mission (15 Nov evening: the can was a little far)
     goal_y_m: -0.01         # measured with this detector and camera model (15 Nov): their biases cancel out
     tol_x_m: 0.01
     tol_y_m: 0.01
@@ -110,6 +111,9 @@ navigation:
   mission:
     station_standoff_m: 0.35
     search_speed: 0.6
+    max_pick_attempts: 3    # grasps from one side; then it backs away to orbit_radius_m, goes round the
+    orbit_deg: [40, -40]    # object to each of these angles in turn (deg, + = counter-clockwise from above)
+    orbit_radius_m: 0.50    # and tries again from there; [] = give up after the first side
   sweep:                    # the mission that sweeps the room like a vacuum (makai-mission --sweep)
     # The map: its origin is where the robot starts, IN FRONT OF THE BIN, BACK TO IT, FACING THE ROOM.
     # x goes into the room, y to the left. The room's walls are x = 0 .. length, y = +-width/2.
