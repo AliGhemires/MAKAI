@@ -442,6 +442,17 @@ moyen sur les cinq articulations du bras, en degrés (rester immobile : environ 
   bois), le plan des v2 bouge autant que celui des v1 (1,4 à 3,3° pour la chaussette, 2,9 à
   6,0° pour la canette). Deux sols appris ne font pas un modèle indifférent au sol.
 
+- **Des gens derrière, sur l'ancien sol** (jamais enregistré ; signalé sur le robot le 16 au
+  matin : la canette saisit moins bien et brusquement, la chaussette bien). En collant dans les
+  images de l'ancien sol le vrai décor « gens et tables », le plan des trois modèles canette
+  bouge de 3 à 4° en moyenne et de 9 à 13° au pire regard ; l'écart au pilote double (1,5 à 1,9°
+  → 3,3 à 3,9°). Aucun des trois n'y échappe ; le modèle depuis zéro bouge le moins (2,9°,
+  contre 3,8° pour l'affiné et 3,9° pour le v1). Les démonstrations nouvelles ne sont pas plus
+  rapides que les anciennes (17 °/s en moyenne), et les plans des trois modèles vont à la même
+  vitesse : la brusquerie ne vient pas de là. Un modèle hors de son sol, lui, saute : la
+  première commande du v1 sur le nouveau sol est à 21° de la pose du bras (56° au pire), contre
+  10° pour le pilote.
+
 Coût d'un nouveau sol : 36 démonstrations par objet (40 minutes de pilotage) et 1 h 25 de GPU.
 
 Images : `figures/pick_v2_by_scenery.png`, `figures/training_curves_sock_v2.png`,
