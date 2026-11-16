@@ -453,6 +453,17 @@ moyen sur les cinq articulations du bras, en degrés (rester immobile : environ 
   première commande du v1 sur le nouveau sol est à 21° de la pose du bras (56° au pire), contre
   10° pour le pilote.
 
+- **Ce qui diffère vraiment dans les nouvelles démonstrations canette** (16 nov., 11 h, après
+  des essais robot où les modèles canette v2 « piquent sur la canette comme sur une
+  chaussette »). Identique à la v1 : la cadence réelle (le bras suit la commande avec 7 ticks de
+  retard dans les anciennes comme dans les nouvelles : la limite de fps abaissée n'a pas changé
+  le rythme), la vitesse des gestes, la place de la canette dans l'image, la pose de départ.
+  Différent : **la pince s'ouvre à 37 au lieu de 47**, autant que pour une chaussette (38), et
+  ce sont d'autres canettes (écrasées au milieu). Les modèles v2 recopient cette ouverture
+  étroite là où la scène ressemble aux nouvelles démonstrations (37 sur le nouveau sol, 48 sur
+  l'ancien ; avec des gens derrière sur l'ancien sol, sous 40 dans 4 épisodes sur 17). Le
+  détecteur, lui, nomme bien les canettes (102 sur 104, aucune prise pour du linge).
+
 Coût d'un nouveau sol : 36 démonstrations par objet (40 minutes de pilotage) et 1 h 25 de GPU.
 
 Images : `figures/pick_v2_by_scenery.png`, `figures/training_curves_sock_v2.png`,
