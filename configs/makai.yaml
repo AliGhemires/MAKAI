@@ -117,11 +117,13 @@ navigation:
   mission:
     station_standoff_m: 0.35
     search_speed: 0.6
+    station_tol_m: 0.05     # stopping in front of the marker: 5 cm is enough, the dock is reached after it (16 Nov: too slow at 3)
     back_off_s: 3.0         # after a drop, back off 30 cm (at 0.10 m/s) before turning: clear of the bins (15 Nov)
     max_pick_attempts: 3    # grasps from one side; then it backs away to orbit_radius_m, goes round the
     orbit_deg: [40, -40]    # object to each of these angles in turn (deg, + = counter-clockwise from above)
     orbit_radius_m: 0.50    # and tries again from there; [] = give up after the first side
   sweep:                    # the mission that sweeps the room like a vacuum (makai-mission --sweep)
+    dock_tol_m: 0.04        # standing at a dock: 4 cm is enough for the drop (16 Nov: 2 cm took too long to settle)
     # The map: its origin is where the robot starts, IN FRONT OF THE BIN, BACK TO IT, FACING THE ROOM.
     # x goes into the room, y to the left. The room's walls are x = 0 .. length, y = +-width/2.
     # The zone is easier to trace than to measure: console, Mission tab, "Trace zone", then drive the
