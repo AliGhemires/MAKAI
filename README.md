@@ -29,13 +29,14 @@ puis http://localhost:8000. Mode d'emploi de la navigation : [docs/NAVIGATION.md
 
 ## L'équipe
 
-| Workstream | Responsable | Fiche |
-|---|---|---|
-| WS1 Robot et données | _à inscrire_ | [WS1](docs/workstreams/WS1_robot_data.md) |
-| WS2 Perception | _à inscrire_ | [WS2](docs/workstreams/WS2_perception.md) |
-| WS3 Navigation | _à inscrire_ | [WS3](docs/workstreams/WS3_navigation.md) |
-| WS4 Policy | _à inscrire_ | [WS4](docs/workstreams/WS4_policy.md) |
-| WS5 Intégration et démo | _à inscrire_ | [WS5](docs/workstreams/WS5_integration_demo.md) |
+- [Ali Ghemires](https://github.com/AliGhemires)
+- [Amine Ben Salem](https://github.com/Amine-Ben-Salem)
+- [Cyrine Naouar](https://github.com/cyrinenaouar)
+- [Iyad-coder](https://github.com/Iyad-coder)
+- [MedjiDedji](https://github.com/MedjiDedji)
+
+Le travail était découpé en cinq workstreams (robot et données, perception, navigation,
+policy, intégration et démo) : fiches dans [`docs/workstreams/`](docs/workstreams/).
 
 ## Documentation
 
@@ -85,3 +86,8 @@ configs/              makai.yaml (partagé), local.yaml (personnel), poses du br
 tests/                tests unitaires + mission complète simulée
 docs/                 plan, organisation, modes d'emploi, fiches par workstream
 ```
+
+## Licence
+
+[MIT](LICENSE). Les datasets et les modèles de saisie ne sont pas dans ce dépôt ; seuls les
+petits poids du détecteur (`models/detector_*.pt`) y sont.

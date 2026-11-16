@@ -1,6 +1,6 @@
 # WS3 · Navigation
 
-**Responsable :** _à inscrire_ · **Couloir :** `src/makai/navigation/`, `src/makai/sim/`
+**Couloir :** `src/makai/navigation/`, `src/makai/sim/`
 
 ## Mission
 

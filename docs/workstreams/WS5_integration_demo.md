@@ -1,6 +1,6 @@
 # WS5 · Intégration et démo
 
-**Responsable :** _à inscrire_ · **Couloir :** `src/makai/orchestrator/`, `src/makai/app.py`, `docs/`, `.github/`
+**Couloir :** `src/makai/orchestrator/`, `src/makai/app.py`, `docs/`, `.github/`
 
 ## Mission
 

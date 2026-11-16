@@ -1,6 +1,6 @@
 # WS2 · Perception
 
-**Responsable :** _à inscrire_ · **Couloir :** `src/makai/perception/`
+**Couloir :** `src/makai/perception/`
 
 ## Mission
 

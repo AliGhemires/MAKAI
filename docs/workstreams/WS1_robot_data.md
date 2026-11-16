@@ -1,6 +1,6 @@
 # WS1 · Robot et données
 
-**Responsable :** _à inscrire_ · **Couloir :** `src/makai/robot/`, `scripts/`, `docs/SETUP.md`
+**Couloir :** `src/makai/robot/`, `scripts/`, `docs/SETUP.md`
 
 ## Mission
 

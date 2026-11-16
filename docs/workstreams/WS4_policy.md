@@ -1,6 +1,6 @@
 # WS4 · Policy
 
-**Responsable :** _à inscrire_ · **Couloir :** `src/makai/manipulation/`, `docs/DATA_COLLECTION.md`, `docs/TRAINING.md`
+**Couloir :** `src/makai/manipulation/`, `docs/DATA_COLLECTION.md`, `docs/TRAINING.md`
 
 ## Mission
 
