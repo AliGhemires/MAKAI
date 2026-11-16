@@ -21,6 +21,15 @@ de la démo et fournit les chiffres du pitch. Se pousse directement sur `main`.
 | `act_can_v1` (cluster DTU, `scripts/hpc/fetch_model.sh act_can_v1`) | `pick_can_v1` (68) | 100 000 (fini dim. 15 à 10:45), un point de sauvegarde tous les 5 000 | DTU, V100, lancé dim. 15 à 05:55 | 4 h 50 prévues | Référence canette : deux caméras, plans de 100 actions. Réussite sur le robot : à mesurer ; **modèle final : 1,3° d'écart au pilote en relecture**, erreur d'entraînement 0,032 ; le modèle de la chaussette, rejoué sur des canettes, fait 16,8° : chaque objet a besoin du sien |
 | `act_can_v1_aug` (cluster DTU) | idem | 40 000 (fini) | DTU, V100, 05:57 | 2 h prévues | Luminosité, contraste, saturation, teinte aléatoires ; modèle final : 2,5° en relecture, erreur d'entraînement 0,051 |
 
+## Vidéos
+
+Jamais dans git : un lien. Les liens TransferNow expirent au bout de quelques jours, télécharger
+la vidéo avant la présentation.
+
+| Date | Quoi | Lien |
+|---|---|---|
+| nuit du dim. 15 au lun. 16 | vidéo de démo du robot, filmée par l'équipe dans l'arène de la démo (`docs/NAVIGATION.md`, « Arène de la démo ») | [TransferNow](https://www.transfernow.net/dl/20261116SyMInevn) |
+
 ## Évaluations sur le robot
 
 Protocole fixe : 10 essais, objet amené par l'approche autonome (`docs/TRAINING.md`).
