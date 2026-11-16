@@ -300,6 +300,20 @@ tar -xf chemin/vers/makai_models_sock.zip
 Les dossiers arrivent sous `outputs/train/`, là où la configuration et les commandes les
 attendent. Vérifier avant d'aller sur le robot : `uv run python scripts/mission_check.py`.
 
+Les quatre modèles v2 du 16 nov. s'installent de la même façon : `makai_models_v2_ft.zip`
+(`act_sock_v2_ft` et `act_can_v2_ft`, 30 000 pas, 382 Mo) et `makai_models_v2_scratch.zip`
+(`act_sock_v2` et `act_can_v2`, 100 000 pas, 382 Mo). La mission garde les modèles v1 : pour
+essayer un v2, `scripts/try_pick.py --policy outputs/train/act_sock_v2_ft/checkpoints/030000/pretrained_model --trials 10` ;
+pour le donner à la mission, sur ce laptop seulement, dans `configs/local.yaml` :
+
+```yaml
+manipulation:
+  pick:
+    policies:
+      clothing: {policy_path: outputs/train/act_sock_v2_ft/checkpoints/030000/pretrained_model}
+      trash: {policy_path: outputs/train/act_can_v2_ft/checkpoints/030000/pretrained_model}
+```
+
 **Le budget est de 8 heures, pas un nombre de pas.** Mesuré le 15 nov. sur `pick_sock_v1` :
 5,7 pas par seconde sur une V100, soit 100 000 pas en 4 h 50 et 40 000 pas en 2 heures. La
 file `gpuv100` peut être pleine (près de 1 000 jobs en attente dimanche à 3 h 40) : le premier
