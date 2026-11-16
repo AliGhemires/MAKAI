@@ -403,6 +403,51 @@ marqués d'une bande de scotch gris : horizontale pour le linge, verticale pour 
 Jamais essayé sur une image de la caméra du robot. Image : `figures/stations_tape.jpg`.
 Source : `docs/workstreams/WS2_perception.md`.
 
+## 18. Un second sol en une nuit : ce que les modèles v2 ont appris (16 nov.)
+
+Les 127 démonstrations v1 ont toutes le même sol (moquette beige) et le même mur blanc. Dans la
+nuit du 15 au 16, 71 démonstrations de plus sur un autre sol (revêtement rose), devant trois
+décors : chaises, voile noir, gens et tables. Quatre entraînements sur ces datasets v2 : pour
+chaque objet, un modèle **affiné** depuis le v1 (30 000 pas, 1 h 25 de V100) et un modèle
+**depuis zéro** (100 000 pas, 4 h 45).
+
+Mesure : chacun des 198 épisodes passé dans chaque modèle aux instants où le robot regarde ses
+caméras (0, 100, 200, 300) ; le plan de 100 actions est comparé aux commandes du pilote. Écart
+moyen sur les cinq articulations du bras, en degrés (rester immobile : environ 38°).
+
+| Objet | Modèle | Ancien sol | Nouveau sol, chaises | voile noir | gens et tables |
+|---|---|---|---|---|---|
+| Chaussette | `act_sock_v1` | 1,6 | 10,1 | 12,0 | 11,2 |
+| Chaussette | `act_sock_v2_ft` (affiné) | 1,5 | 2,0 | 1,8 | 2,4 |
+| Chaussette | `act_sock_v2` (depuis zéro) | 1,9 | 1,7 | 1,9 | 2,0 |
+| Canette | `act_can_v1` | 1,6 | 12,2 | 11,7 | 10,9 |
+| Canette | `act_can_v2_ft` (affiné) | 1,5 | 2,0 | 2,2 | 2,1 |
+| Canette | `act_can_v2` (depuis zéro) | 1,9 | 1,6 | 1,7 | 1,7 |
+
+- **Les v1 ne savent pas saisir sur le nouveau sol** : 10 à 12° d'écart, sept fois plus que sur
+  le leur, et autant devant les trois décors. L'écart est au début du geste (13,8° aux deux
+  premiers regards pour la chaussette, 2,9° au dernier) : le modèle ne trouve pas l'objet. La
+  pince se ferme aussi au mauvais moment (écart de 3 à 5,5, contre 0,6).
+- **C'est le sol qui compte, pas le fond** : même écart devant les trois décors, et les v1 ont
+  réussi la mission filmée sur leur moquette devant des tables et des gens. Réserve : les
+  nouveaux épisodes changent aussi de lumière (flash) et, pour la canette, de marque.
+- **Les v2 suivent le pilote sur les deux sols** (1,5 à 2,4°), et l'affiné n'a rien oublié de
+  l'ancien (1,5° contre 1,6° pour le v1).
+- **Affiné ou depuis zéro : égalité**, pour trois fois moins de calcul. L'affiné garde un léger
+  avantage sur l'ancien sol (1,5 contre 1,9°), le modèle depuis zéro sur le nouveau (1,6 à 2,0°
+  contre 1,8 à 2,4°). Erreur d'entraînement finale : 0,033 contre 0,036, et la courbe depuis
+  zéro descend encore à 100 000 pas.
+- **Limite** : les v2 ont vu ces épisodes à l'entraînement. Devant un décor jamais vu, rien ne
+  montre un gain : en repeignant le fond ou le sol dans les images (rideau, chaises, sol gris ou
+  bois), le plan des v2 bouge autant que celui des v1 (1,4 à 3,3° pour la chaussette, 2,9 à
+  6,0° pour la canette). Deux sols appris ne font pas un modèle indifférent au sol.
+
+Coût d'un nouveau sol : 36 démonstrations par objet (40 minutes de pilotage) et 1 h 25 de GPU.
+
+Images : `figures/pick_v2_by_scenery.png`, `figures/training_curves_sock_v2.png`,
+`figures/training_curves_can_v2.png`. Sources : `docs/REGISTRY.md`,
+`outputs/explorations/pick_v2/` et `outputs/explorations/decor/` (scripts et résultats, hors git).
+
 ## Ce qui reste à mesurer
 
 - Sur le robot, tout ce que disent les sections 14 à 17 : la rotation réelle lue à la caméra
@@ -413,6 +458,8 @@ Source : `docs/workstreams/WS2_perception.md`.
   essais du 15 nov. (`act_sock_v1`, `act_can_v1`, modèles finaux) : saisies réussies presque
   à chaque fois d'après l'équipe ; score exact non noté.
 - Le seuil de la pince qui sépare une saisie réussie d'une saisie vide.
+- Le taux de réussite des modèles v2 sur le robot, sur chacun des deux sols (section 18 : seulement
+  des rejeux d'épisodes).
 - L'effet de la salle de démo : référence contre caméra de poignet seule, dans cette salle.
 - Le détecteur réentraîné sur les images de la caméra du robot.
 - La boucle complète : trouver, approcher, saisir, déposer, avec les temps.
