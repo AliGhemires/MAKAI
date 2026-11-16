@@ -89,5 +89,10 @@ docs/                 plan, organisation, modes d'emploi, fiches par workstream
 
 ## Licence
 
-[MIT](LICENSE). Les datasets et les modèles de saisie ne sont pas dans ce dépôt ; seuls les
-petits poids du détecteur (`models/detector_*.pt`) y sont.
+[PolyForm Noncommercial 1.0.0](LICENSE) : libre pour un usage personnel, la recherche,
+l'enseignement et les organisations à but non lucratif. **Tout usage commercial demande
+l'accord de l'équipe MAKAI.**
+
+Les datasets et les modèles de saisie ne sont pas dans ce dépôt ; seuls les petits poids du
+détecteur (`models/detector_*.pt`) y sont. Les dépendances gardent leur propre licence
+(LeRobot : Apache 2.0, Ultralytics : AGPL-3.0).

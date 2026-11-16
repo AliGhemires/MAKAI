@@ -3,7 +3,7 @@ name = "makai"
 version = "0.1.0"
 description = "MAKAI - mobile tidy-up robot (LeKiwi + SO-101) for the Leukerbad Robotics Carnival Hack 2026"
 readme = "README.md"
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 # Core deps stay light on purpose: everything in `makai` that is not hardware- or
