@@ -139,7 +139,7 @@ pip install --no-cache-dir -e ".[lekiwi]"
 
 **État réel de notre Pi (sam. 14)** : hostname `lekiwi`, utilisateur `kiwi` (mot de passe
 dans le chat d'équipe), LeRobot 0.7.1 installé depuis les sources dans l'env conda
-`lerobot`, dépôt LeRobot dans `~/lerobot` (détails : `docs/LEKIWI_HANDOFF (2).md`). Après
+`lerobot`, dépôt LeRobot dans `~/lerobot` (détails : `docs/LEKIWI_HANDOFF.md`). Après
 chaque connexion SSH : `conda activate lerobot && cd ~/lerobot`.
 
 ### Réseau
